@@ -1,7 +1,57 @@
+import { useEffect } from 'react'
+import { useRagEngine } from './hooks/useRagEngine'
+import ModelOverlay from './components/ModelOverlay'
+import RagToolbar from './components/RagToolbar'
+import DropZone from './components/DropZone'
+import DocList from './components/DocList'
+import ChatPanel from './components/ChatPanel'
+
 export default function RagStudioPage() {
+  const {
+    docs,
+    messages,
+    overlay,
+    chatDisabled,
+    bootEmbedder,
+    loadPersistedDocs,
+    processFiles,
+    sendMessage,
+    clearDocs,
+    removeDoc,
+  } = useRagEngine()
+
+  useEffect(() => {
+    bootEmbedder()
+    loadPersistedDocs()
+  }, [bootEmbedder, loadPersistedDocs])
+
   return (
-    <div className="flex items-center justify-center h-full text-on-surface-muted text-sm">
-      RAG Studio — coming soon
-    </div>
+    <>
+      <ModelOverlay state={overlay} />
+
+      <div className="-my-8 -mx-10 flex flex-col h-full">
+        <RagToolbar onClearAll={clearDocs} />
+
+        <div className="flex flex-1 min-h-0">
+          <aside className="w-64 shrink-0 flex flex-col gap-4 p-4 border-r border-border bg-surface overflow-y-auto">
+            <div>
+              <h2 className="text-xs font-semibold text-on-surface-muted uppercase tracking-widest mb-3">
+                Documents
+              </h2>
+              <DropZone onFiles={processFiles} />
+            </div>
+            <DocList docs={docs} onRemove={removeDoc} />
+          </aside>
+
+          <div className="flex-1 min-w-0">
+            <ChatPanel
+              messages={messages}
+              disabled={chatDisabled}
+              onSend={sendMessage}
+            />
+          </div>
+        </div>
+      </div>
+    </>
   )
 }

@@ -265,6 +265,19 @@ main.devhub-main {
   border-radius: 8px;
 }
 
+/* ── RAG chat bubble markdown overrides ──────────── */
+.rag-ai-bubble .markdown-preview {
+  max-width: none;
+  background-color: transparent;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.rag-ai-bubble .markdown-preview > :first-child { margin-top: 0; }
+.rag-ai-bubble .markdown-preview > :last-child  { margin-bottom: 0; }
+.rag-ai-bubble .markdown-preview h1 { font-size: 1.25em; }
+.rag-ai-bubble .markdown-preview h2 { font-size: 1.1em; }
+.rag-ai-bubble .markdown-preview h3 { font-size: 1em; }
+
 /* ── Mermaid ──────────────────────────────────────── */
 .mermaid-block {
   margin: 1.5em 0;

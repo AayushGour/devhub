@@ -21,6 +21,7 @@
     "clsx": "^2.1.1",
     "dexie": "^4.4.3",
     "highlight.js": "^11.11.1",
+    "idb": "^8.0.3",
     "lucide-react": "^1.18.0",
     "marked": "^18.0.5",
     "marked-highlight": "^2.2.4",
