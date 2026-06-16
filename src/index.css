@@ -48,7 +48,7 @@
 /* ── Dark — Apple dark tile palette ──────────────── */
 [data-theme="dark"] {
   --surface: #1d1d1f; /* near-black */
-  --surface-raised: #272729; /* surface-tile-1 */
+  --surface-raised: #313133; /* surface-tile-1 */
   --surface-hover: #2a2a2c; /* surface-tile-2 */
   --on-surface: #f5f5f7; /* body-on-dark (off-white, not harsh) */
   --on-surface-muted: #a1a1a6;
@@ -62,7 +62,7 @@
 /* ── GitHub dark ─────────────────────────────────── */
 [data-theme="github"] {
   --surface: #0d1117;
-  --surface-raised: #161b22;
+  --surface-raised: #21262d;
   --surface-hover: #21262d;
   --on-surface: #e6edf3;
   --on-surface-muted: #8b949e;
@@ -76,7 +76,7 @@
 /* ── Nord ────────────────────────────────────────── */
 [data-theme="nord"] {
   --surface: #2e3440;
-  --surface-raised: #3b4252;
+  --surface-raised: #434c5e;
   --surface-hover: #434c5e;
   --on-surface: #eceff4;
   --on-surface-muted: #d8dee9;
@@ -90,7 +90,7 @@
 /* ── Dracula ─────────────────────────────────────── */
 [data-theme="dracula"] {
   --surface: #282a36;
-  --surface-raised: #1e1f29;
+  --surface-raised: #363849;
   --surface-hover: #44475a;
   --on-surface: #f8f8f2;
   --on-surface-muted: #6272a4;
@@ -254,11 +254,11 @@ main.devhub-main {
   text-align: left;
 }
 .markdown-preview th {
-  background: var(--surface-raised);
+  background: rgba(0, 0, 0, 0.07);
   font-weight: 600;
 }
 .markdown-preview tr:nth-child(even) td {
-  background: var(--surface-raised);
+  background: rgba(0, 0, 0, 0.035);
 }
 .markdown-preview img {
   max-width: 100%;
