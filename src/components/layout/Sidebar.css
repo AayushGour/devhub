@@ -1,0 +1,5 @@
+/* Hover only applies when the link is NOT the active route */
+.sidebar-nav-link:not([aria-current="page"]):hover {
+  background-color: var(--surface-hover);
+  color: var(--on-surface);
+}
