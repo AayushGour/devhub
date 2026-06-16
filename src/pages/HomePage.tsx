@@ -31,8 +31,9 @@ const studios: Studio[] = [
     title: 'Diagram Studio',
     description: 'Mermaid editor with live preview, templates, and SVG/PNG export.',
     icon: <GitGraph size={20} />,
-    status: 'coming-soon',
+    status: 'available',
     phase: 'Phase 3',
+    href: '/tools/diagram',
   },
   {
     id: 'json',
