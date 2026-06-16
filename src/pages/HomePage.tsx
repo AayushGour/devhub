@@ -1,6 +1,6 @@
 import {
   FileText, GitGraph, Braces, Globe, Database,
-  KeyRound, Wrench, FolderOpen, Sparkles,
+  KeyRound, Wrench, FolderOpen, Sparkles, BrainCircuit,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -34,6 +34,15 @@ const studios: Studio[] = [
     status: 'available',
     phase: 'Phase 3',
     href: '/tools/diagram',
+  },
+  {
+    id: 'rag',
+    title: 'RAG Studio',
+    description: 'Chat with your documents. Browser-native vector search and LLM — no server.',
+    icon: <BrainCircuit size={20} />,
+    status: 'available',
+    phase: 'Phase 3',
+    href: '/tools/rag',
   },
   {
     id: 'json',
