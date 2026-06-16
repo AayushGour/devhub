@@ -13,7 +13,7 @@ export default function DropZone({ onFiles }: Props) {
   const handle = useCallback(
     (files: FileList | null) => {
       if (!files) return
-      const valid = [...files].filter((f) => /\.(txt|md)$/i.test(f.name))
+      const valid = [...files].filter((f) => /\.(txt|md|pdf|docx)$/i.test(f.name))
       if (valid.length) onFiles(valid)
     },
     [onFiles],
@@ -41,14 +41,15 @@ export default function DropZone({ onFiles }: Props) {
     >
       <Upload size={20} className="mx-auto mb-2 opacity-60" />
       <p className="text-xs leading-5">
-        Drop <span className="font-medium">.txt</span> or <span className="font-medium">.md</span> files
+        Drop <span className="font-medium">.txt</span>, <span className="font-medium">.md</span>,{' '}
+        <span className="font-medium">.pdf</span> or <span className="font-medium">.docx</span> files
         <br />
         or click to browse
       </p>
       <input
         ref={inputRef}
         type="file"
-        accept=".txt,.md"
+        accept=".txt,.md,.pdf,.docx"
         multiple
         hidden
         onChange={(e) => handle(e.target.files)}
