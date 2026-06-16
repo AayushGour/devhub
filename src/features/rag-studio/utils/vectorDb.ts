@@ -43,6 +43,10 @@ export async function getAllNodes(): Promise<KnowledgeNode[]> {
 export async function clearAll(): Promise<void> {
   const db = await getDB()
   await db.clear(STORE)
+  console.log('[RAG:db] clearAll — store wiped')
+  // Verify it actually cleared
+  const remaining = await db.count(STORE)
+  console.log('[RAG:db] nodes remaining after clear:', remaining)
 }
 
 export async function clearBySource(sourceFile: string): Promise<void> {
@@ -60,4 +64,9 @@ export async function clearBySource(sourceFile: string): Promise<void> {
 export async function getSourceFiles(): Promise<string[]> {
   const nodes = await getAllNodes()
   return [...new Set(nodes.map((n) => n.sourceFile))]
+}
+
+export async function countNodes(): Promise<number> {
+  const db = await getDB()
+  return db.count(STORE)
 }

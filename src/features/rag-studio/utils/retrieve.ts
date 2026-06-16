@@ -20,7 +20,8 @@ export interface ScoredNode extends KnowledgeNode {
 
 export async function retrieve(query: string, k = 5): Promise<ScoredNode[]> {
   console.log(`${LOG} query="${query.slice(0, 80)}", k=${k}`)
-  const queryVec = await embed(query)
+  // BGE models expect this prefix on queries (not on passage embeddings)
+  const queryVec = await embed(`Represent this sentence for searching relevant passages: ${query}`)
   console.log(`${LOG} query vector dim=${queryVec.length}, sample=[${queryVec.slice(0, 4).map(v => v.toFixed(4)).join(', ')}…]`)
 
   const nodes = await getAllNodes()

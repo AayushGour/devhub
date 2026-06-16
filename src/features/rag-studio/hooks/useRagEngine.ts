@@ -3,7 +3,7 @@ import { getEmbedder } from '../utils/embed'
 import { getEngine, streamComplete } from '../utils/llm'
 import { ingestFile } from '../utils/ingest'
 import { retrieve } from '../utils/retrieve'
-import { clearAll, clearBySource, getSourceFiles } from '../utils/vectorDb'
+import { clearAll, clearBySource, getSourceFiles, countNodes } from '../utils/vectorDb'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -48,7 +48,9 @@ export function useRagEngine() {
   }, [])
 
   const loadPersistedDocs = useCallback(async () => {
+    const total = await countNodes()
     const files = await getSourceFiles()
+    console.log('[RAG:hook] loadPersistedDocs — nodes in DB:', total, '| files:', files)
     if (files.length > 0) {
       setDocs(files.map((name) => ({ name, status: 'done', statusText: '' })))
     }
@@ -184,7 +186,11 @@ export function useRagEngine() {
   )
 
   const clearDocs = useCallback(async () => {
+    const before = await countNodes()
+    console.log('[RAG:hook] clearDocs — nodes before clear:', before)
     await clearAll()
+    const after = await countNodes()
+    console.log('[RAG:hook] clearDocs — nodes after clear:', after)
     setDocs([])
     setMessages([])
   }, [])
