@@ -1,6 +1,7 @@
 import { getEngine } from './llm'
 import { embedBatch } from './embed'
 import { putNode } from './vectorDb'
+import { extractText } from './extractText'
 
 const CHUNK_SIZE = 1500
 const CHUNK_OVERLAP = 150
@@ -48,8 +49,7 @@ export async function ingestFile(
   onStatus: IngestStatusCallback,
 ): Promise<void> {
   console.log(`${LOG} starting ingest for "${file.name}", size=${file.size}`)
-  onStatus('reading file…')
-  const text = await file.text()
+  const text = await extractText(file, onStatus)
   const chunks = chunkText(text)
   console.log(`${LOG} split into ${chunks.length} chunks (size=${CHUNK_SIZE}, overlap=${CHUNK_OVERLAP})`)
 

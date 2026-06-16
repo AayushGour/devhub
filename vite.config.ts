@@ -11,4 +11,10 @@ export default defineConfig({
     },
   },
   base: '/devhub/',
+  optimizeDeps: {
+    exclude: ['pdfjs-dist'],
+  },
+  worker: {
+    format: 'es',
+  },
 })
