@@ -25,7 +25,7 @@ async function summariseChunk(chunk: string, idx: number): Promise<string> {
         {
           role: 'system',
           content:
-            'You are a summarisation assistant. Write a concise 2–3 sentence summary of the passage below. Include key concepts, entities, and facts. Return plain text only — no markdown, no JSON.',
+            'You are a summarisation assistant. Write a concise 2-3 sentence summary of the passage below. Include key concepts, entities, and facts. RETURN ONLY MARKDOWN, no JSON. JUST RETURN THE SUMMARY, DO NOT SAY "Summary:" or any other text.',
         },
         { role: 'user', content: chunk },
       ],
