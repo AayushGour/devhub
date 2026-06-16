@@ -3,7 +3,6 @@ import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
 import { THEMES, THEME_ACCENT } from '../utils/themes'
 import {
   COMMON_SELECTORS, FONT_OPTIONS, BORDER_STYLE_OPTIONS,
-  createDefaultRule,
   type StyleSettings, type ElementRule,
 } from '../utils/styleBuilder'
 import { cn } from '@/lib/utils'
