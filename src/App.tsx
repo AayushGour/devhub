@@ -5,6 +5,7 @@ import WorkspacePage from '@/pages/WorkspacePage'
 import SettingsPage from '@/pages/SettingsPage'
 import MarkdownStudioPage from '@/features/markdown-studio'
 import DiagramStudioPage from '@/features/diagram-studio'
+import RagStudioPage from '@/features/rag-studio'
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
         <Route path="settings" element={<SettingsPage />} />
         <Route path="tools/markdown" element={<MarkdownStudioPage />} />
         <Route path="tools/diagram" element={<DiagramStudioPage />} />
+        <Route path="tools/rag" element={<RagStudioPage />} />
       </Route>
     </Routes>
   )
