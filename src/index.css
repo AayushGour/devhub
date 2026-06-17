@@ -181,16 +181,14 @@ h6 {
 main.devhub-main {
   flex: 1;
   overflow: auto;
-  padding: 2rem 2.5rem;
 }
 
-/* ── Studio root — escapes main padding and fills full height ── */
+/* ── Studio root — fills full height of main ── */
 /* Use this as the root element class for every tool/studio module  */
 .studio-root {
-  margin: -2rem -2.5rem;
   display: flex;
   flex-direction: column;
-  height: calc(100% + 4rem);
+  height: 100%;
 }
 
 /* ── Markdown Preview ─────────────────────────────── */

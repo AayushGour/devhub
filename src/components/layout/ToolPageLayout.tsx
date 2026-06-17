@@ -17,7 +17,7 @@ export default function ToolPageLayout({
   className,
 }: ToolPageLayoutProps) {
   return (
-    <div className={cn('flex flex-col h-full max-w-5xl mx-auto w-full', className)}>
+    <div className={cn('flex flex-col h-full max-w-5xl mx-auto w-full py-8 px-10', className)}>
       <div className="flex items-start justify-between mb-8">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight text-on-surface">{title}</h1>

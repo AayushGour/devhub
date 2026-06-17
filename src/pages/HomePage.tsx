@@ -106,7 +106,7 @@ export default function HomePage() {
   const navigate = useNavigate()
 
   return (
-    <div className="max-w-[960px] mx-auto">
+    <div className="max-w-[960px] mx-auto py-8 px-10">
       {/* Hero */}
       <div className="mb-12">
         <h1 className="font-sans text-[40px] font-semibold leading-[1.1] tracking-[-0.5px] text-on-surface mb-3">

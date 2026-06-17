@@ -149,7 +149,7 @@ export default function MyStudioPage() {
 }
 ```
 
-`studio-root` (defined in `src/index.css`) escapes `main.devhub-main`'s padding via negative margins and sets `height: calc(100% + 4rem)` so the module fills the full viewport height. Never replace it with ad-hoc `-my-8 -mx-10 h-full` or similar — that leaves a 64px gap at the bottom.
+`studio-root` (defined in `src/index.css`) sets `display: flex; flex-direction: column; height: 100%` so the module fills the full viewport height. `main.devhub-main` has no padding — non-studio pages own their own padding. Never use negative margins or ad-hoc height hacks on studio page roots.
 
 ---
 
