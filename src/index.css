@@ -43,6 +43,16 @@
   --accent-hover: #0071e3; /* primary-focus */
   --accent-text: #ffffff;
   --preview-bg: #ffffff;
+
+  /* Markdown-only tokens — change these without touching layout */
+  --md-text: #1d1d1f;
+  --md-text-muted: #6e6e73;
+  --md-bg: #ffffff;
+  --md-border: #e0e0e0;
+  --md-accent: #0066cc;
+  --md-code-bg: #f5f5f7;
+  --md-blockquote-border: #0066cc;
+  --md-blockquote-bg: #f5f5f7;
 }
 
 /* ── Dark — Apple dark tile palette ──────────────── */
@@ -57,6 +67,15 @@
   --accent-hover: #409cff;
   --accent-text: #ffffff;
   --preview-bg: #eeeef0;
+
+  --md-text: #1d1d1f;
+  --md-text-muted: #6e6e73;
+  --md-bg: #fdfdfd;
+  --md-border: #d0d0d5;
+  --md-accent: #0066cc;
+  --md-code-bg: #e2e2e2;
+  --md-blockquote-border: #0066cc;
+  --md-blockquote-bg: #e5e5ea;
 }
 
 /* ── GitHub dark ─────────────────────────────────── */
@@ -71,6 +90,15 @@
   --accent-hover: #79c0ff;
   --accent-text: #0d1117;
   --preview-bg: #edf2f8;
+
+  --md-text: #24292f;
+  --md-text-muted: #57606a;
+  --md-bg: #edf2f8;
+  --md-border: #d0d7de;
+  --md-accent: #0969da;
+  --md-code-bg: #f6f8fa;
+  --md-blockquote-border: #0969da;
+  --md-blockquote-bg: #f6f8fa;
 }
 
 /* ── Nord ────────────────────────────────────────── */
@@ -85,6 +113,15 @@
   --accent-hover: #8fbcbb;
   --accent-text: #2e3440;
   --preview-bg: #dce3ef;
+
+  --md-text: #2e3440;
+  --md-text-muted: #4c566a;
+  --md-bg: #dce3ef;
+  --md-border: #b0bccf;
+  --md-accent: #5e81ac;
+  --md-code-bg: #c8d3e0;
+  --md-blockquote-border: #5e81ac;
+  --md-blockquote-bg: #c8d3e0;
 }
 
 /* ── Dracula ─────────────────────────────────────── */
@@ -99,6 +136,15 @@
   --accent-hover: #ff79c6;
   --accent-text: #282a36;
   --preview-bg: #eee9fa;
+
+  --md-text: #282a36;
+  --md-text-muted: #6272a4;
+  --md-bg: #eee9fa;
+  --md-border: #c5b8e8;
+  --md-accent: #7c3aed;
+  --md-code-bg: #e0d8f5;
+  --md-blockquote-border: #7c3aed;
+  --md-blockquote-bg: #e0d8f5;
 }
 
 /* Tailwind preflight (@layer base) already resets box-sizing/margin/padding */
@@ -143,9 +189,9 @@ main.devhub-main {
   font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.75;
-  color: var(--on-surface);
+  color: var(--md-text);
   max-width: 780px;
-  background-color: var(--preview-bg);
+  background-color: var(--md-bg);
 }
 .markdown-preview h1,
 .markdown-preview h2,
@@ -154,7 +200,7 @@ main.devhub-main {
 .markdown-preview h5,
 .markdown-preview h6 {
   font-family: -apple-system, "SF Pro Display", system-ui, sans-serif;
-  color: var(--on-surface);
+  color: var(--md-text);
   font-weight: 600;
   line-height: 1.1;
   letter-spacing: -0.28px;
@@ -162,12 +208,12 @@ main.devhub-main {
 }
 .markdown-preview h1 {
   font-size: 2em;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--md-border);
   padding-bottom: 0.3em;
 }
 .markdown-preview h2 {
   font-size: 1.5em;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--md-border);
   padding-bottom: 0.3em;
 }
 .markdown-preview h3 {
@@ -177,7 +223,7 @@ main.devhub-main {
   margin: 0.9em 0;
 }
 .markdown-preview a {
-  color: var(--accent);
+  color: var(--md-accent);
   text-decoration: none;
 }
 .markdown-preview a:hover {
@@ -191,13 +237,25 @@ main.devhub-main {
 }
 .markdown-preview hr {
   border: none;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--md-border);
   margin: 2em 0;
 }
 .markdown-preview ul,
 .markdown-preview ol {
   margin: 0.8em 0;
   padding-left: 1.8em;
+}
+.markdown-preview ul {
+  list-style-type: disc;
+}
+.markdown-preview ol {
+  list-style-type: decimal;
+}
+.markdown-preview ul ul {
+  list-style-type: circle;
+}
+.markdown-preview ul ul ul {
+  list-style-type: square;
 }
 .markdown-preview li {
   margin: 0.3em 0;
@@ -207,11 +265,11 @@ main.devhub-main {
   margin: 0.2em 0;
 }
 .markdown-preview blockquote {
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--md-blockquote-border);
   margin: 1.2em 0;
   padding: 0.5em 0 0.5em 1em;
-  color: var(--on-surface-muted);
-  background: var(--surface-raised);
+  color: var(--md-text-muted);
+  background: var(--md-blockquote-bg);
   border-radius: 0 8px 8px 0;
 }
 .markdown-preview blockquote p {
@@ -220,15 +278,15 @@ main.devhub-main {
 .markdown-preview code {
   font-family: "SF Mono", "Fira Code", Consolas, monospace;
   font-size: 0.875em;
-  background: var(--surface-raised);
-  color: var(--on-surface);
+  background: var(--md-code-bg);
+  color: var(--md-text);
   padding: 2px 6px;
   border-radius: 5px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--md-border);
 }
 .markdown-preview pre {
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
+  background: var(--md-code-bg);
+  border: 1px solid var(--md-border);
   border-radius: 11px;
   padding: 1em 1.25em;
   overflow: auto;
@@ -249,7 +307,7 @@ main.devhub-main {
 }
 .markdown-preview th,
 .markdown-preview td {
-  border: 1px solid var(--border);
+  border: 1px solid var(--md-border);
   padding: 8px 13px;
   text-align: left;
 }
@@ -272,11 +330,21 @@ main.devhub-main {
   font-size: 0.875rem;
   line-height: 1.6;
 }
-.rag-ai-bubble .markdown-preview > :first-child { margin-top: 0; }
-.rag-ai-bubble .markdown-preview > :last-child  { margin-bottom: 0; }
-.rag-ai-bubble .markdown-preview h1 { font-size: 1.25em; }
-.rag-ai-bubble .markdown-preview h2 { font-size: 1.1em; }
-.rag-ai-bubble .markdown-preview h3 { font-size: 1em; }
+.rag-ai-bubble .markdown-preview > :first-child {
+  margin-top: 0;
+}
+.rag-ai-bubble .markdown-preview > :last-child {
+  margin-bottom: 0;
+}
+.rag-ai-bubble .markdown-preview h1 {
+  font-size: 1.25em;
+}
+.rag-ai-bubble .markdown-preview h2 {
+  font-size: 1.1em;
+}
+.rag-ai-bubble .markdown-preview h3 {
+  font-size: 1em;
+}
 
 /* ── Mermaid ──────────────────────────────────────── */
 .mermaid-block {
@@ -291,7 +359,7 @@ main.devhub-main {
 
 /* ── Highlight.js syntax colors per theme ─────────── */
 .hljs {
-  color: var(--on-surface);
+  color: var(--md-text);
 }
 
 [data-theme="light"] .hljs-keyword,

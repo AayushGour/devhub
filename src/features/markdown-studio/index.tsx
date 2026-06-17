@@ -8,7 +8,7 @@ import { exportToPDF, exportToHTML, exportToMarkdown, defaultExportConfig } from
 import { createDefaultSettings, createDefaultRule, type StyleSettings, type ElementRule } from './utils/styleBuilder'
 
 export default function MarkdownStudioPage() {
-  const { content, title, setTitle, updateContent } = useMarkdownEditor()
+  const { content, title, setTitle, updateContent, loadFile } = useMarkdownEditor()
   const previewRef = useRef<HTMLDivElement>(null)
 
   const [themeId, setThemeId] = useState('classic')
@@ -47,6 +47,7 @@ export default function MarkdownStudioPage() {
         onExportPDF={() => previewRef.current && exportToPDF(previewRef.current, buildConfig())}
         onExportHTML={() => previewRef.current && exportToHTML(previewRef.current, buildConfig())}
         onExportMarkdown={() => exportToMarkdown(content, title)}
+        onUpload={loadFile}
       />
 
       <div className="flex flex-1 min-h-0">

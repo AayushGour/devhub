@@ -50,5 +50,10 @@ export function useMarkdownEditor() {
     setContent(val ?? '')
   }, [])
 
-  return { content, title, setTitle, updateContent }
+  const loadFile = useCallback((fileContent: string, filename: string) => {
+    setContent(fileContent)
+    setTitle(filename.replace(/\.md$/i, '') || 'Untitled')
+  }, [])
+
+  return { content, title, setTitle, updateContent, loadFile }
 }

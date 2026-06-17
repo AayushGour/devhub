@@ -39,6 +39,14 @@ Both models are downloaded once and cached by the browser. First load for the LL
 **Settings:**
 - **Context-aware query expansion** — retrieves a seed context before generating expansion queries, producing more grounded sub-questions at the cost of a small latency increase
 
+**Planned enhancements:**
+- **Token counter** — live display of estimated input token count (context block + system prompt) and output tokens consumed per response, with a session-level running total
+- **Context inspector** — collapsible panel showing which document chunks were retrieved and their cosine similarity scores for each query
+- **Retrieval tuning controls** — expose `k` (chunks per query) and chunk size as user-configurable settings
+- **Skip expansion toggle** — opt out of query expansion for faster responses on simple factual questions
+- **Multi-model support** — swap embedding model (bge-small / bge-base / bge-large) and LLM from Settings without re-ingesting
+- **Export chat** — download conversation as Markdown or JSON
+
 ---
 
 ## Tech Stack

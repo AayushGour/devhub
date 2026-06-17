@@ -17,7 +17,7 @@ const THEME_STYLE_ID = 'devhub-preview-theme-css'
 
 const APP_THEME_PREVIEW_BG: Record<string, string> = {
   light: '#ffffff',
-  dark: '#bbbbbb',
+  dark: '#efefef',
   github: '#edf2f8',
   nord: '#dce3ef',
   dracula: '#eee9fa',

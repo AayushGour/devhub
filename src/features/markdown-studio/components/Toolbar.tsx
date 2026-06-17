@@ -1,4 +1,5 @@
-import { FileDown, FileText, Sliders } from 'lucide-react'
+import { useRef } from 'react'
+import { FileDown, FileText, Sliders, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ToolbarProps {
@@ -7,15 +8,27 @@ interface ToolbarProps {
   onExportPDF: () => void
   onExportHTML: () => void
   onExportMarkdown: () => void
+  onUpload: (content: string, filename: string) => void
   stylesOpen: boolean
   onToggleStyles: () => void
 }
 
 export default function Toolbar({
   title, onTitleChange,
-  onExportPDF, onExportHTML, onExportMarkdown,
+  onExportPDF, onExportHTML, onExportMarkdown, onUpload,
   stylesOpen, onToggleStyles,
 }: ToolbarProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => onUpload(ev.target?.result as string, file.name)
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
   return (
     <div className="h-11 flex items-center px-4 gap-[10px] shrink-0 border-b border-border bg-surface">
       <input
@@ -63,6 +76,21 @@ export default function Toolbar({
         className="flex items-center justify-center w-[30px] h-[30px] rounded-[7px] border border-border bg-transparent text-on-surface-muted cursor-pointer text-[10px] font-semibold font-[inherit] hover:text-on-surface transition-colors duration-150"
       >
         .md
+      </button>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".md,text/markdown"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        title="Upload .md file"
+        className="flex items-center justify-center w-[30px] h-[30px] rounded-[7px] border border-border bg-transparent text-on-surface-muted cursor-pointer hover:text-on-surface transition-colors duration-150"
+      >
+        <Upload size={13} />
       </button>
     </div>
   )
