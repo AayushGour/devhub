@@ -105,12 +105,13 @@ function apply(value: unknown, tokens: Token[], idx: number): unknown[] {
     }
 
     case 'recursive': {
+      const name = token.name // capture before closure — narrowing is lost inside descend
       const results: unknown[] = []
 
       function descend(v: unknown) {
         if (v === null || typeof v !== 'object') return
 
-        if (token.name === null) {
+        if (name === null) {
           const children = Array.isArray(v) ? v : Object.values(v as Record<string, unknown>)
           for (const child of children) {
             results.push(...apply(child, tokens, idx + 1))
@@ -118,7 +119,7 @@ function apply(value: unknown, tokens: Token[], idx: number): unknown[] {
           }
         } else {
           if (isObj(v)) {
-            if (token.name in v) results.push(...apply(v[token.name], tokens, idx + 1))
+            if (name in v) results.push(...apply(v[name], tokens, idx + 1))
             for (const child of Object.values(v)) descend(child)
           } else if (Array.isArray(v)) {
             for (const child of v) descend(child)
