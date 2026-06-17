@@ -11,7 +11,7 @@ const themes: { value: Theme; label: string; surface: string; accent: string }[]
 ]
 
 export default function SettingsPage() {
-  const { theme, setTheme } = useSettingsStore()
+  const { theme, setTheme, contextAwareExpansion, setContextAwareExpansion } = useSettingsStore()
 
   return (
     <div className="max-w-[680px] mx-auto">
@@ -24,6 +24,41 @@ export default function SettingsPage() {
           Customize your DevHub experience.
         </p>
       </div>
+
+      {/* RAG Studio section */}
+      <section className="bg-surface border border-border rounded-[18px] p-6 mb-4">
+        <h2 className="text-[17px] font-semibold tracking-[-0.374px] text-on-surface mb-1">
+          RAG Studio
+        </h2>
+        <p className="text-sm text-on-surface-muted mb-5">
+          Controls for retrieval-augmented generation behaviour.
+        </p>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-on-surface">Context-aware query expansion</p>
+            <p className="text-xs text-on-surface-muted mt-0.5">
+              Retrieves a seed context first, then uses it to generate more grounded expansion queries. Slightly slower but more accurate.
+            </p>
+          </div>
+          <button
+            role="switch"
+            aria-checked={contextAwareExpansion}
+            onClick={() => setContextAwareExpansion(!contextAwareExpansion)}
+            className={cn(
+              'relative shrink-0 w-11 h-6 rounded-full border-none cursor-pointer transition-colors duration-200',
+              contextAwareExpansion ? 'bg-accent' : 'bg-border',
+            )}
+          >
+            <span
+              className={cn(
+                'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-[left] duration-200',
+                contextAwareExpansion ? 'left-[22px]' : 'left-0.5',
+              )}
+            />
+          </button>
+        </div>
+      </section>
 
       {/* Theme section */}
       <section className="bg-surface border border-border rounded-[18px] p-6">

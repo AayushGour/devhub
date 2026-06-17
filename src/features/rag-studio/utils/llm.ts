@@ -20,6 +20,9 @@ export async function getEngine(onProgress?: LLMProgressCallback): Promise<webll
     _engine = engine
     _loadingPromise = null
     return engine
+  }).catch((err) => {
+    _loadingPromise = null
+    throw err
   })
 
   return _loadingPromise
@@ -40,7 +43,7 @@ export async function complete(
     max_tokens: opts.max_tokens ?? 512,
     temperature: 0.1,
   })
-  return reply.choices[0].message.content ?? ''
+  return reply.choices[0]?.message?.content ?? ''
 }
 
 export async function* streamComplete(

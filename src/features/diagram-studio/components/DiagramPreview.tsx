@@ -65,7 +65,7 @@ export default function DiagramPreview({ code, mermaidTheme, svgRef }: DiagramPr
     mermaid.initialize({
       startOnLoad: false,
       theme: mermaidTheme,
-      securityLevel: 'loose',
+      securityLevel: 'antiscript',
       fontFamily: 'system-ui, sans-serif',
     })
 

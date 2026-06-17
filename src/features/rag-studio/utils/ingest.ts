@@ -2,18 +2,59 @@ import { getEngine } from './llm'
 import { embedBatch } from './embed'
 import { putNode } from './vectorDb'
 import { extractText } from './extractText'
+import { chunkSummarisationSystemPrompt } from './prompts'
 
 const CHUNK_SIZE = 1500
 const CHUNK_OVERLAP = 150
 const LOG = '[RAG:ingest]'
 
-function chunkText(text: string): string[] {
-  const chunks: string[] = []
-  let start = 0
-  while (start < text.length) {
-    chunks.push(text.slice(start, start + CHUNK_SIZE))
-    start += CHUNK_SIZE - CHUNK_OVERLAP
+interface HeadingEntry { pos: number; level: number; text: string }
+
+function extractHeadings(text: string): HeadingEntry[] {
+  const headings: HeadingEntry[] = []
+  const lines = text.split('\n')
+  let pos = 0
+  for (const line of lines) {
+    const match = line.match(/^(#{1,6})\s+(.+)/)
+    if (match) headings.push({ pos, level: match[1].length, text: match[2].trim() })
+    pos += line.length + 1
   }
+  return headings
+}
+
+function getTagsForPosition(chunkStart: number, headings: HeadingEntry[]): string[] {
+  const breadcrumb = new Map<number, string>()
+  for (const h of headings) {
+    if (h.pos > chunkStart) break
+    breadcrumb.set(h.level, h.text)
+    for (const [l] of breadcrumb) {
+      if (l > h.level) breadcrumb.delete(l)
+    }
+  }
+  return [...breadcrumb.entries()].sort((a, b) => a[0] - b[0]).map(([, t]) => t)
+}
+
+function chunkText(text: string): string[] {
+  // Split at sentence boundaries (.!? followed by whitespace) or paragraph breaks
+  const sentences = text
+    .split(/(?<=[.!?])\s+|\n{2,}/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  const chunks: string[] = []
+  let current = ''
+
+  for (const sentence of sentences) {
+    const next = current ? `${current} ${sentence}` : sentence
+    if (next.length > CHUNK_SIZE && current.length > 0) {
+      chunks.push(current)
+      const overlapStart = Math.max(0, current.length - CHUNK_OVERLAP)
+      current = `${current.slice(overlapStart)} ${sentence}`.trim()
+    } else {
+      current = next
+    }
+  }
+  if (current.trim()) chunks.push(current.trim())
   return chunks
 }
 
@@ -23,11 +64,7 @@ async function summariseChunk(chunk: string, idx: number): Promise<string> {
   try {
     const reply = await engine.chat.completions.create({
       messages: [
-        {
-          role: 'system',
-          content:
-            'You are a summarisation assistant. Write a concise 2-3 sentence summary of the passage below. Include key concepts, entities, and facts. RETURN ONLY MARKDOWN, no JSON. JUST RETURN THE SUMMARY, DO NOT SAY "Summary:" or any other text.',
-        },
+        { role: 'system', content: chunkSummarisationSystemPrompt },
         { role: 'user', content: chunk },
       ],
       max_tokens: 120,
@@ -50,27 +87,33 @@ export async function ingestFile(
 ): Promise<void> {
   console.log(`${LOG} starting ingest for "${file.name}", size=${file.size}`)
   const text = await extractText(file, onStatus)
+  if (!text.trim()) throw new Error('No extractable text found in file')
   const chunks = chunkText(text)
-  console.log(`${LOG} split into ${chunks.length} chunks (size=${CHUNK_SIZE}, overlap=${CHUNK_OVERLAP})`)
+  const headings = extractHeadings(text)
+  console.log(`${LOG} split into ${chunks.length} chunks, found ${headings.length} headings`)
 
-  type Segment = { text: string; raw: string }
+  type Segment = { text: string; embedText: string; raw: string; tags: string[] }
   const segments: Segment[] = []
+  const STRIDE = CHUNK_SIZE - CHUNK_OVERLAP
 
   for (let i = 0; i < chunks.length; i++) {
     onStatus(`summarising chunk ${i + 1}/${chunks.length}`)
     const summary = await summariseChunk(chunks[i], i)
-    // Embed both the summary (for semantic match) and the raw chunk (for exact match)
-    segments.push({ text: summary, raw: chunks[i] })
+    const tags = getTagsForPosition(i * STRIDE, headings)
+    const tagPrefix = tags.length > 0
+      ? `[source: ${file.name} | section: ${tags.join(' > ')}]\n`
+      : `[source: ${file.name}]\n`
+
+    segments.push({ text: summary, embedText: tagPrefix + summary, raw: chunks[i], tags })
     if (summary !== chunks[i]) {
-      // Also embed the raw chunk directly so verbatim queries still match
-      segments.push({ text: chunks[i], raw: chunks[i] })
+      segments.push({ text: chunks[i], embedText: tagPrefix + chunks[i], raw: chunks[i], tags })
     }
   }
 
   console.log(`${LOG} total segments to embed: ${segments.length}`)
   onStatus(`embedding ${segments.length} segments…`)
   const vectors = await embedBatch(
-    segments.map((s) => s.text),
+    segments.map((s) => s.embedText),
     (i, total) => {
       onStatus(`embedding ${i}/${total}`)
       if (i % 5 === 0) console.log(`${LOG} embedded ${i}/${total}`)
@@ -85,6 +128,7 @@ export async function ingestFile(
       rawChunk: segments[i].raw,
       sourceFile: file.name,
       vector: vectors[i],
+      tags: segments[i].tags,
     })
   }
 

@@ -12,6 +12,7 @@ export default function RagStudioPage() {
     messages,
     overlay,
     chatDisabled,
+    retrievalStage,
     bootEmbedder,
     loadPersistedDocs,
     processFiles,
@@ -47,6 +48,7 @@ export default function RagStudioPage() {
             <ChatPanel
               messages={messages}
               disabled={chatDisabled}
+              stage={retrievalStage}
               onSend={sendMessage}
             />
           </div>

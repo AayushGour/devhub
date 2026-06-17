@@ -2,7 +2,7 @@ import { pipeline, env } from '@xenova/transformers'
 
 env.allowLocalModels = false
 
-const MODEL = 'Xenova/bge-small-en-v1.5'
+const MODEL = 'Xenova/bge-base-en-v1.5'
 
 type FeatureExtractionPipeline = Awaited<ReturnType<typeof pipeline>>
 let _pipe: FeatureExtractionPipeline | null = null

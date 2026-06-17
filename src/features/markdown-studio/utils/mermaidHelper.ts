@@ -131,7 +131,7 @@ export function initMermaid(appTheme: string) {
     startOnLoad: false,
     theme,
     themeVariables,
-    securityLevel: 'loose',
+    securityLevel: 'antiscript',
   })
   currentTheme = appTheme
 }

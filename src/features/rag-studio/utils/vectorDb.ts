@@ -10,6 +10,7 @@ export interface KnowledgeNode {
   rawChunk: string
   sourceFile: string
   vector: number[]
+  tags?: string[]
 }
 
 let _db: IDBPDatabase | null = null
