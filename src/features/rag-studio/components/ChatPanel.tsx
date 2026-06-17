@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import DOMPurify from 'dompurify'
 import { Send } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type ChatMessage, type RetrievalStage } from '../hooks/useRagEngine'
@@ -30,11 +29,15 @@ interface Props {
 function AiBubble({ msg, stage }: { msg: ChatMessage; stage: RetrievalStage }) {
   const ref = useRef<HTMLDivElement>(null)
   const stageLabel = STAGE_LABELS[stage]
-  const showStage = msg.streaming && !msg.content && stageLabel
+  const visibleContent = msg.content.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<think>[\s\S]*/i, '').trim()
+  const showStage = msg.streaming && !visibleContent && stageLabel
 
   useEffect(() => {
     if (!ref.current) return
-    ref.current.innerHTML = DOMPurify.sanitize(parseMarkdown(msg.content || ' '))
+    // Strip <think>...</think> blocks (reasoning models); also strip unclosed blocks during streaming
+    let display = msg.content.replace(/<think>[\s\S]*?<\/think>/gi, '')
+    display = display.replace(/<think>[\s\S]*/i, '').trim()
+    ref.current.innerHTML = parseMarkdown(display || ' ') // parseMarkdown sanitizes internally
     postProcessPreview(ref.current)
   }, [msg.content])
 

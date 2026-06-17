@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef } from 'react'
 import { getEmbedder } from '../utils/embed'
 import { getEngine, streamComplete } from '../utils/llm'
+import { getModelById, formatVram, DEFAULT_MODEL_ID } from '../utils/models'
 import { ingestFile } from '../utils/ingest'
 import { retrieveMulti, retrieve } from '../utils/retrieve'
-import { expandQuery, expandQueryWithContext } from '../utils/queryExpansion'
+import { routeQuery, expandQuery, expandQueryWithContext } from '../utils/queryExpansion'
 import { ragSystemPrompt, noDocsSystemPrompt } from '../utils/prompts'
 import { useSettingsStore } from '@/store/settingsStore'
 import { clearAll, clearBySource, getSourceFiles, countNodes } from '../utils/vectorDb'
@@ -35,6 +36,7 @@ export type RetrievalStage = 'idle' | 'expanding' | 'retrieving' | 'generating'
 
 export function useRagEngine() {
   const contextAwareExpansion = useSettingsStore((s) => s.contextAwareExpansion)
+  const ragLlmModel = useSettingsStore((s) => s.ragLlmModel) ?? DEFAULT_MODEL_ID
 
   const [docs, setDocs] = useState<DocEntry[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -96,9 +98,11 @@ export function useRagEngine() {
       await bootEmbedder()
       if (!embeddingReadyRef.current) return
 
-      showOverlay('Loading LLM (first run ~2.2 GB)…')
+      const modelEntry = getModelById(ragLlmModel)
+      const sizeHint = modelEntry ? ` (~${formatVram(modelEntry.vramMB)})` : ''
+      showOverlay(`Loading ${modelEntry?.label ?? 'LLM'}${sizeHint}…`)
       try {
-        await getEngine((pct, text) => updateOverlay(pct, text))
+        await getEngine(ragLlmModel, (pct, text) => updateOverlay(pct, text))
       } catch (err) {
         console.error('LLM load failed', err)
         setOverlay({ open: true, label: 'Failed to load LLM. Check network & refresh.', pct: 0, detail: '' })
@@ -109,7 +113,7 @@ export function useRagEngine() {
       for (const file of files) {
         upsertDoc(file.name, 'processing', 'starting…')
         try {
-          await ingestFile(file, (status) => {
+          await ingestFile(file, ragLlmModel, (status) => {
             upsertDoc(file.name, 'processing', status)
           })
           upsertDoc(file.name, 'done', '')
@@ -119,7 +123,7 @@ export function useRagEngine() {
         }
       }
     },
-    [bootEmbedder, showOverlay, updateOverlay, hideOverlay, upsertDoc],
+    [bootEmbedder, showOverlay, updateOverlay, hideOverlay, upsertDoc, ragLlmModel],
   )
 
   const sendMessage = useCallback(
@@ -142,13 +146,45 @@ export function useRagEngine() {
 
       try {
         setRetrievalStage('expanding')
+        const route = await routeQuery(ragLlmModel, question).catch(() => 'rag' as const)
+
+        if (route === 'direct') {
+          console.log('[RAG:chat] routed to direct answer, skipping retrieval')
+          setRetrievalStage('generating')
+          genStart = Date.now()
+          try {
+            for await (const delta of streamComplete(
+              ragLlmModel,
+              [
+                { role: 'system', content: 'You are a helpful conversational assistant.' },
+                { role: 'user', content: question },
+              ],
+              { max_tokens: 1024 },
+            )) {
+              setMessages((prev) =>
+                prev.map((m) => m.id === aiMsgId ? { ...m, content: m.content + delta } : m)
+              )
+            }
+          } catch (err) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === aiMsgId
+                  ? { ...m, content: 'Error generating response. Check console.', streaming: false }
+                  : m,
+              ),
+            )
+            console.error('Stream error', err)
+          }
+          return
+        }
+
         let expansions: string[] = []
         if (contextAwareExpansion) {
           const seedNodes = await retrieve(question, 5)
           const contextSnippet = seedNodes.map((n) => n.text).join('\n\n').slice(0, 1500)
-          expansions = await expandQueryWithContext(question, contextSnippet).catch(() => [])
+          expansions = await expandQueryWithContext(ragLlmModel, question, contextSnippet).catch(() => [])
         } else {
-          expansions = await expandQuery(question).catch(() => [])
+          expansions = await expandQuery(ragLlmModel, question).catch(() => [])
         }
         console.log('[RAG:chat] expansions:', expansions)
 
@@ -183,6 +219,7 @@ export function useRagEngine() {
 
         try {
           for await (const delta of streamComplete(
+            ragLlmModel,
             [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: question },
@@ -223,7 +260,7 @@ export function useRagEngine() {
         setChatDisabled(false)
       }
     },
-    [chatDisabled, contextAwareExpansion],
+    [chatDisabled, contextAwareExpansion, ragLlmModel],
   )
 
   const clearDocs = useCallback(async () => {

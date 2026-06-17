@@ -1,0 +1,10 @@
+/* Widen the change gutter so colored markers are visible */
+.cm-changeGutter {
+  width: 8px !important;
+  padding-left: 0 !important;
+}
+
+/* Divider between the two editor panels */
+.cm-merge-b {
+  border-left: 1px solid var(--border);
+}

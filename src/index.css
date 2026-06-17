@@ -28,6 +28,10 @@
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-accent-text: var(--accent-text);
+  --color-json-string: var(--json-string);
+  --color-json-number: var(--json-number);
+  --color-json-bool: var(--json-bool);
+  --color-json-null: var(--json-null);
 }
 
 /* ── Light — Apple exact tokens ───────────────────── */
@@ -43,6 +47,10 @@
   --accent-hover: #0071e3; /* primary-focus */
   --accent-text: #ffffff;
   --preview-bg: #ffffff;
+  --json-string: #22863a;
+  --json-number: #e36209;
+  --json-bool: #005cc5;
+  --json-null: #6e6e73;
 
   /* Markdown-only tokens — change these without touching layout */
   --md-text: #1d1d1f;
@@ -67,6 +75,10 @@
   --accent-hover: #409cff;
   --accent-text: #ffffff;
   --preview-bg: #eeeef0;
+  --json-string: #4ade80;
+  --json-number: #fb923c;
+  --json-bool: #60a5fa;
+  --json-null: #a1a1a6;
 
   --md-text: #1d1d1f;
   --md-text-muted: #6e6e73;
@@ -90,6 +102,10 @@
   --accent-hover: #79c0ff;
   --accent-text: #0d1117;
   --preview-bg: #edf2f8;
+  --json-string: #3fb950;
+  --json-number: #f0883e;
+  --json-bool: #58a6ff;
+  --json-null: #8b949e;
 
   --md-text: #24292f;
   --md-text-muted: #57606a;
@@ -113,6 +129,10 @@
   --accent-hover: #8fbcbb;
   --accent-text: #2e3440;
   --preview-bg: #dce3ef;
+  --json-string: #a3be8c;
+  --json-number: #d08770;
+  --json-bool: #81a1c1;
+  --json-null: #7f8da9;
 
   --md-text: #2e3440;
   --md-text-muted: #4c566a;
@@ -136,6 +156,10 @@
   --accent-hover: #ff79c6;
   --accent-text: #282a36;
   --preview-bg: #eee9fa;
+  --json-string: #50fa7b;
+  --json-number: #ffb86c;
+  --json-bool: #8be9fd;
+  --json-null: #6272a4;
 
   --md-text: #282a36;
   --md-text-muted: #6272a4;
@@ -336,6 +360,15 @@ main.devhub-main {
   background-color: transparent;
   font-size: 0.875rem;
   line-height: 1.6;
+  /* Use surface-relative tokens so text is always readable in any theme */
+  color: var(--on-surface);
+  --md-text: var(--on-surface);
+  --md-text-muted: var(--on-surface-muted);
+  --md-border: var(--border);
+  --md-accent: var(--accent);
+  --md-code-bg: var(--surface-raised);
+  --md-blockquote-bg: var(--surface-raised);
+  --md-blockquote-border: var(--accent);
 }
 .rag-ai-bubble .markdown-preview > :first-child {
   margin-top: 0;
@@ -484,4 +517,20 @@ main.devhub-main {
 [data-theme="dracula"] .hljs-title,
 [data-theme="dracula"] .hljs-function {
   color: #50fa7b;
+}
+
+/* CodeMirror MergeView layout */
+.cm-mergeView {
+  height: 100%;
+  overflow: auto;
+}
+.cm-mergeView .cm-mergeViewEditors {
+  height: 100%;
+}
+.cm-mergeView .cm-mergeViewEditor {
+  height: 100%;
+  overflow: auto;
+}
+.cm-mergeView .cm-editor {
+  height: 100%;
 }

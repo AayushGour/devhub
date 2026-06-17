@@ -1,5 +1,8 @@
+import { useEffect, useState } from 'react'
+import { hasModelInCache } from '@mlc-ai/web-llm'
 import { useSettingsStore } from '@/store/settingsStore'
 import { cn } from '@/lib/utils'
+import { CURATED_MODELS, MODEL_FAMILIES, formatVram } from '@/features/rag-studio/utils/models'
 import type { Theme } from '@/types'
 
 const themes: { value: Theme; label: string; surface: string; accent: string }[] = [
@@ -11,7 +14,27 @@ const themes: { value: Theme; label: string; surface: string; accent: string }[]
 ]
 
 export default function SettingsPage() {
-  const { theme, setTheme, contextAwareExpansion, setContextAwareExpansion } = useSettingsStore()
+  const {
+    theme, setTheme,
+    contextAwareExpansion, setContextAwareExpansion,
+    ragLlmModel, setRagLlmModel,
+  } = useSettingsStore()
+
+  const [cachedIds, setCachedIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all(
+      CURATED_MODELS.map(async (m) => {
+        const cached = await hasModelInCache(m.id).catch(() => false)
+        return cached ? m.id : null
+      })
+    ).then((results) => {
+      if (cancelled) return
+      setCachedIds(new Set(results.filter(Boolean) as string[]))
+    })
+    return () => { cancelled = true }
+  }, [])
 
   return (
     <div className="max-w-[680px] mx-auto py-8 px-10">
@@ -34,7 +57,8 @@ export default function SettingsPage() {
           Controls for retrieval-augmented generation behaviour.
         </p>
 
-        <div className="flex items-center justify-between">
+        {/* Context-aware expansion toggle */}
+        <div className="flex items-center justify-between mb-6">
           <div>
             <p className="text-sm font-medium text-on-surface">Context-aware query expansion</p>
             <p className="text-xs text-on-surface-muted mt-0.5">
@@ -57,6 +81,62 @@ export default function SettingsPage() {
               )}
             />
           </button>
+        </div>
+
+        {/* Divider */}
+        <div className="border-t border-border mb-6" />
+
+        {/* Model picker */}
+        <div>
+          <p className="text-sm font-medium text-on-surface mb-1">Language model</p>
+          <p className="text-xs text-on-surface-muted mb-4">
+            Downloaded to your browser on first use. Changing model resets the loaded engine. Sizes shown are VRAM required, not download size.
+          </p>
+
+          <div className="flex flex-col gap-4">
+            {MODEL_FAMILIES.map((family) => {
+              const familyModels = CURATED_MODELS.filter((m) => m.family === family)
+              return (
+                <div key={family}>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-on-surface-muted mb-2">
+                    {family}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {familyModels.map((model) => {
+                      const active = ragLlmModel === model.id
+                      return (
+                        <button
+                          key={model.id}
+                          onClick={() => setRagLlmModel(model.id)}
+                          className={cn(
+                            'flex flex-col items-start gap-1 px-3 py-2.5 rounded-[10px] border-2 bg-transparent cursor-pointer transition-colors duration-150 font-[inherit] text-left',
+                            active
+                              ? 'border-accent bg-accent/5'
+                              : 'border-border hover:border-on-surface-muted',
+                          )}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className={cn(
+                              'text-[13px] leading-none tracking-[-0.2px]',
+                              active ? 'font-semibold text-on-surface' : 'font-medium text-on-surface',
+                            )}>
+                              {model.label}
+                            </span>
+                            {cachedIds.has(model.id) && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" title="Cached" />
+                            )}
+                          </div>
+                          <span className="text-[11px] text-on-surface-muted leading-none">
+                            {formatVram(model.vramMB)} VRAM
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       </section>
 

@@ -58,9 +58,9 @@ function chunkText(text: string): string[] {
   return chunks
 }
 
-async function summariseChunk(chunk: string, idx: number): Promise<string> {
+async function summariseChunk(modelId: string, chunk: string, idx: number): Promise<string> {
   console.log(`${LOG} summarising chunk ${idx}, length=${chunk.length}`)
-  const engine = await getEngine()
+  const engine = await getEngine(modelId)
   try {
     const reply = await engine.chat.completions.create({
       messages: [
@@ -83,6 +83,7 @@ export type IngestStatusCallback = (status: string) => void
 
 export async function ingestFile(
   file: File,
+  modelId: string,
   onStatus: IngestStatusCallback,
 ): Promise<void> {
   console.log(`${LOG} starting ingest for "${file.name}", size=${file.size}`)
@@ -98,7 +99,7 @@ export async function ingestFile(
 
   for (let i = 0; i < chunks.length; i++) {
     onStatus(`summarising chunk ${i + 1}/${chunks.length}`)
-    const summary = await summariseChunk(chunks[i], i)
+    const summary = await summariseChunk(modelId, chunks[i], i)
     const tags = getTagsForPosition(i * STRIDE, headings)
     const tagPrefix = tags.length > 0
       ? `[source: ${file.name} | section: ${tags.join(' > ')}]\n`

@@ -1,12 +1,15 @@
 import { marked } from 'marked'
 import hljs from 'highlight.js/lib/common'
+import DOMPurify from 'dompurify'
 
 // Use marked with no custom renderer — v18 changed how renderer extensions work.
 // Instead, we post-process the DOM after innerHTML is set.
 marked.use({ gfm: true, breaks: false })
 
+// Sanitize at the source: every caller assigns this output to innerHTML, so the
+// markdown (which may be imported from untrusted files) must be XSS-safe here.
 export function parseMarkdown(content: string): string {
-  return marked.parse(content) as string
+  return DOMPurify.sanitize(marked.parse(content) as string)
 }
 
 /**

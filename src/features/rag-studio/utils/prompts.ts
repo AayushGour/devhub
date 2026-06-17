@@ -30,6 +30,43 @@ Output only the 5 questions, one per line, nothing else.
 Questions:`
 }
 
+export function routingExpansionPrompt(query: string): string {
+  return `Query: ${query}
+
+Is this query conversational (greeting, small talk, general knowledge that does not require searching uploaded documents), or does it need document lookup?
+
+If CONVERSATIONAL, output exactly:
+ROUTE: direct
+ANSWER: <your response>
+
+If needs DOCUMENTS, output exactly:
+ROUTE: rag
+QUESTIONS:
+<up to 5 plain English questions to retrieve relevant document passages, one per line>
+
+Output nothing else.`
+}
+
+export function routingExpansionWithContextPrompt(query: string, contextSnippet: string): string {
+  return `Document excerpts:
+${contextSnippet}
+
+Query: ${query}
+
+Is this query conversational (greeting, small talk, general knowledge that does not require these specific documents), or does it need document lookup?
+
+If CONVERSATIONAL, output exactly:
+ROUTE: direct
+ANSWER: <your response>
+
+If needs DOCUMENTS, output exactly:
+ROUTE: rag
+QUESTIONS:
+<up to 5 plain English questions to retrieve relevant document passages, one per line>
+
+Output nothing else.`
+}
+
 export function ragSystemPrompt(contextBlock: string): string {
   return `You are a helpful assistant. Answer the user's question using ONLY the context below.\nIf the answer is not in the context, say "I couldn't find that in the uploaded documents."\n\n=== CONTEXT ===\n${contextBlock.trim()}\n=== END CONTEXT ===`
 }

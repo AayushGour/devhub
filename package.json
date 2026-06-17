@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/merge": "^6.12.2",
     "@mlc-ai/web-llm": "^0.2.84",
     "@monaco-editor/react": "^4.7.0",
     "@radix-ui/react-dialog": "^1.1.16",
@@ -18,9 +20,10 @@
     "@radix-ui/react-slot": "^1.2.5",
     "@radix-ui/react-tooltip": "^1.2.9",
     "@types/dompurify": "^3.0.5",
+    "@uiw/react-codemirror": "^4.25.10",
     "@xenova/transformers": "^2.17.2",
     "clsx": "^2.1.1",
-    "dexie": "^4.4.3",
+    "diff": "^9.0.0",
     "dompurify": "^3.4.10",
     "highlight.js": "^11.11.1",
     "idb": "^8.0.3",
@@ -33,11 +36,13 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.17.0",
+    "react-simple-code-editor": "^0.14.1",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.1",
+    "@types/diff": "^7.0.2",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

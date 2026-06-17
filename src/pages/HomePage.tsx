@@ -49,8 +49,9 @@ const studios: Studio[] = [
     title: 'JSON Studio',
     description: 'Format, validate, diff, query with JSONPath, and generate TypeScript types.',
     icon: <Braces size={20} />,
-    status: 'coming-soon',
+    status: 'available',
     phase: 'Phase 4',
+    href: '/tools/json',
   },
   {
     id: 'api',
