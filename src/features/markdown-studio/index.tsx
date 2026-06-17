@@ -38,7 +38,7 @@ export default function MarkdownStudioPage() {
   })
 
   return (
-    <div className="-my-8 -mx-10 flex flex-col h-full">
+    <div className="studio-root">
       <Toolbar
         title={title}
         onTitleChange={setTitle}

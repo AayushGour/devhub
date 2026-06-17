@@ -13,7 +13,7 @@ export default function DiagramStudioPage() {
   const [templatesOpen, setTemplatesOpen] = useState(false)
 
   return (
-    <div className="-my-8 -mx-10 flex flex-col h-full">
+    <div className="studio-root">
       <DiagramToolbar
         title={title}
         onTitleChange={setTitle}

@@ -132,6 +132,27 @@ className="w-[220px] rounded-[18px]"
 - Give important layout elements a semantic class name (e.g., `sidebar-nav-link`, `topbar-search`, `studio-card`) for readability and CSS hook points
 - `font-[inherit]` replaces `fontFamily: 'inherit'` when needed
 
+## Adding a new tool/studio module
+
+Every studio page root element **must** use the `studio-root` CSS class:
+
+```tsx
+export default function MyStudioPage() {
+  return (
+    <div className="studio-root">
+      <MyToolbar />
+      <div className="flex flex-1 min-h-0">
+        {/* content */}
+      </div>
+    </div>
+  )
+}
+```
+
+`studio-root` (defined in `src/index.css`) escapes `main.devhub-main`'s padding via negative margins and sets `height: calc(100% + 4rem)` so the module fills the full viewport height. Never replace it with ad-hoc `-my-8 -mx-10 h-full` or similar — that leaves a 64px gap at the bottom.
+
+---
+
 ## TypeScript
 
 - Run `npx tsc --noEmit` after every file change

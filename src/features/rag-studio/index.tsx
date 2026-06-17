@@ -30,7 +30,7 @@ export default function RagStudioPage() {
     <>
       <ModelOverlay state={overlay} />
 
-      <div className="-my-8 -mx-10 flex flex-col h-full">
+      <div className="studio-root">
         <RagToolbar onClearAll={clearDocs} />
 
         <div className="flex flex-1 min-h-0">

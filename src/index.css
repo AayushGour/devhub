@@ -184,6 +184,15 @@ main.devhub-main {
   padding: 2rem 2.5rem;
 }
 
+/* ── Studio root — escapes main padding and fills full height ── */
+/* Use this as the root element class for every tool/studio module  */
+.studio-root {
+  margin: -2rem -2.5rem;
+  display: flex;
+  flex-direction: column;
+  height: calc(100% + 4rem);
+}
+
 /* ── Markdown Preview ─────────────────────────────── */
 .markdown-preview {
   font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
