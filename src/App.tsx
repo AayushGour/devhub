@@ -7,6 +7,7 @@ import MarkdownStudioPage from '@/features/markdown-studio'
 import DiagramStudioPage from '@/features/diagram-studio'
 import RagStudioPage from '@/features/rag-studio'
 import JsonStudioPage from '@/features/json-studio'
+import TokenStudioPage from '@/features/token-studio'
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="tools/diagram" element={<DiagramStudioPage />} />
         <Route path="tools/rag" element={<RagStudioPage />} />
         <Route path="tools/json" element={<JsonStudioPage />} />
+        <Route path="tools/tokens" element={<TokenStudioPage />} />
       </Route>
     </Routes>
   )

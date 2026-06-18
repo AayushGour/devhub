@@ -37,6 +37,7 @@
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.17.0",
     "react-simple-code-editor": "^0.14.1",
+    "tiktoken": "^1.0.22",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

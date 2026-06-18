@@ -12,7 +12,7 @@ export default defineConfig({
   },
   base: '/devhub/',
   optimizeDeps: {
-    exclude: ['pdfjs-dist'],
+    exclude: ['pdfjs-dist', 'tiktoken'],
   },
   worker: {
     format: 'es',

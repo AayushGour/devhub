@@ -1,6 +1,6 @@
 import {
   FileText, GitGraph, Braces, Globe, Database,
-  KeyRound, Wrench, FolderOpen, Sparkles, BrainCircuit,
+  KeyRound, Wrench, FolderOpen, Sparkles, BrainCircuit, Cpu,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -52,6 +52,15 @@ const studios: Studio[] = [
     status: 'available',
     phase: 'Phase 4',
     href: '/tools/json',
+  },
+  {
+    id: 'tokens',
+    title: 'Token Studio',
+    description: 'Visualize how text is tokenized by GPT and local model tokenizers. Compare token counts side-by-side.',
+    icon: <Cpu size={20} />,
+    status: 'available',
+    phase: 'Phase 4',
+    href: '/tools/tokens',
   },
   {
     id: 'api',

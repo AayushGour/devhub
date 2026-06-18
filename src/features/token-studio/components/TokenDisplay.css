@@ -1,0 +1,35 @@
+.token-chip {
+  display: inline;
+  border-radius: 3px;
+  padding: 1px 0;
+  cursor: default;
+  white-space: pre-wrap;
+}
+
+.token-chip:hover {
+  outline: 1px solid currentColor;
+  outline-offset: -1px;
+  opacity: 0.85;
+}
+
+.token-color-0 { background-color: color-mix(in oklch, var(--accent) 18%, transparent); }
+.token-color-1 { background-color: color-mix(in oklch, #10b981 18%, transparent); }
+.token-color-2 { background-color: color-mix(in oklch, #f59e0b 18%, transparent); }
+.token-color-3 { background-color: color-mix(in oklch, #8b5cf6 18%, transparent); }
+.token-color-4 { background-color: color-mix(in oklch, #ec4899 18%, transparent); }
+.token-color-5 { background-color: color-mix(in oklch, #06b6d4 18%, transparent); }
+
+.token-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: token-spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes token-spin {
+  to { transform: rotate(360deg); }
+}
