@@ -168,7 +168,7 @@ export function minifySvg(svg: string): string {
     )
     // Round floats to 2 decimals in path d="" (1 decimal causes visible jaggies)
     .replace(/\bd="([^"]*)"/g, (_, d) =>
-      `d="${d.replace(/-?\d+\.\d{3,}/g, n => parseFloat(n).toFixed(2))}"`
+      `d="${d.replace(/-?\d+\.\d{3,}/g, (n: string) => parseFloat(n).toFixed(2))}"`
     )
     // Remove opacity when ≥ 0.99 (effectively 1)
     .replace(/\s+opacity="0\.9\d{2,}[^"]*"/g, '')
