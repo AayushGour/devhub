@@ -33,7 +33,6 @@ export default function JsonEditor({
     try { return JSON.parse(value) } catch { return undefined }
   }, [value, toolbar])
 
-  const isValid = toolbar && parsed !== undefined && parsed !== null
   const canAct = toolbar && value.trim() !== '' && parsed !== undefined
 
   const format = () => { if (canAct) onChange?.(JSON.stringify(parsed, null, 2)) }
