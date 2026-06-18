@@ -94,7 +94,9 @@ export async function convertImage(file: File, opts: ConversionOptions): Promise
     const encoder = GIFEncoder()
     encoder.writeFrame(indexed, width, height, { palette })
     encoder.finish()
-    return new Blob([encoder.bytes()], { type: 'image/gif' })
+    const gifBytes = encoder.bytes()
+    const gifBuf = gifBytes.buffer.slice(gifBytes.byteOffset, gifBytes.byteOffset + gifBytes.byteLength) as ArrayBuffer
+    return new Blob([gifBuf], { type: 'image/gif' })
   }
 
   const mimeMap: Record<string, string> = {

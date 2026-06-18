@@ -120,7 +120,9 @@ export default function ImageQueueItem({
           <CheckCircle size={14} className="text-emerald-500" />
         )}
         {item.status === 'error' && (
-          <AlertCircle size={14} className="text-red-500" title={item.error ?? 'Error'} />
+          <span title={item.error ?? 'Error'}>
+            <AlertCircle size={14} className="text-red-500" />
+          </span>
         )}
 
         {item.status !== 'converting' && (
