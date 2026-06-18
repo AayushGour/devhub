@@ -286,7 +286,7 @@ stateDiagram-v2
       "primaryTextColor": "#ffffff",
       "primaryBorderColor": "#1e40af",
       "lineColor": "#3b82f6",
-      "secondaryColor": "#dbeafe",
+      "secondaryColor": "#d5d5d5",
       "tertiaryColor": "#eff6ff",
       "background": "#eff6ff"
     }

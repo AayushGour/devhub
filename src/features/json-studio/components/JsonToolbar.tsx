@@ -2,13 +2,12 @@ import { cn } from '@/lib/utils'
 import type { JsonMode, JsonStudioState } from '../hooks/useJsonStudio'
 
 const MODES: { id: JsonMode; label: string }[] = [
-  { id: 'format', label: 'Format' },
   { id: 'tree', label: 'Tree' },
   { id: 'graph', label: 'Graph' },
-  { id: 'diff', label: 'Diff' },
   { id: 'jsonpath', label: 'JSONPath' },
   { id: 'schema', label: 'Schema' },
   { id: 'types', label: 'Types' },
+  { id: 'diff', label: 'Diff' },
 ]
 
 type Props = Pick<JsonStudioState, 'title' | 'setTitle' | 'mode' | 'setMode'>

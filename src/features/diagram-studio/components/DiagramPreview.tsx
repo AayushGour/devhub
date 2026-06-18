@@ -12,13 +12,6 @@ interface DiagramPreviewProps {
 
 let renderId = 0
 
-const PREVIEW_BG: Record<MermaidTheme, string> = {
-  default: '#ffffff',
-  forest: '#f4f4f4',
-  dark: '#1f2020',
-  neutral: '#f5f5f5',
-}
-
 const ZOOM_FACTOR = 1.25
 
 export default function DiagramPreview({ code, mermaidTheme, svgRef }: DiagramPreviewProps) {
@@ -120,8 +113,11 @@ export default function DiagramPreview({ code, mermaidTheme, svgRef }: DiagramPr
     <div className="flex-1 min-w-0 relative flex flex-col border-l border-border">
       <div
         ref={scrollRef}
-        className="flex-1 overflow-auto p-6"
-        style={{ backgroundColor: PREVIEW_BG[mermaidTheme] }}
+        className="flex-1 overflow-auto p-6 bg-surface"
+        style={{
+          backgroundImage: 'radial-gradient(circle, var(--border) 1px, transparent 1px)',
+          backgroundSize: '24px 24px',
+        }}
       >
         {empty && (
           <div className="flex items-center justify-center h-full">

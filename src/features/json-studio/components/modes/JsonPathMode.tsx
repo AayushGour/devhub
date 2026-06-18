@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import JsonEditor from '../JsonEditor'
 import { evaluateJsonPath } from '../../utils/jsonPath'
 import type { JsonStudioState } from '../../hooks/useJsonStudio'
 
@@ -13,7 +12,7 @@ const EXAMPLES = [
   '$.*',
 ]
 
-export default function JsonPathMode({ input, setInput, jsonPathQuery, setJsonPathQuery }: Props) {
+export default function JsonPathMode({ input, jsonPathQuery, setJsonPathQuery }: Props) {
   const [localQuery, setLocalQuery] = useState(jsonPathQuery)
 
   const { root, parseError } = useMemo(() => {
@@ -35,39 +34,33 @@ export default function JsonPathMode({ input, setInput, jsonPathQuery, setJsonPa
   }, [results])
 
   return (
-    <div className="flex flex-1 min-h-0">
-      {/* Left: editor + query input */}
-      <div className="flex flex-col w-[48%] shrink-0 border-r border-border">
-        <div className="flex-1 min-h-0">
-          <JsonEditor value={input} onChange={setInput} width="100%" />
-        </div>
-
-        <div className="border-t border-border p-3 shrink-0">
-          <label className="block text-[11px] font-semibold uppercase tracking-[0.06em] text-on-surface-muted mb-2">
-            JSONPath Query
-          </label>
-          <input
-            value={localQuery}
-            onChange={e => { setLocalQuery(e.target.value); setJsonPathQuery(e.target.value) }}
-            placeholder="$.features[*]"
-            spellCheck={false}
-            className="w-full bg-surface-raised border border-border rounded-[8px] px-3 py-2 text-[13px] font-mono text-on-surface outline-none focus:border-accent transition-colors duration-150"
-          />
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {EXAMPLES.map(ex => (
-              <button
-                key={ex}
-                onClick={() => { setLocalQuery(ex); setJsonPathQuery(ex) }}
-                className="text-[11px] font-mono text-accent bg-surface-raised border border-border rounded-full px-2 py-0.5 cursor-pointer hover:border-accent transition-colors duration-150"
-              >
-                {ex}
-              </button>
-            ))}
-          </div>
+    <div className="flex-1 flex flex-col min-h-0">
+      {/* Query input */}
+      <div className="border-b border-border p-3 shrink-0">
+        <label className="block text-[11px] font-semibold uppercase tracking-[0.06em] text-on-surface-muted mb-2">
+          JSONPath Query
+        </label>
+        <input
+          value={localQuery}
+          onChange={e => { setLocalQuery(e.target.value); setJsonPathQuery(e.target.value) }}
+          placeholder="$.features[*]"
+          spellCheck={false}
+          className="w-full bg-surface-raised border border-border rounded-[8px] px-3 py-2 text-[13px] font-mono text-on-surface outline-none focus:border-accent transition-colors duration-150"
+        />
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {EXAMPLES.map(ex => (
+            <button
+              key={ex}
+              onClick={() => { setLocalQuery(ex); setJsonPathQuery(ex) }}
+              className="text-[11px] font-mono text-accent bg-surface-raised border border-border rounded-full px-2 py-0.5 cursor-pointer hover:border-accent transition-colors duration-150"
+            >
+              {ex}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Right: results */}
+      {/* Results */}
       <div className="flex-1 overflow-auto p-5">
         <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-on-surface-muted mb-3">
           Results

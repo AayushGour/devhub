@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { TypeLang } from '../utils/typeGenerator'
 
-export type JsonMode = 'format' | 'tree' | 'graph' | 'diff' | 'jsonpath' | 'schema' | 'types'
+export type JsonMode = 'tree' | 'graph' | 'diff' | 'jsonpath' | 'schema' | 'types'
 
 const SAMPLE_A = `{
   "name": "DevHub",
@@ -28,7 +28,7 @@ const SAMPLE_B = `{
 
 export function useJsonStudio() {
   const [title, setTitle] = useState('Untitled JSON')
-  const [mode, setMode] = useState<JsonMode>('format')
+  const [mode, setMode] = useState<JsonMode>('tree')
   const [input, setInput] = useState(SAMPLE_A)
   const [diffLeft, setDiffLeft] = useState(SAMPLE_A)
   const [diffRight, setDiffRight] = useState(SAMPLE_B)
