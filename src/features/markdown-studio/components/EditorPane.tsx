@@ -1,15 +1,31 @@
-import Editor from '@monaco-editor/react'
+import Editor, { type OnMount } from '@monaco-editor/react'
 import { useSettingsStore } from '@/store/settingsStore'
 
 interface EditorPaneProps {
-  value: string
+  defaultValue: string
   onChange: (val: string | undefined) => void
+  onMount: OnMount
 }
 
-const monacoTheme = (appTheme: string) =>
-  appTheme === 'light' ? 'vs' : 'vs-dark'
+const EDITOR_OPTIONS = {
+  minimap: { enabled: false },
+  wordWrap: 'on' as const,
+  lineNumbers: 'off' as const,
+  fontSize: 14,
+  fontFamily: "'Fira Code', 'SF Mono', Consolas, monospace",
+  padding: { top: 20, bottom: 20 },
+  scrollBeyondLastLine: false,
+  renderLineHighlight: 'none' as const,
+  overviewRulerLanes: 0,
+  hideCursorInOverviewRuler: true,
+  overviewRulerBorder: false,
+  folding: false,
+  lineDecorationsWidth: 16,
+  lineNumbersMinChars: 0,
+  glyphMargin: false,
+}
 
-export default function EditorPane({ value, onChange }: EditorPaneProps) {
+export default function EditorPane({ defaultValue, onChange, onMount }: EditorPaneProps) {
   const { theme } = useSettingsStore()
 
   return (
@@ -17,31 +33,16 @@ export default function EditorPane({ value, onChange }: EditorPaneProps) {
       <Editor
         height="100%"
         language="markdown"
-        value={value}
+        defaultValue={defaultValue}
         onChange={onChange}
-        theme={monacoTheme(theme)}
+        onMount={onMount}
+        theme={theme === 'light' ? 'vs' : 'vs-dark'}
         loading={
           <div className="flex items-center justify-center h-full text-on-surface-muted text-sm">
             Loading editor…
           </div>
         }
-        options={{
-          minimap: { enabled: false },
-          wordWrap: 'on',
-          lineNumbers: 'off',
-          fontSize: 14,
-          fontFamily: "'Fira Code', 'SF Mono', Consolas, monospace",
-          padding: { top: 20, bottom: 20 },
-          scrollBeyondLastLine: false,
-          renderLineHighlight: 'none',
-          overviewRulerLanes: 0,
-          hideCursorInOverviewRuler: true,
-          overviewRulerBorder: false,
-          folding: false,
-          lineDecorationsWidth: 16,
-          lineNumbersMinChars: 0,
-          glyphMargin: false,
-        }}
+        options={EDITOR_OPTIONS}
       />
     </div>
   )

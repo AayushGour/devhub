@@ -3,12 +3,12 @@ import Toolbar from './components/Toolbar'
 import EditorPane from './components/EditorPane'
 import PreviewPane from './components/PreviewPane'
 import StylePanel from './components/StylePanel'
-import { useMarkdownEditor } from './hooks/useMarkdownEditor'
+import { useMarkdownEditor, DEFAULT_CONTENT } from './hooks/useMarkdownEditor'
 import { exportToPDF, exportToHTML, exportToMarkdown, defaultExportConfig } from './utils/pdfExport'
 import { createDefaultSettings, createDefaultRule, type StyleSettings, type ElementRule } from './utils/styleBuilder'
 
 export default function MarkdownStudioPage() {
-  const { content, title, setTitle, updateContent, loadFile } = useMarkdownEditor()
+  const { content, title, setTitle, updateContent, loadFile, handleEditorMount } = useMarkdownEditor()
   const previewRef = useRef<HTMLDivElement>(null)
 
   const [themeId, setThemeId] = useState('classic')
@@ -51,7 +51,7 @@ export default function MarkdownStudioPage() {
       />
 
       <div className="flex flex-1 min-h-0">
-        <EditorPane value={content} onChange={updateContent} />
+        <EditorPane defaultValue={DEFAULT_CONTENT} onChange={updateContent} onMount={handleEditorMount} />
         <PreviewPane
           content={content}
           themeId={themeId}

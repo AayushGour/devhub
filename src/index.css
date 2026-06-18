@@ -389,11 +389,12 @@ main.devhub-main {
 /* ── Mermaid ──────────────────────────────────────── */
 .mermaid-block {
   margin: 1.5em 0;
-  display: flex;
-  justify-content: center;
+  overflow-x: auto;
 }
 .mermaid-block svg {
-  max-width: 100%;
+  display: block;
+  min-width: max-content;
+  margin: 0 auto;
   height: auto;
 }
 
@@ -518,6 +519,20 @@ main.devhub-main {
 [data-theme="dracula"] .hljs-function {
   color: #50fa7b;
 }
+
+/* Markdown preview code is always on a light background — pin to light-mode colors
+   regardless of app theme. These come after [data-theme] rules so they win the cascade. */
+.markdown-preview .hljs-keyword,
+.markdown-preview .hljs-selector-tag { color: #ad3da4; }
+.markdown-preview .hljs-string,
+.markdown-preview .hljs-attr { color: #c41a16; }
+.markdown-preview .hljs-comment { color: #707f8d; font-style: italic; }
+.markdown-preview .hljs-number,
+.markdown-preview .hljs-literal { color: #1c00cf; }
+.markdown-preview .hljs-title,
+.markdown-preview .hljs-function { color: #3900a0; }
+.markdown-preview .hljs-type { color: #5c2699; }
+.markdown-preview .hljs-built_in { color: #0066cc; }
 
 /* CodeMirror MergeView layout */
 .cm-mergeView {
