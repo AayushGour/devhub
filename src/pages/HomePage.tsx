@@ -1,6 +1,6 @@
 import {
   FileText, GitGraph, Braces, Globe, Database,
-  KeyRound, Wrench, FolderOpen, Sparkles, BrainCircuit, Cpu, Spline,
+  KeyRound, Wrench, FolderOpen, Sparkles, BrainCircuit, Cpu, Spline, ImageDown,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -79,6 +79,15 @@ const studios: Studio[] = [
     status: 'available',
     phase: 'Phase 7',
     href: '/tools/crypto',
+  },
+  {
+    id: 'image',
+    title: 'Image Studio',
+    description: 'Convert between PNG, JPEG, WEBP, AVIF, GIF, BMP, ICO formats. Batch processing, quality control, and resize — fully client-side.',
+    icon: <ImageDown size={20} />,
+    status: 'available',
+    phase: 'Phase 14',
+    href: '/tools/image',
   },
   {
     id: 'api',

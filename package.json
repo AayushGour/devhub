@@ -26,6 +26,8 @@
     "clsx": "^2.1.1",
     "diff": "^9.0.0",
     "dompurify": "^3.4.10",
+    "fflate": "^0.8.3",
+    "gifenc": "^1.0.3",
     "highlight.js": "^11.11.1",
     "idb": "^8.0.3",
     "imagetracerjs": "^1.2.6",
@@ -43,6 +45,7 @@
     "react-simple-code-editor": "^0.14.1",
     "svgo": "^4.0.1",
     "tiktoken": "^1.0.22",
+    "utif": "^3.1.0",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

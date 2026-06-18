@@ -10,6 +10,7 @@ import JsonStudioPage from '@/features/json-studio'
 import TokenStudioPage from '@/features/token-studio'
 import SvgStudioPage from '@/features/svg-studio'
 import CryptoStudioPage from '@/features/crypto-studio'
+import ImageStudioPage from '@/features/image-studio'
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="tools/tokens" element={<TokenStudioPage />} />
         <Route path="tools/svg" element={<SvgStudioPage />} />
         <Route path="tools/crypto" element={<CryptoStudioPage />} />
+        <Route path="tools/image" element={<ImageStudioPage />} />
       </Route>
     </Routes>
   )
