@@ -28,6 +28,7 @@
     "dompurify": "^3.4.10",
     "highlight.js": "^11.11.1",
     "idb": "^8.0.3",
+    "imagetracerjs": "^1.2.6",
     "lucide-react": "^1.18.0",
     "mammoth": "^1.12.0",
     "marked": "^18.0.5",
