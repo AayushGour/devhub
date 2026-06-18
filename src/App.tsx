@@ -9,6 +9,7 @@ import RagStudioPage from '@/features/rag-studio'
 import JsonStudioPage from '@/features/json-studio'
 import TokenStudioPage from '@/features/token-studio'
 import SvgStudioPage from '@/features/svg-studio'
+import CryptoStudioPage from '@/features/crypto-studio'
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="tools/json" element={<JsonStudioPage />} />
         <Route path="tools/tokens" element={<TokenStudioPage />} />
         <Route path="tools/svg" element={<SvgStudioPage />} />
+        <Route path="tools/crypto" element={<CryptoStudioPage />} />
       </Route>
     </Routes>
   )
