@@ -11,10 +11,10 @@ import type { ExportConfig } from '../utils/pdfExport'
 import { defaultExportConfig } from '../utils/pdfExport'
 import { cn } from '@/lib/utils'
 
-const SELECT_CLS = 'w-full bg-surface-raised border border-border rounded-lg px-[10px] py-1.5 text-xs text-on-surface outline-none font-[inherit] cursor-pointer'
-const PRIMARY_BTN_CLS = 'px-[18px] py-[7px] rounded-full bg-accent text-accent-text border-none text-[13px] font-medium cursor-pointer font-[inherit]'
-const SECONDARY_BTN_CLS = 'px-[18px] py-[7px] rounded-full bg-transparent text-accent border border-accent text-[13px] font-normal cursor-pointer font-[inherit]'
-const ICON_BTN_CLS = 'flex items-center justify-center w-[30px] h-[30px] rounded-full bg-surface-raised border border-border text-on-surface-muted cursor-pointer'
+const SELECT_CLS = 'w-full bg-surface-raised border border-border rounded-lg px-[0.62rem] py-1.5 text-xs text-on-surface outline-none font-[inherit] cursor-pointer'
+const PRIMARY_BTN_CLS = 'px-[1.12rem] py-[0.44rem] rounded-full bg-accent text-accent-text border-none text-[0.81rem] font-medium cursor-pointer font-[inherit]'
+const SECONDARY_BTN_CLS = 'px-[1.12rem] py-[0.44rem] rounded-full bg-transparent text-accent border border-accent text-[0.81rem] font-normal cursor-pointer font-[inherit]'
+const ICON_BTN_CLS = 'flex items-center justify-center w-[1.88rem] h-[1.88rem] rounded-full bg-surface-raised border border-border text-on-surface-muted cursor-pointer'
 
 interface ExportModalProps {
   open: boolean
@@ -49,11 +49,11 @@ export default function ExportModal({ open, onClose, onExportPDF, onExportHTML, 
     <Dialog.Root open={open} onOpenChange={v => !v && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/55 z-50" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[620px] max-h-[88vh] flex flex-col bg-surface border border-border rounded-[18px] shadow-[0_24px_64px_rgba(0,0,0,0.3)] z-[51] overflow-hidden">
+        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[38.75rem] max-h-[88vh] flex flex-col bg-surface border border-border rounded-[1.12rem] shadow-[0_1.5rem_4rem_rgba(0,0,0,0.3)] z-[51] overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-6 pt-5 shrink-0">
             <div>
-              <Dialog.Title className="text-[18px] font-semibold tracking-[-0.4px] text-on-surface">
+              <Dialog.Title className="text-[1.12rem] font-semibold tracking-[-0.03rem] text-on-surface">
                 Export Document
               </Dialog.Title>
               <Dialog.Description className="text-xs text-on-surface-muted mt-0.5">
@@ -66,13 +66,13 @@ export default function ExportModal({ open, onClose, onExportPDF, onExportHTML, 
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-0.5 px-6 pt-[14px] border-b border-border shrink-0">
+          <div className="flex gap-0.5 px-6 pt-[0.88rem] border-b border-border shrink-0">
             {(['preset', 'style', 'layout'] as Tab[]).map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
                 className={cn(
-                  'px-[14px] py-1.5 rounded-t-lg border-none cursor-pointer font-[inherit] text-[13px] tracking-[-0.2px] border-b-2 -mb-px',
+                  'px-[0.88rem] py-1.5 rounded-t-lg border-none cursor-pointer font-[inherit] text-[0.81rem] tracking-[-0.01rem] border-b-2 -mb-px',
                   tab === t
                     ? 'bg-surface-raised text-on-surface font-semibold border-b-accent'
                     : 'bg-transparent text-on-surface-muted font-normal border-b-transparent'
@@ -91,7 +91,7 @@ export default function ExportModal({ open, onClose, onExportPDF, onExportHTML, 
           </div>
 
           {/* Footer */}
-          <div className="flex gap-[10px] justify-end px-6 py-[14px] border-t border-border shrink-0">
+          <div className="flex gap-[0.62rem] justify-end px-6 py-[0.88rem] border-t border-border shrink-0">
             <button onClick={() => { onExportHTML(config); onClose() }} className={SECONDARY_BTN_CLS}>
               Export HTML
             </button>
@@ -109,7 +109,7 @@ export default function ExportModal({ open, onClose, onExportPDF, onExportHTML, 
 
 function PresetTab({ config, setC }: { config: ExportConfig; setC: (p: Partial<ExportConfig>) => void }) {
   return (
-    <div className="grid grid-cols-3 gap-[10px]">
+    <div className="grid grid-cols-3 gap-[0.62rem]">
       {THEMES.map(t => {
         const accent = THEME_ACCENT[t.id] ?? '#333'
         const active = config.themeId === t.id
@@ -118,26 +118,26 @@ function PresetTab({ config, setC }: { config: ExportConfig; setC: (p: Partial<E
             key={t.id}
             onClick={() => setC({ themeId: t.id })}
             className={cn(
-              'flex flex-col gap-[10px] p-3 rounded-[11px] border-2 cursor-pointer font-[inherit] text-left transition-colors duration-150',
+              'flex flex-col gap-[0.62rem] p-3 rounded-[0.69rem] border-2 cursor-pointer font-[inherit] text-left transition-colors duration-150',
               active ? 'border-accent bg-surface-raised' : 'border-border bg-transparent'
             )}
           >
             {/* Color preview */}
             <div className="w-full h-11 rounded-md bg-white border border-black/[0.08] shrink-0 relative overflow-hidden">
-              <div className="absolute top-2 left-[10px] right-[10px]">
-                <div className="h-1 rounded-sm mb-[3px]" style={{ backgroundColor: t.colors.h1, width: '70%' }} />
-                <div className="h-[3px] rounded-sm mb-[3px]" style={{ backgroundColor: t.colors.h2, width: '50%' }} />
-                <div className="h-[3px] rounded-sm" style={{ backgroundColor: t.colors.h3, width: '40%' }} />
+              <div className="absolute top-2 left-[0.62rem] right-[0.62rem]">
+                <div className="h-1 rounded-sm mb-[0.19rem]" style={{ backgroundColor: t.colors.h1, width: '70%' }} />
+                <div className="h-[0.19rem] rounded-sm mb-[0.19rem]" style={{ backgroundColor: t.colors.h2, width: '50%' }} />
+                <div className="h-[0.19rem] rounded-sm" style={{ backgroundColor: t.colors.h3, width: '40%' }} />
               </div>
               {t.colors.blockquoteBorder && (
-                <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ backgroundColor: accent }} />
+                <div className="absolute left-0 top-0 bottom-0 w-[0.19rem]" style={{ backgroundColor: accent }} />
               )}
             </div>
             <div>
-              <div className={cn('text-xs text-on-surface tracking-[-0.15px]', active ? 'font-semibold' : 'font-medium')}>
+              <div className={cn('text-xs text-on-surface tracking-[-0.01rem]', active ? 'font-semibold' : 'font-medium')}>
                 {t.label}
               </div>
-              <div className="text-[10px] text-on-surface-muted mt-0.5">
+              <div className="text-[0.62rem] text-on-surface-muted mt-0.5">
                 {t.fontBody.split(',')[0].replace(/"/g, '')}
               </div>
             </div>
@@ -166,11 +166,11 @@ function StyleTab({ config, setDoc, setRule, addRule, removeRule, resetStyle }: 
       <section>
         <div className="flex items-center justify-between mb-3">
           <SectionLabel>Advanced Settings</SectionLabel>
-          <button onClick={resetStyle} className="text-[11px] text-accent bg-transparent border-none cursor-pointer font-[inherit]">
+          <button onClick={resetStyle} className="text-[0.69rem] text-accent bg-transparent border-none cursor-pointer font-[inherit]">
             Reset
           </button>
         </div>
-        <div className="grid grid-cols-2 gap-[10px]">
+        <div className="grid grid-cols-2 gap-[0.62rem]">
           <div className="col-span-full">
             <FieldLabel>Document font</FieldLabel>
             <select value={doc.fontFamily} onChange={e => setDoc('fontFamily', e.target.value)} className={SELECT_CLS}>
@@ -198,7 +198,7 @@ function StyleTab({ config, setDoc, setRule, addRule, removeRule, resetStyle }: 
           <SectionLabel>Element Rules</SectionLabel>
           <button
             onClick={addRule}
-            className="flex items-center gap-1 text-xs font-medium text-accent bg-transparent border border-accent rounded-md px-[10px] py-1 cursor-pointer font-[inherit]"
+            className="flex items-center gap-1 text-xs font-medium text-accent bg-transparent border border-accent rounded-md px-[0.62rem] py-1 cursor-pointer font-[inherit]"
           >
             <Plus size={12} /> Add Rule
           </button>
@@ -229,13 +229,13 @@ function ExportRuleCard({ rule, index, onChange, onRemove }: {
   const set = (patch: Partial<ElementRule>) => onChange(index, patch)
 
   return (
-    <div className="border border-border rounded-[11px] overflow-hidden">
+    <div className="border border-border rounded-[0.69rem] overflow-hidden">
       {/* Rule header */}
       <div
-        className="flex items-center gap-2 px-3 py-[10px] bg-surface-raised cursor-pointer"
+        className="flex items-center gap-2 px-3 py-[0.62rem] bg-surface-raised cursor-pointer"
         onClick={() => setExpanded(e => !e)}
       >
-        <span className="text-[11px] font-semibold text-on-surface-muted tracking-[0.04em] uppercase">
+        <span className="text-[0.69rem] font-semibold text-on-surface-muted tracking-[0.04em] uppercase">
           Rule {index + 1}
         </span>
         <span className="text-xs text-accent font-mono">{rule.selector || 'no selector'}</span>
@@ -249,7 +249,7 @@ function ExportRuleCard({ rule, index, onChange, onRemove }: {
       </div>
 
       {expanded && (
-        <div className="p-3 flex flex-col gap-[10px]">
+        <div className="p-3 flex flex-col gap-[0.62rem]">
           {/* Selector row */}
           <div className="flex gap-2 items-end">
             <div className="flex-1">
@@ -314,10 +314,10 @@ function LayoutTab({ config, setC }: { config: ExportConfig; setC: (p: Partial<E
     <div className="flex flex-col gap-6">
       <section>
         <SectionLabel>Cover Page</SectionLabel>
-        <div className="mt-[10px] flex flex-col gap-[10px]">
+        <div className="mt-[0.62rem] flex flex-col gap-[0.62rem]">
           <Toggle label="Include cover page" checked={config.coverPage} onChange={v => setC({ coverPage: v })} />
           {config.coverPage && (
-            <div className="grid grid-cols-2 gap-[10px] mt-1">
+            <div className="grid grid-cols-2 gap-[0.62rem] mt-1">
               <div className="col-span-full">
                 <Field label="Title" value={config.coverTitle} onChange={v => setC({ coverTitle: v })} placeholder="Document title" />
               </div>
@@ -333,10 +333,10 @@ function LayoutTab({ config, setC }: { config: ExportConfig; setC: (p: Partial<E
 
       <section>
         <SectionLabel>Header</SectionLabel>
-        <div className="mt-[10px] flex flex-col gap-[10px]">
+        <div className="mt-[0.62rem] flex flex-col gap-[0.62rem]">
           <Toggle label="Show page header" checked={config.showHeader} onChange={v => setC({ showHeader: v })} />
           {config.showHeader && (
-            <div className="grid grid-cols-3 gap-[10px] mt-1">
+            <div className="grid grid-cols-3 gap-[0.62rem] mt-1">
               <Field label="Left" value={config.headerLeft} onChange={v => setC({ headerLeft: v })} placeholder="Company" />
               <Field label="Center" value={config.headerCenter} onChange={v => setC({ headerCenter: v })} placeholder="Doc title" />
               <Field label="Right" value={config.headerRight} onChange={v => setC({ headerRight: v })} placeholder="v1.0" />
@@ -347,7 +347,7 @@ function LayoutTab({ config, setC }: { config: ExportConfig; setC: (p: Partial<E
 
       <section>
         <SectionLabel>Footer</SectionLabel>
-        <div className="mt-[10px] flex flex-col gap-[10px]">
+        <div className="mt-[0.62rem] flex flex-col gap-[0.62rem]">
           <Toggle label="Show page footer" checked={config.showFooter} onChange={v => setC({ showFooter: v })} />
           {config.showFooter && (
             <Toggle label="Page numbers" checked={config.footerPageNumbers} onChange={v => setC({ footerPageNumbers: v })} />
@@ -357,7 +357,7 @@ function LayoutTab({ config, setC }: { config: ExportConfig; setC: (p: Partial<E
 
       <section>
         <SectionLabel>Watermark</SectionLabel>
-        <div className="mt-[10px]">
+        <div className="mt-[0.62rem]">
           <Field
             label="Watermark text (leave empty for none)"
             value={config.watermark}
@@ -374,7 +374,7 @@ function LayoutTab({ config, setC }: { config: ExportConfig; setC: (p: Partial<E
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[11px] font-semibold tracking-[0.06em] uppercase text-on-surface-muted">
+    <p className="text-[0.69rem] font-semibold tracking-[0.06em] uppercase text-on-surface-muted">
       {children}
     </p>
   )
@@ -382,7 +382,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <label className="block text-[11px] font-medium text-on-surface-muted mb-1">
+    <label className="block text-[0.69rem] font-medium text-on-surface-muted mb-1">
       {children}
     </label>
   )
@@ -398,7 +398,7 @@ function Field({ label, value, onChange, placeholder }: {
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full bg-surface-raised border border-border rounded-lg px-[10px] py-1.5 text-xs text-on-surface outline-none font-[inherit] tracking-[-0.15px] focus:border-accent transition-colors duration-150"
+        className="w-full bg-surface-raised border border-border rounded-lg px-[0.62rem] py-1.5 text-xs text-on-surface outline-none font-[inherit] tracking-[-0.01rem] focus:border-accent transition-colors duration-150"
       />
     </div>
   )
@@ -406,20 +406,20 @@ function Field({ label, value, onChange, placeholder }: {
 
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label className="flex items-center gap-[10px] cursor-pointer">
+    <label className="flex items-center gap-[0.62rem] cursor-pointer">
       <div
         onClick={() => onChange(!checked)}
         className={cn(
-          'w-[34px] h-[18px] rounded-full shrink-0 relative cursor-pointer transition-colors duration-200',
+          'w-[2.12rem] h-[1.12rem] rounded-full shrink-0 relative cursor-pointer transition-colors duration-200',
           checked ? 'bg-accent' : 'bg-border'
         )}
       >
         <div className={cn(
-          'absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2)] transition-[left] duration-200',
+          'absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow-[0_0.06rem_0.19rem_rgba(0,0,0,0.2)] transition-[left] duration-200',
           checked ? 'left-4' : 'left-0.5'
         )} />
       </div>
-      <span className="text-[13px] text-on-surface tracking-[-0.2px]">{label}</span>
+      <span className="text-[0.81rem] text-on-surface tracking-[-0.01rem]">{label}</span>
     </label>
   )
 }

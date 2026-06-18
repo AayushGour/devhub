@@ -126,20 +126,22 @@ export default function HomePage() {
   const navigate = useNavigate()
 
   return (
-    <div className="max-w-[960px] mx-auto py-8 px-10">
+    <div className="max-w-[60rem] mx-auto py-8 px-10">
       {/* Hero */}
       <div className="mb-12">
-        <h1 className="font-sans text-[40px] font-semibold leading-[1.1] tracking-[-0.5px] text-on-surface mb-3">
+        <h1 className="font-sans text-[2.5rem] font-semibold leading-[1.1] tracking-[-0.03rem] text-on-surface mb-3">
           Developer Workspace
         </h1>
-        <p className="text-[17px] font-normal leading-[1.47] tracking-[-0.374px] text-on-surface-muted max-w-[35rem]">
-          Docs, diagrams, APIs, and utilities — all in one browser-based tool. No backend, no signup. Completely free!!!
+        <p className="text-[1.06rem] font-normal leading-[1.47] tracking-[-0.02rem] text-on-surface-muted max-w-[35rem]">
+          Docs, diagrams, APIs, and utilities — all in one browser-based tool.
+          <br />
+          No backend, No signup. Completely free!!!
         </p>
       </div>
 
       {/* Section label */}
       <div className="flex items-center gap-3 mb-5">
-        <span className="text-[11px] font-semibold tracking-[0.08em] uppercase text-on-surface-muted">
+        <span className="text-[0.69rem] font-semibold tracking-[0.08em] uppercase text-on-surface-muted">
           Studios
         </span>
         <div className="flex-1 h-px bg-border" />
@@ -166,26 +168,26 @@ function StudioCard({ studio, onClick }: { studio: Studio; onClick?: () => void 
     <div
       onClick={onClick}
       className={cn(
-        'studio-card bg-surface border border-border rounded-[18px] p-6 flex flex-col gap-4 transition-[border-color,box-shadow] duration-150',
+        'studio-card bg-surface border border-border rounded-[1.12rem] p-6 flex flex-col gap-4 transition-[border-color,box-shadow] duration-150',
         isAvailable
-          ? 'cursor-pointer hover:border-accent hover:shadow-[0_2px_16px_rgba(0,0,0,0.08)]'
+          ? 'cursor-pointer hover:border-accent hover:shadow-[0_0.12rem_1rem_rgba(0,0,0,0.08)]'
           : 'cursor-default opacity-60'
       )}
     >
       {/* Icon + phase badge */}
       <div className="flex items-start justify-between">
         <div className="text-accent">{studio.icon}</div>
-        <span className="text-[11px] font-medium tracking-[-0.12px] text-on-surface-muted bg-surface-raised border border-border rounded-full px-2 py-0.5">
+        <span className="text-[0.69rem] font-medium tracking-[-0.01rem] text-on-surface-muted bg-surface-raised border border-border rounded-full px-2 py-0.5">
           {isAvailable ? 'Available' : studio.phase}
         </span>
       </div>
 
       {/* Text */}
       <div className="flex flex-col gap-1">
-        <h3 className="text-[15px] font-semibold leading-[1.24] tracking-[-0.374px] text-on-surface">
+        <h3 className="text-[0.94rem] font-semibold leading-[1.24] tracking-[-0.02rem] text-on-surface">
           {studio.title}
         </h3>
-        <p className="text-[13px] font-normal leading-[1.43] tracking-[-0.2px] text-on-surface-muted">
+        <p className="text-[0.81rem] font-normal leading-[1.43] tracking-[-0.01rem] text-on-surface-muted">
           {studio.description}
         </p>
       </div>
@@ -193,7 +195,7 @@ function StudioCard({ studio, onClick }: { studio: Studio; onClick?: () => void 
       {/* CTA */}
       {isAvailable && (
         <div className="mt-auto">
-          <span className="text-[13px] font-normal text-accent tracking-[-0.2px]">
+          <span className="text-[0.81rem] font-normal text-accent tracking-[-0.01rem]">
             Open →
           </span>
         </div>

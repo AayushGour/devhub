@@ -11,7 +11,7 @@ const TEXTAREA_CLS =
 const SELECT_CLS =
   'bg-surface-raised border border-border rounded-lg px-3 py-1.5 text-xs text-on-surface outline-none font-[inherit] cursor-pointer focus:border-accent transition-colors duration-150'
 const OUTPUT_CLS =
-  'w-full bg-surface-raised border border-border rounded-lg px-3 py-2 text-xs font-mono text-on-surface break-all select-all min-h-[38px]'
+  'w-full bg-surface-raised border border-border rounded-lg px-3 py-2 text-xs font-mono text-on-surface break-all select-all min-h-[2.38rem]'
 
 interface HashResult {
   hex: string

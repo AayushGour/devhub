@@ -13,7 +13,7 @@ const INPUT_CLS =
 const SELECT_CLS =
   'bg-surface-raised border border-border rounded-lg px-3 py-1.5 text-xs text-on-surface outline-none font-[inherit] cursor-pointer focus:border-accent transition-colors duration-150'
 const OUTPUT_CLS =
-  'w-full bg-surface-raised border border-border rounded-lg px-3 py-2 text-xs font-mono text-on-surface break-all select-all min-h-[60px] whitespace-pre-wrap'
+  'w-full bg-surface-raised border border-border rounded-lg px-3 py-2 text-xs font-mono text-on-surface break-all select-all min-h-[3.75rem] whitespace-pre-wrap'
 const TOGGLE_BTN = (active: boolean) =>
   cn(
     'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors duration-150',

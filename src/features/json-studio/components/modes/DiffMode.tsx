@@ -80,8 +80,8 @@ export default function DiffMode({ diffLeft, setDiffLeft, diffRight, setDiffRigh
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       <div className="diff-mode-header shrink-0 flex items-center border-b border-border text-xs font-medium text-on-surface-muted select-none">
-        <div className="flex-1 px-3 py-[6px]">Before</div>
-        <div className="flex-1 px-3 py-[6px] border-l border-border">After</div>
+        <div className="flex-1 px-3 py-[0.38rem]">Before</div>
+        <div className="flex-1 px-3 py-[0.38rem] border-l border-border">After</div>
       </div>
       <div className="flex-1 min-h-0 overflow-auto" ref={containerRef} />
     </div>

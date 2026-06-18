@@ -18,6 +18,7 @@ export interface KnobDef {
   min: number
   max: number
   step: number
+  tooltip?: string
 }
 
 export interface EnginePreset {

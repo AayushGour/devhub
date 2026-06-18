@@ -1,4 +1,5 @@
-import { Loader2, SlidersHorizontal } from 'lucide-react'
+import * as Tooltip from '@radix-ui/react-tooltip'
+import { Info, Loader2, SlidersHorizontal } from 'lucide-react'
 import type { EnginePreset, TraceParams } from '../engines/types'
 
 interface Props {
@@ -8,12 +9,15 @@ interface Props {
   onChange: (knobId: string, value: number) => void
 }
 
+const TOOLTIP_CONTENT_CLS =
+  'max-w-[12.5rem] bg-surface-raised text-on-surface text-[0.69rem] leading-[1.5] font-normal tracking-[-0.01rem] px-2.5 py-1.5 rounded-lg border border-border shadow-[0_0.12rem_0.5rem_rgba(0,0,0,0.12)] z-50'
+
 export default function RefinePanel({ preset, params, refining, onChange }: Props) {
   return (
-    <div className="shrink-0 w-[240px] border-l border-border bg-surface-raised flex flex-col">
+    <div className="shrink-0 w-60 border-l border-border bg-surface-raised flex flex-col">
       <div className="h-9 flex items-center gap-2 px-3 border-b border-border shrink-0">
         <SlidersHorizontal size={13} className="text-on-surface-muted" />
-        <span className="text-[11px] font-semibold text-on-surface-muted uppercase tracking-[0.06em]">
+        <span className="text-[0.69rem] font-semibold text-on-surface-muted uppercase tracking-[0.06em]">
           Refine
         </span>
         {refining && <Loader2 size={12} className="text-accent animate-spin ml-auto" />}
@@ -21,7 +25,7 @@ export default function RefinePanel({ preset, params, refining, onChange }: Prop
 
       <div className="flex-1 overflow-auto p-4 flex flex-col gap-5">
         {preset.knobs.length === 0 ? (
-          <p className="text-[12px] text-on-surface-muted">
+          <p className="text-[0.75rem] text-on-surface-muted">
             {preset.label} has no adjustable parameters.
           </p>
         ) : (
@@ -29,8 +33,29 @@ export default function RefinePanel({ preset, params, refining, onChange }: Prop
             const value = Number(params[knob.id] ?? knob.min)
             return (
               <label key={knob.id} className="flex flex-col gap-1.5">
-                <span className="flex items-center justify-between text-[12px]">
-                  <span className="text-on-surface">{knob.label}</span>
+                <span className="flex items-center justify-between text-[0.75rem]">
+                  <span className="flex items-center gap-1 text-on-surface">
+                    {knob.label}
+                    {knob.tooltip && (
+                      <Tooltip.Root>
+                        <Tooltip.Trigger asChild>
+                          <button
+                            type="button"
+                            className="flex items-center text-on-surface-muted hover:text-on-surface transition-colors duration-150 cursor-default outline-none"
+                            tabIndex={-1}
+                          >
+                            <Info size={11} />
+                          </button>
+                        </Tooltip.Trigger>
+                        <Tooltip.Portal>
+                          <Tooltip.Content side="left" sideOffset={8} className={TOOLTIP_CONTENT_CLS}>
+                            {knob.tooltip}
+                            <Tooltip.Arrow className="fill-border" />
+                          </Tooltip.Content>
+                        </Tooltip.Portal>
+                      </Tooltip.Root>
+                    )}
+                  </span>
                   <span className="font-semibold tabular-nums text-on-surface-muted">{value}</span>
                 </span>
                 <input

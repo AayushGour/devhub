@@ -7,7 +7,7 @@ import {
 } from '../utils/styleBuilder'
 import { cn } from '@/lib/utils'
 
-const PANEL_SELECT_CLS = 'w-full bg-surface-raised border border-border rounded-md px-2 py-[5px] text-[11px] text-on-surface outline-none font-[inherit] cursor-pointer'
+const PANEL_SELECT_CLS = 'w-full bg-surface-raised border border-border rounded-md px-2 py-[0.31rem] text-[0.69rem] text-on-surface outline-none font-[inherit] cursor-pointer'
 
 interface StylePanelProps {
   themeId: string
@@ -28,7 +28,7 @@ export default function StylePanel({
   const [section, setSection] = useState<'preset' | 'document' | 'elements'>('preset')
 
   return (
-    <aside className="w-[280px] shrink-0 flex flex-col border-l border-border bg-surface overflow-hidden">
+    <aside className="w-[17.5rem] shrink-0 flex flex-col border-l border-border bg-surface overflow-hidden">
       {/* Section tabs */}
       <div className="flex border-b border-border shrink-0">
         {(['preset', 'document', 'elements'] as const).map(s => (
@@ -36,7 +36,7 @@ export default function StylePanel({
             key={s}
             onClick={() => setSection(s)}
             className={cn(
-              'flex-1 py-[9px] px-1 border-none bg-transparent cursor-pointer font-[inherit] text-[11px] uppercase tracking-[0.02em] transition-colors duration-150 -mb-px border-b-2',
+              'flex-1 py-[0.56rem] px-1 border-none bg-transparent cursor-pointer font-[inherit] text-[0.69rem] uppercase tracking-[0.02em] transition-colors duration-150 -mb-px border-b-2',
               section === s
                 ? 'text-accent border-b-accent font-semibold'
                 : 'text-on-surface-muted border-b-transparent font-normal'
@@ -48,7 +48,7 @@ export default function StylePanel({
       </div>
 
       {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto p-[14px]">
+      <div className="flex-1 overflow-y-auto p-[0.88rem]">
         {section === 'preset' && (
           <PresetSection themeId={themeId} onThemeChange={onThemeChange} />
         )}
@@ -80,26 +80,26 @@ function PresetSection({ themeId, onThemeChange }: { themeId: string; onThemeCha
             key={t.id}
             onClick={() => onThemeChange(t.id)}
             className={cn(
-              'flex items-center gap-3 px-[10px] py-2 rounded-[10px] border cursor-pointer font-[inherit] text-left w-full transition-[border-color,background-color] duration-150',
+              'flex items-center gap-3 px-[0.62rem] py-2 rounded-[0.62rem] border cursor-pointer font-[inherit] text-left w-full transition-[border-color,background-color] duration-150',
               active ? 'border-accent bg-surface-raised' : 'border-border bg-transparent'
             )}
           >
             {/* Mini color swatch */}
-            <div className="w-9 h-7 rounded-[5px] bg-white border border-black/[0.08] shrink-0 relative overflow-hidden">
-              <div className="absolute top-[5px] left-[5px] right-[5px]">
-                <div className="h-[3px] rounded-sm mb-0.5" style={{ backgroundColor: t.colors.h1, width: '80%' }} />
+            <div className="w-9 h-7 rounded-[0.31rem] bg-white border border-black/[0.08] shrink-0 relative overflow-hidden">
+              <div className="absolute top-[0.31rem] left-[0.31rem] right-[0.31rem]">
+                <div className="h-[0.19rem] rounded-sm mb-0.5" style={{ backgroundColor: t.colors.h1, width: '80%' }} />
                 <div className="h-0.5 rounded-sm mb-0.5" style={{ backgroundColor: t.colors.h2, width: '60%' }} />
                 <div className="h-0.5 rounded-sm" style={{ backgroundColor: t.colors.h3, width: '45%' }} />
               </div>
               {t.colors.blockquoteBorder && (
-                <div className="absolute left-0 top-0 bottom-0 w-[2.5px]" style={{ backgroundColor: THEME_ACCENT[t.id] }} />
+                <div className="absolute left-0 top-0 bottom-0 w-[0.16rem]" style={{ backgroundColor: THEME_ACCENT[t.id] }} />
               )}
             </div>
             <div>
-              <div className={cn('text-xs text-on-surface tracking-[-0.15px]', active ? 'font-semibold' : 'font-medium')}>
+              <div className={cn('text-xs text-on-surface tracking-[-0.01rem]', active ? 'font-semibold' : 'font-medium')}>
                 {t.label}
               </div>
-              <div className="text-[10px] text-on-surface-muted mt-px">
+              <div className="text-[0.62rem] text-on-surface-muted mt-px">
                 {t.fontBody.split(',')[0].replace(/"/g, '')}
               </div>
             </div>
@@ -118,9 +118,9 @@ function DocumentSection({ doc, onChange, onReset }: {
   onReset: () => void
 }) {
   return (
-    <div className="flex flex-col gap-[10px]">
+    <div className="flex flex-col gap-[0.62rem]">
       <div className="flex justify-end">
-        <button onClick={onReset} className="text-[11px] text-accent bg-transparent border-none cursor-pointer font-[inherit]">
+        <button onClick={onReset} className="text-[0.69rem] text-accent bg-transparent border-none cursor-pointer font-[inherit]">
           Reset
         </button>
       </div>
@@ -170,16 +170,16 @@ function ElementsSection({ rules, onRuleChange, onAddRule, onRemoveRule }: {
   onRemoveRule: (i: number) => void
 }) {
   return (
-    <div className="flex flex-col gap-[10px]">
+    <div className="flex flex-col gap-[0.62rem]">
       <button
         onClick={onAddRule}
-        className="flex items-center justify-center gap-[6px] py-[7px] px-3 rounded-lg border border-dashed border-border bg-transparent text-on-surface-muted text-xs cursor-pointer font-[inherit] w-full hover:border-accent hover:text-accent transition-colors duration-150"
+        className="flex items-center justify-center gap-[0.38rem] py-[0.44rem] px-3 rounded-lg border border-dashed border-border bg-transparent text-on-surface-muted text-xs cursor-pointer font-[inherit] w-full hover:border-accent hover:text-accent transition-colors duration-150"
       >
         <Plus size={13} /> Add Element Rule
       </button>
 
       {rules.length === 0 && (
-        <p className="text-[11px] text-on-surface-muted text-center py-3">
+        <p className="text-[0.69rem] text-on-surface-muted text-center py-3">
           No rules. Add one to override styles per element.
         </p>
       )}
@@ -200,16 +200,16 @@ function RuleCard({ rule, index, onChange, onRemove }: {
   const set = (patch: Partial<ElementRule>) => onChange(index, patch)
 
   return (
-    <div className="border border-border rounded-[10px] overflow-hidden">
+    <div className="border border-border rounded-[0.62rem] overflow-hidden">
       <div
         onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-[6px] px-[10px] py-2 bg-surface-raised cursor-pointer"
+        className="flex items-center gap-[0.38rem] px-[0.62rem] py-2 bg-surface-raised cursor-pointer"
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <span className="text-[10px] font-semibold text-on-surface-muted uppercase tracking-[0.04em]">
+        <span className="text-[0.62rem] font-semibold text-on-surface-muted uppercase tracking-[0.04em]">
           Rule {index + 1}
         </span>
-        <span className="text-[11px] text-accent font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+        <span className="text-[0.69rem] text-accent font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
           {rule.selector || 'no selector'}
         </span>
         <button
@@ -221,9 +221,9 @@ function RuleCard({ rule, index, onChange, onRemove }: {
       </div>
 
       {open && (
-        <div className="p-[10px] flex flex-col gap-2">
+        <div className="p-[0.62rem] flex flex-col gap-2">
           {/* Selector */}
-          <div className="flex gap-[6px]">
+          <div className="flex gap-[0.38rem]">
             <div className="flex-1">
               <PanelField label="Quick select">
                 <select className={PANEL_SELECT_CLS} onChange={e => {
@@ -247,7 +247,7 @@ function RuleCard({ rule, index, onChange, onRemove }: {
               {FONT_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
           </PanelField>
-          <div className="grid grid-cols-2 gap-[6px]">
+          <div className="grid grid-cols-2 gap-[0.38rem]">
             <PanelField label="Size"><PanelInput value={rule.fontSize} onChange={v => set({ fontSize: v })} placeholder="16px" /></PanelField>
             <PanelField label="Weight"><PanelInput value={rule.fontWeight} onChange={v => set({ fontWeight: v })} placeholder="600" /></PanelField>
             <PanelField label="Line height"><PanelInput value={rule.lineHeight} onChange={v => set({ lineHeight: v })} placeholder="1.5" /></PanelField>
@@ -277,7 +277,7 @@ function RuleCard({ rule, index, onChange, onRemove }: {
 function PanelField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-[10px] font-medium text-on-surface-muted mb-[3px] uppercase tracking-[0.04em]">
+      <label className="block text-[0.62rem] font-medium text-on-surface-muted mb-[0.19rem] uppercase tracking-[0.04em]">
         {label}
       </label>
       {children}
@@ -291,7 +291,7 @@ function PanelInput({ value, onChange, placeholder }: { value: string; onChange:
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full bg-surface-raised border border-border rounded-md px-2 py-[5px] text-[11px] text-on-surface outline-none font-[inherit] tracking-[-0.1px] focus:border-accent transition-colors duration-150"
+      className="w-full bg-surface-raised border border-border rounded-md px-2 py-[0.31rem] text-[0.69rem] text-on-surface outline-none font-[inherit] tracking-[-0.01rem] focus:border-accent transition-colors duration-150"
     />
   )
 }

@@ -37,7 +37,7 @@ export default function JsonPathMode({ input, jsonPathQuery, setJsonPathQuery }:
     <div className="flex-1 flex flex-col min-h-0">
       {/* Query input */}
       <div className="border-b border-border p-3 shrink-0">
-        <label className="block text-[11px] font-semibold uppercase tracking-[0.06em] text-on-surface-muted mb-2">
+        <label className="block text-[0.69rem] font-semibold uppercase tracking-[0.06em] text-on-surface-muted mb-2">
           JSONPath Query
         </label>
         <input
@@ -45,14 +45,14 @@ export default function JsonPathMode({ input, jsonPathQuery, setJsonPathQuery }:
           onChange={e => { setLocalQuery(e.target.value); setJsonPathQuery(e.target.value) }}
           placeholder="$.features[*]"
           spellCheck={false}
-          className="w-full bg-surface-raised border border-border rounded-[8px] px-3 py-2 text-[13px] font-mono text-on-surface outline-none focus:border-accent transition-colors duration-150"
+          className="w-full bg-surface-raised border border-border rounded-[0.5rem] px-3 py-2 text-[0.81rem] font-mono text-on-surface outline-none focus:border-accent transition-colors duration-150"
         />
         <div className="flex flex-wrap gap-1.5 mt-2">
           {EXAMPLES.map(ex => (
             <button
               key={ex}
               onClick={() => { setLocalQuery(ex); setJsonPathQuery(ex) }}
-              className="text-[11px] font-mono text-accent bg-surface-raised border border-border rounded-full px-2 py-0.5 cursor-pointer hover:border-accent transition-colors duration-150"
+              className="text-[0.69rem] font-mono text-accent bg-surface-raised border border-border rounded-full px-2 py-0.5 cursor-pointer hover:border-accent transition-colors duration-150"
             >
               {ex}
             </button>
@@ -62,30 +62,30 @@ export default function JsonPathMode({ input, jsonPathQuery, setJsonPathQuery }:
 
       {/* Results */}
       <div className="flex-1 overflow-auto p-5">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-on-surface-muted mb-3">
+        <div className="text-[0.69rem] font-semibold uppercase tracking-[0.06em] text-on-surface-muted mb-3">
           Results
           {results.length > 0 && (
-            <span className="ml-2 bg-accent text-accent-text rounded-full px-2 py-0.5 text-[10px] font-bold normal-case tracking-normal">
+            <span className="ml-2 bg-accent text-accent-text rounded-full px-2 py-0.5 text-[0.62rem] font-bold normal-case tracking-normal">
               {results.length}
             </span>
           )}
         </div>
 
         {parseError && (
-          <p className="text-[12px] text-red-500 font-mono bg-red-50 border border-red-200 rounded-[8px] p-3">
+          <p className="text-[0.75rem] text-red-500 font-mono bg-red-50 border border-red-200 rounded-[0.5rem] p-3">
             JSON parse error: {parseError}
           </p>
         )}
         {queryError && (
-          <p className="text-[12px] text-red-500 font-mono bg-red-50 border border-red-200 rounded-[8px] p-3">
+          <p className="text-[0.75rem] text-red-500 font-mono bg-red-50 border border-red-200 rounded-[0.5rem] p-3">
             {queryError}
           </p>
         )}
         {!parseError && !queryError && results.length === 0 && localQuery && (
-          <p className="text-[12px] text-on-surface-muted">No matches</p>
+          <p className="text-[0.75rem] text-on-surface-muted">No matches</p>
         )}
         {resultJson && (
-          <pre className="text-[12px] font-mono text-on-surface bg-surface-raised border border-border rounded-[10px] p-4 overflow-auto whitespace-pre leading-relaxed">
+          <pre className="text-[0.75rem] font-mono text-on-surface bg-surface-raised border border-border rounded-[0.62rem] p-4 overflow-auto whitespace-pre leading-relaxed">
             {resultJson}
           </pre>
         )}

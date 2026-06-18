@@ -38,7 +38,7 @@ export const THEMES: Theme[] = [
     lineHeight: 1.55,
     headingLetterSpacing: '-0.01em',
     colors: { h1: '#0b1324', h2: '#172554', h3: '#1d4ed8', h456: '#334155', blockquoteBorder: '#1d4ed8', blockquoteBg: '#eff6ff' },
-    blockquoteExtra: 'border-radius: 6px; padding: 0.65rem 0.9rem;',
+    blockquoteExtra: 'border-radius: 0.38rem; padding: 0.65rem 0.9rem;',
   },
   {
     id: 'modern',
@@ -49,7 +49,7 @@ export const THEMES: Theme[] = [
     lineHeight: 1.55,
     headingLetterSpacing: '-0.02em',
     colors: { h1: '#111827', h2: '#1f2937', h3: '#2563eb', h456: '#4b5563', blockquoteBorder: '#2563eb', blockquoteBg: '#f5f7ff' },
-    blockquoteExtra: 'border-left-width: 5px; padding: 0.65rem 0.9rem;',
+    blockquoteExtra: 'border-left-width: 0.31rem; padding: 0.65rem 0.9rem;',
   },
   {
     id: 'clean',

@@ -80,7 +80,7 @@ export default function PreviewPane({ content, themeId, styleSettings, previewRe
       {/* previewRef = inner content div — export reads innerHTML directly into .md-content wrapper */}
       <div
         ref={(el) => { innerRef.current = el; (previewRef as React.MutableRefObject<HTMLDivElement | null>).current = el }}
-        className="markdown-preview rounded-lg shadow-[0_1px_4px_rgba(0,0,0,0.12)] min-h-full p-4"
+        className="markdown-preview rounded-lg shadow-[0_0.06rem_0.25rem_rgba(0,0,0,0.12)] min-h-full p-4"
         style={{ backgroundColor: APP_THEME_PREVIEW_BG[appTheme] ?? '#ffffff' }}
       />
     </div>

@@ -11,7 +11,7 @@ interface Props {
   onBackToGallery: () => void
 }
 
-const BTN = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors duration-150'
+const BTN = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[0.75rem] font-medium transition-colors duration-150'
 
 export default function SvgToolbar({
   file,
@@ -44,14 +44,14 @@ export default function SvgToolbar({
 
   return (
     <div className="shrink-0 h-11 flex items-center gap-2 px-3 border-b border-border bg-surface">
-      <span className="text-[13px] font-semibold text-on-surface mr-1">SVG Studio</span>
+      <span className="text-[0.81rem] font-semibold text-on-surface mr-1">SVG Studio</span>
 
       {file && (
         <>
           <div className="w-px h-4 bg-border" />
-          <span className="text-[12px] text-on-surface-muted truncate max-w-[200px]">{file.name}</span>
+          <span className="text-[0.75rem] text-on-surface-muted truncate max-w-[12.5rem]">{file.name}</span>
           {activeLabel && (
-            <span className="text-[11px] font-medium text-accent bg-accent/10 border border-accent/25 rounded-full px-2 py-0.5">
+            <span className="text-[0.69rem] font-medium text-accent bg-accent/10 border border-accent/25 rounded-full px-2 py-0.5">
               {activeLabel}
             </span>
           )}

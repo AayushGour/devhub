@@ -8,11 +8,11 @@ interface Props {
 }
 
 function ValueToken({ value }: { value: unknown }) {
-  if (value === null) return <span className="text-json-null italic text-[12px]">null</span>
-  if (typeof value === 'boolean') return <span className="text-json-bool text-[12px]">{String(value)}</span>
-  if (typeof value === 'number') return <span className="text-json-number text-[12px]">{value}</span>
+  if (value === null) return <span className="text-json-null italic text-[0.75rem]">null</span>
+  if (typeof value === 'boolean') return <span className="text-json-bool text-[0.75rem]">{String(value)}</span>
+  if (typeof value === 'number') return <span className="text-json-number text-[0.75rem]">{value}</span>
   if (typeof value === 'string') return (
-    <span className="text-json-string text-[12px]">
+    <span className="text-json-string text-[0.75rem]">
       &ldquo;{value.length > 100 ? value.slice(0, 100) + '…' : value}&rdquo;
     </span>
   )
@@ -23,10 +23,10 @@ function KeyLabel({ label }: { label: string | number | null }) {
   if (label === null) return null
   return (
     <>
-      <span className="text-accent text-[12px]">
+      <span className="text-accent text-[0.75rem]">
         {typeof label === 'string' ? `"${label}"` : label}
       </span>
-      <span className="text-on-surface-muted text-[12px]">:&nbsp;</span>
+      <span className="text-on-surface-muted text-[0.75rem]">:&nbsp;</span>
     </>
   )
 }
@@ -37,7 +37,7 @@ export default function JsonTreeNode({ value, keyLabel, depth }: Props) {
 
   if (!isObject) {
     return (
-      <div className="flex items-baseline py-[2px] pl-[2px]">
+      <div className="flex items-baseline py-[0.12rem] pl-[0.12rem]">
         <KeyLabel label={keyLabel} />
         <ValueToken value={value} />
       </div>
@@ -56,21 +56,21 @@ export default function JsonTreeNode({ value, keyLabel, depth }: Props) {
   return (
     <div>
       <div
-        className="flex items-baseline py-[2px] pl-[2px] cursor-pointer select-none group"
+        className="flex items-baseline py-[0.12rem] pl-[0.12rem] cursor-pointer select-none group"
         onClick={() => setOpen(o => !o)}
       >
         <span className={cn(
-          'text-[9px] mr-1 text-on-surface-muted transition-transform duration-100 inline-block',
+          'text-[0.56rem] mr-1 text-on-surface-muted transition-transform duration-100 inline-block',
           open ? 'rotate-90' : ''
         )}>
           ▶
         </span>
         <KeyLabel label={keyLabel} />
-        <span className="text-on-surface-muted text-[12px]">{openBracket}</span>
+        <span className="text-on-surface-muted text-[0.75rem]">{openBracket}</span>
         {!open && (
           <>
-            <span className="text-on-surface-muted text-[11px] mx-1 opacity-60">{summary}</span>
-            <span className="text-on-surface-muted text-[12px]">{closeBracket}</span>
+            <span className="text-on-surface-muted text-[0.69rem] mx-1 opacity-60">{summary}</span>
+            <span className="text-on-surface-muted text-[0.75rem]">{closeBracket}</span>
           </>
         )}
       </div>
@@ -80,8 +80,8 @@ export default function JsonTreeNode({ value, keyLabel, depth }: Props) {
           {entries.map(([k, v]) => (
             <JsonTreeNode key={k} value={v} keyLabel={k} depth={depth + 1} />
           ))}
-          <div className="py-[2px]">
-            <span className="text-on-surface-muted text-[12px]">{closeBracket}</span>
+          <div className="py-[0.12rem]">
+            <span className="text-on-surface-muted text-[0.75rem]">{closeBracket}</span>
           </div>
         </div>
       )}

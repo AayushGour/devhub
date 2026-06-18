@@ -41,7 +41,7 @@ function NodeCard({ node }: { node: GNode }) {
   return (
     <div
       className={cn(
-        'absolute bg-surface rounded-[10px] overflow-hidden border',
+        'absolute bg-surface rounded-[0.62rem] overflow-hidden border',
         isArr ? 'border-accent/40' : 'border-border',
       )}
       style={{ left: node.x, top: node.y, width: node.width }}
@@ -49,25 +49,25 @@ function NodeCard({ node }: { node: GNode }) {
       {/* Header */}
       <div
         className={cn(
-          'h-[34px] px-3 flex items-center gap-1.5 border-b shrink-0',
+          'h-[2.12rem] px-3 flex items-center gap-1.5 border-b shrink-0',
           isArr ? 'bg-accent/8 border-accent/25' : 'bg-surface-raised border-border',
         )}
       >
         <span
           className={cn(
-            'text-[10px] font-bold font-mono shrink-0',
+            'text-[0.62rem] font-bold font-mono shrink-0',
             isArr ? 'text-accent' : 'text-on-surface-muted',
           )}
         >
           {isArr ? '[ ]' : '{ }'}
         </span>
-        <span className="text-[11px] font-semibold text-on-surface tracking-[-0.1px] flex-1 truncate">
+        <span className="text-[0.69rem] font-semibold text-on-surface tracking-[-0.01rem] flex-1 truncate">
           {node.title}
         </span>
         {node.edgeLabel && (
           <span
             className={cn(
-              'text-[10px] font-mono font-medium rounded-full px-[7px] py-[1px] shrink-0 truncate max-w-[80px] border',
+              'text-[0.62rem] font-mono font-medium rounded-full px-[0.44rem] py-[0.06rem] shrink-0 truncate max-w-[5rem] border',
               isIndexLabel
                 ? 'text-accent bg-accent/10 border-accent/30'
                 : 'text-accent bg-surface border-border',
@@ -86,10 +86,10 @@ function NodeCard({ node }: { node: GNode }) {
               className="flex items-center px-3 gap-2 border-b border-border last:border-0"
               style={{ height: 24 }}
             >
-              <span className="text-[10px] font-mono text-accent/60 shrink-0 w-6 text-right">
+              <span className="text-[0.62rem] font-mono text-accent/60 shrink-0 w-6 text-right">
                 {i}
               </span>
-              <span className={cn('text-[11px] font-mono truncate', VALUE_CLASS[row.valueType])}>
+              <span className={cn('text-[0.69rem] font-mono truncate', VALUE_CLASS[row.valueType])}>
                 {row.value}
               </span>
             </div>
@@ -100,10 +100,10 @@ function NodeCard({ node }: { node: GNode }) {
               className="flex items-center px-3 border-b border-border last:border-0"
               style={{ height: 24 }}
             >
-              <span className="text-[11px] text-on-surface-muted shrink-0 mr-2 font-mono max-w-[90px] truncate">
+              <span className="text-[0.69rem] text-on-surface-muted shrink-0 mr-2 font-mono max-w-[5.62rem] truncate">
                 {row.key}
               </span>
-              <span className={cn('text-[11px] font-mono ml-auto truncate max-w-[100px]', VALUE_CLASS[row.valueType])}>
+              <span className={cn('text-[0.69rem] font-mono ml-auto truncate max-w-[6.25rem]', VALUE_CLASS[row.valueType])}>
                 {row.value}
               </span>
             </div>
@@ -203,13 +203,13 @@ export default function GraphMode({ input }: Props) {
       >
         {!input.trim() && (
           <div className="flex items-center justify-center h-full">
-            <p className="text-[12px] text-on-surface-muted">Enter JSON to view graph</p>
+            <p className="text-[0.75rem] text-on-surface-muted">Enter JSON to view graph</p>
           </div>
         )}
 
         {error && (
           <div className="p-6">
-            <p className="text-[12px] text-red-500 font-mono bg-red-50 border border-red-200 rounded-[8px] p-3">
+            <p className="text-[0.75rem] text-red-500 font-mono bg-red-50 border border-red-200 rounded-[0.5rem] p-3">
               {error}
             </p>
           </div>
@@ -232,13 +232,13 @@ export default function GraphMode({ input }: Props) {
 
       {/* Zoom controls */}
       {layout && (
-        <div className="absolute bottom-4 right-4 flex items-center gap-px bg-surface border border-border rounded-[9px] shadow-[0_2px_8px_rgba(0,0,0,0.12)] overflow-hidden">
+        <div className="absolute bottom-4 right-4 flex items-center gap-px bg-surface border border-border rounded-[0.56rem] shadow-[0_0.12rem_0.5rem_rgba(0,0,0,0.12)] overflow-hidden">
           <ZoomBtn onClick={zoomOut} title="Zoom out">
             <ZoomOut size={13} />
           </ZoomBtn>
           <button
             onClick={zoomReset}
-            className="px-[10px] py-[6px] text-[11px] font-semibold text-on-surface-muted bg-transparent border-none cursor-pointer font-[inherit] hover:bg-surface-hover hover:text-on-surface transition-colors duration-150 min-w-[46px] text-center tabular-nums"
+            className="px-[0.62rem] py-[0.38rem] text-[0.69rem] font-semibold text-on-surface-muted bg-transparent border-none cursor-pointer font-[inherit] hover:bg-surface-hover hover:text-on-surface transition-colors duration-150 min-w-[2.88rem] text-center tabular-nums"
           >
             {Math.round(zoom * 100)}%
           </button>
@@ -254,7 +254,7 @@ export default function GraphMode({ input }: Props) {
 
       {/* Node count */}
       {layout && (
-        <div className="absolute top-3 left-3 text-[11px] font-medium text-on-surface-muted bg-surface border border-border rounded-full px-3 py-1">
+        <div className="absolute top-3 left-3 text-[0.69rem] font-medium text-on-surface-muted bg-surface border border-border rounded-full px-3 py-1">
           {layout.nodes.size} node{layout.nodes.size !== 1 ? 's' : ''}
         </div>
       )}
@@ -267,7 +267,7 @@ function ZoomBtn({ children, onClick, title }: { children: React.ReactNode; onCl
     <button
       onClick={onClick}
       title={title}
-      className="flex items-center justify-center w-[30px] py-[6px] bg-transparent border-none cursor-pointer text-on-surface-muted hover:bg-surface-hover hover:text-on-surface transition-colors duration-150"
+      className="flex items-center justify-center w-[1.88rem] py-[0.38rem] bg-transparent border-none cursor-pointer text-on-surface-muted hover:bg-surface-hover hover:text-on-surface transition-colors duration-150"
     >
       {children}
     </button>
