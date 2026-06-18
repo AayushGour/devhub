@@ -40,12 +40,6 @@ export const TOKENIZER_DEFS: TokenizerDef[] = [
     family: 'local',
     description: 'Llama 3 family',
   },
-  {
-    id: 'google/gemma-2-2b',
-    label: 'Gemma 2',
-    family: 'local',
-    description: 'Gemma 2 family',
-  },
 ]
 
 let tiktokenInitPromise: Promise<void> | null = null
