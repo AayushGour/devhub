@@ -8,6 +8,7 @@ import DiagramStudioPage from '@/features/diagram-studio'
 import RagStudioPage from '@/features/rag-studio'
 import JsonStudioPage from '@/features/json-studio'
 import TokenStudioPage from '@/features/token-studio'
+import CryptoStudioPage from '@/features/crypto-studio'
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="tools/rag" element={<RagStudioPage />} />
         <Route path="tools/json" element={<JsonStudioPage />} />
         <Route path="tools/tokens" element={<TokenStudioPage />} />
+        <Route path="tools/crypto" element={<CryptoStudioPage />} />
       </Route>
     </Routes>
   )

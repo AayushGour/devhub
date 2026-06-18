@@ -63,6 +63,15 @@ const studios: Studio[] = [
     href: '/tools/tokens',
   },
   {
+    id: 'crypto',
+    title: 'Crypto Studio',
+    description: 'JWT decode & encode, hash generator, Base64, AES cipher, HMAC, and random token generator.',
+    icon: <KeyRound size={20} />,
+    status: 'available',
+    phase: 'Phase 7',
+    href: '/tools/crypto',
+  },
+  {
     id: 'api',
     title: 'API Studio',
     description: 'OpenAPI viewer, request explorer, curl generator, and SDK snippets.',
@@ -77,14 +86,6 @@ const studios: Studio[] = [
     icon: <Database size={20} />,
     status: 'coming-soon',
     phase: 'Phase 6',
-  },
-  {
-    id: 'auth',
-    title: 'Auth Studio',
-    description: 'JWT decoder and generator, OAuth flow visualizer, Base64 tools.',
-    icon: <KeyRound size={20} />,
-    status: 'coming-soon',
-    phase: 'Phase 7',
   },
   {
     id: 'utilities',
@@ -122,8 +123,8 @@ export default function HomePage() {
         <h1 className="font-sans text-[40px] font-semibold leading-[1.1] tracking-[-0.5px] text-on-surface mb-3">
           Developer Workspace
         </h1>
-        <p className="text-[17px] font-normal leading-[1.47] tracking-[-0.374px] text-on-surface-muted max-w-[480px]">
-          Docs, diagrams, APIs, and utilities — all in one browser-based tool. No backend, no signup.
+        <p className="text-[17px] font-normal leading-[1.47] tracking-[-0.374px] text-on-surface-muted max-w-[35rem]">
+          Docs, diagrams, APIs, and utilities — all in one browser-based tool. No backend, no signup. Completely free!!!
         </p>
       </div>
 
