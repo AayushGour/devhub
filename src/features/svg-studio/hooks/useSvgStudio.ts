@@ -1,144 +1,192 @@
-import { useState, useCallback } from 'react'
-import {
-  fileToCanvas,
-  traceDetailed,
-  traceSimplified,
-  buildEmbedSvg,
-  formatSvg,
-  minifySvg,
-} from '../utils/converters'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { fileToCanvas } from '../utils/canvas'
+import { runSvgo, formatSvg, svgStats, type SvgStats } from '../utils/postprocess'
+import { ENGINES, PRESETS, getPreset } from '../engines'
+import type { EnginePreset, TraceParams } from '../engines/types'
 
-export type Phase = 'idle' | 'processing' | 'comparing' | 'done'
-export type MethodLabel = 'Detailed' | 'Simplified' | 'Embed'
+export type Phase = 'idle' | 'processing' | 'gallery' | 'done'
 
-export interface CompareOption {
-  svg: string
-  label: MethodLabel
-  failed?: boolean
-}
+export type TileState =
+  | { status: 'pending' }
+  | { status: 'done'; svg: string; stats: SvgStats }
+  | { status: 'failed'; error: string }
 
-interface CompareResults {
-  a: CompareOption
-  b: CompareOption
-}
+const REFINE_DEBOUNCE = 250
 
 export interface SvgStudioState {
   phase: Phase
   file: File | null
-  compare: CompareResults | null
+  presets: EnginePreset[]
+  tiles: Record<string, TileState>
+  activeId: string | null
+  activePreset: EnginePreset | null
+  params: Record<string, TraceParams>
   activeSvg: string | null
-  activeLabel: MethodLabel | null
-  embedSvg: string | null
   error: string | null
+  refining: boolean
   handleFile: (file: File) => void
+  selectTile: (id: string) => void
+  backToGallery: () => void
   editSvg: (svg: string) => void
-  selectMethod: (method: 'A' | 'B') => void
-  switchToEmbed: () => void
-  switchToVector: () => void
+  refine: (id: string, knobId: string, value: number) => void
+}
+
+async function runTrace(
+  preset: EnginePreset,
+  canvas: HTMLCanvasElement,
+  file: File,
+  params: TraceParams
+): Promise<TileState> {
+  const raw = await ENGINES[preset.engine]({ canvas, file }, params)
+  const svg = preset.engine === 'embed' ? formatSvg(raw) : formatSvg(runSvgo(raw))
+  return { status: 'done', svg, stats: svgStats(svg) }
 }
 
 export function useSvgStudio(): SvgStudioState {
   const [phase, setPhase] = useState<Phase>('idle')
   const [file, setFile] = useState<File | null>(null)
-  const [compare, setCompare] = useState<CompareResults | null>(null)
-  const [activeSvg, setActiveSvg] = useState<string | null>(null)
-  const [activeLabel, setActiveLabel] = useState<MethodLabel | null>(null)
-  const [embedSvg, setEmbedSvg] = useState<string | null>(null)
+  const [tiles, setTiles] = useState<Record<string, TileState>>({})
+  const [params, setParams] = useState<Record<string, TraceParams>>({})
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [editedSvg, setEditedSvg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // Tracks last committed vector result so embed↔vector toggle doesn't re-show modal
-  const [vectorSvg, setVectorSvg] = useState<string | null>(null)
-  const [vectorLabel, setVectorLabel] = useState<MethodLabel | null>(null)
+  const [refining, setRefining] = useState(false)
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const reqIds = useRef<Record<string, number>>({})
+  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  // Bumped per upload; in-flight traces from a previous file are discarded.
+  const runId = useRef(0)
+  // Authoritative copy of params so refine can read the latest synchronously.
+  const paramsRef = useRef<Record<string, TraceParams>>({})
+  // Lets the async refine callback read the latest activeId without re-subscribing.
+  const activeIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    activeIdRef.current = activeId
+  }, [activeId])
 
   const handleFile = useCallback(async (f: File) => {
+    const myRun = ++runId.current
     setFile(f)
     setPhase('processing')
     setError(null)
-    setCompare(null)
-    setActiveSvg(null)
-    setActiveLabel(null)
-    setEmbedSvg(null)
-    setVectorSvg(null)
-    setVectorLabel(null)
+    setActiveId(null)
+    setEditedSvg(null)
+    setRefining(false)
+    canvasRef.current = null
 
+    const initialParams: Record<string, TraceParams> = {}
+    const initialTiles: Record<string, TileState> = {}
+    for (const p of PRESETS) {
+      initialParams[p.id] = { ...p.defaults }
+      initialTiles[p.id] = { status: 'pending' }
+    }
+    paramsRef.current = initialParams
+    setParams(initialParams)
+    setTiles(initialTiles)
+
+    let canvas: HTMLCanvasElement
     try {
-      const canvas = await fileToCanvas(f)
-
-      const [resultA, resultB, resultEmbed] = await Promise.allSettled([
-        traceDetailed(canvas).then(minifySvg).then(formatSvg),
-        traceSimplified(canvas).then(minifySvg).then(formatSvg),
-        buildEmbedSvg(f, canvas).then(formatSvg),
-      ])
-
-      if (resultA.status === 'rejected') console.error('[Detailed]', resultA.reason)
-      if (resultB.status === 'rejected') console.error('[Simplified]', resultB.reason)
-
-      const svgA = resultA.status === 'fulfilled' ? resultA.value : ''
-      const svgB = resultB.status === 'fulfilled' ? resultB.value : ''
-      const embed = resultEmbed.status === 'fulfilled' ? resultEmbed.value : ''
-
-      if (!svgA && !svgB) {
-        const msg = resultA.status === 'rejected' ? (resultA.reason as Error).message : 'Conversion failed'
-        setError(msg)
-        setPhase('idle')
-        return
-      }
-
-      setCompare({
-        a: { svg: svgA, label: 'Detailed', failed: !svgA },
-        b: { svg: svgB, label: 'Simplified', failed: !svgB },
-      })
-      setEmbedSvg(embed)
-
-      if (!svgA || !svgB) {
-        const svg = svgA || svgB
-        const label: MethodLabel = svgA ? 'Detailed' : 'Simplified'
-        setActiveSvg(svg)
-        setActiveLabel(label)
-        setVectorSvg(svg)
-        setVectorLabel(label)
-        setPhase('done')
-      } else {
-        setPhase('comparing')
-      }
+      canvas = await fileToCanvas(f)
     } catch (e) {
+      if (myRun !== runId.current) return
       setError((e as Error).message)
       setPhase('idle')
+      return
     }
+    if (myRun !== runId.current) return // superseded by a newer upload
+    canvasRef.current = canvas
+    setPhase('gallery')
+
+    // Progressive: each preset fills its own tile as it resolves.
+    for (const preset of PRESETS) {
+      runTrace(preset, canvas, f, initialParams[preset.id])
+        .then(tile => {
+          if (myRun !== runId.current) return
+          setTiles(prev => ({ ...prev, [preset.id]: tile }))
+        })
+        .catch(e => {
+          if (myRun !== runId.current) return
+          console.error(`[${preset.label}]`, e)
+          setTiles(prev => ({
+            ...prev,
+            [preset.id]: { status: 'failed', error: (e as Error).message },
+          }))
+        })
+    }
+  }, [])
+
+  const selectTile = useCallback((id: string) => {
+    setActiveId(id)
+    setEditedSvg(null)
+    setPhase('done')
+  }, [])
+
+  const backToGallery = useCallback(() => {
+    setPhase('gallery')
   }, [])
 
   const editSvg = useCallback((svg: string) => {
-    setActiveSvg(svg)
+    setEditedSvg(svg)
   }, [])
 
-  const selectMethod = useCallback((method: 'A' | 'B') => {
-    if (!compare) return
-    const option = method === 'A' ? compare.a : compare.b
-    setActiveSvg(option.svg)
-    setActiveLabel(option.label)
-    setVectorSvg(option.svg)
-    setVectorLabel(option.label)
-    setPhase('done')
-  }, [compare])
+  const refine = useCallback((id: string, knobId: string, value: number) => {
+    const canvas = canvasRef.current
+    const preset = getPreset(id)
+    const f = file
+    if (!canvas || !preset || !f) return
 
-  const switchToEmbed = useCallback(() => {
-    if (!embedSvg) return
-    setActiveSvg(embedSvg)
-    setActiveLabel('Embed')
-    setPhase('done')
-  }, [embedSvg])
+    // Update params from the authoritative ref (no side effects in the updater).
+    const nextParams = { ...paramsRef.current[id], [knobId]: value }
+    paramsRef.current = { ...paramsRef.current, [id]: nextParams }
+    setParams(paramsRef.current)
 
-  const switchToVector = useCallback(() => {
-    if (vectorSvg) {
-      setActiveSvg(vectorSvg)
-      setActiveLabel(vectorLabel)
-      setPhase('done')
-    } else if (compare) {
-      setPhase('comparing')
-    }
-  }, [vectorSvg, vectorLabel, compare])
+    clearTimeout(timers.current[id])
+    timers.current[id] = setTimeout(() => {
+      const myRun = runId.current
+      const reqId = (reqIds.current[id] ?? 0) + 1
+      reqIds.current[id] = reqId
+      const fresh = () => reqIds.current[id] === reqId && myRun === runId.current
+      setRefining(true)
+      runTrace(preset, canvas, f, nextParams)
+        .then(tile => {
+          if (!fresh()) return
+          setTiles(prevTiles => ({ ...prevTiles, [id]: tile }))
+          setEditedSvg(prevEdited => (id === activeIdRef.current ? null : prevEdited))
+        })
+        .catch(e => {
+          if (!fresh()) return
+          setTiles(prevTiles => ({
+            ...prevTiles,
+            [id]: { status: 'failed', error: (e as Error).message },
+          }))
+        })
+        .finally(() => {
+          if (fresh()) setRefining(false)
+        })
+    }, REFINE_DEBOUNCE)
+  }, [file])
+
+  const activePreset = activeId ? getPreset(activeId) ?? null : null
+  const activeTile = activeId ? tiles[activeId] : undefined
+  const activeSvg =
+    editedSvg ?? (activeTile && activeTile.status === 'done' ? activeTile.svg : null)
 
   return {
-    phase, file, compare, activeSvg, activeLabel, embedSvg, error,
-    handleFile, editSvg, selectMethod, switchToEmbed, switchToVector,
+    phase,
+    file,
+    presets: PRESETS,
+    tiles,
+    activeId,
+    activePreset,
+    params,
+    activeSvg,
+    error,
+    refining,
+    handleFile,
+    selectTile,
+    backToGallery,
+    editSvg,
+    refine,
   }
 }

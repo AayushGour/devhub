@@ -1,6 +1,6 @@
 import Editor from '@monaco-editor/react'
 import { useSettingsStore } from '@/store/settingsStore'
-import { svgStats } from '../utils/converters'
+import { svgStats } from '../utils/postprocess'
 
 interface Props {
   svg: string
@@ -19,7 +19,7 @@ export default function SvgCodePanel({ svg, onChange }: Props) {
   }
 
   return (
-    <div className="flex flex-col border-r border-border" style={{ width: '45%' }}>
+    <div className="flex flex-col border-r border-border w-[45%]">
       <div className="shrink-0 h-9 flex items-center gap-3 px-3 border-b border-border bg-surface-raised">
         <span className="text-[11px] font-semibold text-on-surface-muted uppercase tracking-[0.06em]">SVG Code</span>
         <div className="flex-1" />

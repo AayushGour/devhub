@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import DOMPurify from 'dompurify'
-import { normalizeSvgForDisplay } from '../utils/converters'
+import { normalizeSvgForDisplay } from '../utils/postprocess'
 
 interface Props {
   svg: string
