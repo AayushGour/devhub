@@ -32,7 +32,7 @@ export default function UploadZone({ onFile, error }: Props) {
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
         className={cn(
-          'flex flex-col items-center gap-4 w-[400px] border-2 border-dashed rounded-[20px] p-12 cursor-pointer transition-colors duration-150',
+          'flex flex-col items-center gap-4 w-[25rem] border-2 border-dashed rounded-[1.25rem] p-12 cursor-pointer transition-colors duration-150',
           dragging
             ? 'border-accent bg-accent/5'
             : 'border-border hover:border-accent/50 bg-surface-raised'
@@ -53,24 +53,24 @@ export default function UploadZone({ onFile, error }: Props) {
         </div>
 
         <div className="flex flex-col items-center gap-1.5 text-center">
-          <span className="text-[15px] font-semibold text-on-surface">
+          <span className="text-[0.94rem] font-semibold text-on-surface">
             {dragging ? 'Drop to convert' : 'Drop PNG or JPG here'}
           </span>
-          <span className="text-[13px] text-on-surface-muted">
+          <span className="text-[0.81rem] text-on-surface-muted">
             or <span className="text-accent">click to browse</span>
           </span>
         </div>
 
         <div className="flex items-center gap-2 mt-1">
           {['PNG', 'JPG'].map(fmt => (
-            <span key={fmt} className="text-[11px] font-medium font-mono text-on-surface-muted bg-surface border border-border rounded-full px-2.5 py-0.5">
+            <span key={fmt} className="text-[0.69rem] font-medium font-mono text-on-surface-muted bg-surface border border-border rounded-full px-2.5 py-0.5">
               {fmt}
             </span>
           ))}
         </div>
 
         {error && (
-          <p className="text-[12px] text-red-500 bg-red-50 border border-red-200 rounded-[8px] px-3 py-2 w-full text-center">
+          <p className="text-[0.75rem] text-red-500 bg-red-50 border border-red-200 rounded-[0.5rem] px-3 py-2 w-full text-center">
             {error}
           </p>
         )}

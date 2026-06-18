@@ -11,7 +11,7 @@ const MERMAID_THEMES: { value: MermaidTheme; label: string }[] = [
   { value: 'neutral', label: 'Neutral' },
 ]
 
-const SELECT_CLS = 'bg-transparent border border-border rounded-[7px] px-[8px] py-[5px] text-xs text-on-surface-muted outline-none font-[inherit] cursor-pointer'
+const SELECT_CLS = 'bg-transparent border border-border rounded-[0.44rem] px-[0.5rem] py-[0.31rem] text-xs text-on-surface-muted outline-none font-[inherit] cursor-pointer'
 
 interface DiagramToolbarProps {
   title: string
@@ -31,16 +31,16 @@ export default function DiagramToolbar({
   onExportSVG, onExportPNG,
 }: DiagramToolbarProps) {
   return (
-    <div className="h-11 flex items-center px-4 gap-[10px] shrink-0 border-b border-border bg-surface">
+    <div className="h-11 flex items-center px-4 gap-[0.62rem] shrink-0 border-b border-border bg-surface">
       <input
         value={title}
         onChange={e => onTitleChange(e.target.value)}
         placeholder="Untitled Diagram"
-        className="toolbar-title bg-transparent border-0 border-b border-b-transparent outline-none text-on-surface text-[13px] font-semibold tracking-[-0.2px] font-[inherit] w-[180px] px-1 py-0.5 focus:border-b-accent transition-colors duration-150"
+        className="toolbar-title bg-transparent border-0 border-b border-b-transparent outline-none text-on-surface text-[0.81rem] font-semibold tracking-[-0.01rem] font-[inherit] w-[11.25rem] px-1 py-0.5 focus:border-b-accent transition-colors duration-150"
       />
 
       {diagramType && (
-        <span className="text-[11px] font-medium text-on-surface-muted bg-surface-raised border border-border rounded-full px-2 py-0.5 tracking-[-0.1px] shrink-0">
+        <span className="text-[0.69rem] font-medium text-on-surface-muted bg-surface-raised border border-border rounded-full px-2 py-0.5 tracking-[-0.01rem] shrink-0">
           {DIAGRAM_TYPE_LABELS[diagramType]}
         </span>
       )}
@@ -50,7 +50,7 @@ export default function DiagramToolbar({
       <button
         onClick={onOpenTemplates}
         className={cn(
-          'flex items-center gap-[5px] px-[10px] py-[5px] rounded-[7px] border border-border',
+          'flex items-center gap-[0.31rem] px-[0.62rem] py-[0.31rem] rounded-[0.44rem] border border-border',
           'bg-transparent text-on-surface-muted text-xs cursor-pointer font-[inherit]',
           'transition-colors duration-150 hover:text-on-surface hover:border-on-surface-muted'
         )}
@@ -76,14 +76,14 @@ export default function DiagramToolbar({
 
       <button
         onClick={onExportSVG}
-        className="flex items-center gap-[5px] px-[14px] py-1.5 rounded-full bg-accent text-accent-text border-none text-xs font-medium cursor-pointer font-[inherit] tracking-[-0.15px] hover:bg-accent-hover active:scale-95 transition-[background-color,transform] duration-150"
+        className="flex items-center gap-[0.31rem] px-[0.88rem] py-1.5 rounded-full bg-accent text-accent-text border-none text-xs font-medium cursor-pointer font-[inherit] tracking-[-0.01rem] hover:bg-accent-hover active:scale-95 transition-[background-color,transform] duration-150"
       >
         <FileImage size={13} /> SVG
       </button>
 
       <button
         onClick={onExportPNG}
-        className="flex items-center gap-[5px] px-[14px] py-1.5 rounded-full bg-transparent text-accent border border-accent text-xs font-normal cursor-pointer font-[inherit] tracking-[-0.15px] active:scale-95 transition-transform duration-150"
+        className="flex items-center gap-[0.31rem] px-[0.88rem] py-1.5 rounded-full bg-transparent text-accent border border-accent text-xs font-normal cursor-pointer font-[inherit] tracking-[-0.01rem] active:scale-95 transition-transform duration-150"
       >
         <FileType size={13} /> PNG
       </button>

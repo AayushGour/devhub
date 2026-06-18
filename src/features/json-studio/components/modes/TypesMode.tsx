@@ -15,7 +15,7 @@ const LANGS: { value: TypeLang; label: string; monacoLang: string }[] = [
   { value: 'csharp', label: 'C#', monacoLang: 'csharp' },
 ]
 
-const SELECT_CLS = 'bg-surface-raised border border-border rounded-[7px] px-[8px] py-[4px] text-[12px] text-on-surface outline-none font-[inherit] cursor-pointer'
+const SELECT_CLS = 'bg-surface-raised border border-border rounded-[0.44rem] px-[0.5rem] py-[0.25rem] text-[0.75rem] text-on-surface outline-none font-[inherit] cursor-pointer'
 
 export default function TypesMode({ input, typeLang, setTypeLang, rootName, setRootName }: Props) {
   const monacoLang = LANGS.find(l => l.value === typeLang)?.monacoLang ?? 'typescript'
@@ -32,13 +32,13 @@ export default function TypesMode({ input, typeLang, setTypeLang, rootName, setR
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="h-9 flex items-center px-4 gap-2 shrink-0 border-b border-border bg-surface-raised">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-on-surface-muted">
+        <span className="text-[0.69rem] font-semibold uppercase tracking-[0.06em] text-on-surface-muted">
           Root name
         </span>
         <input
           value={rootName}
           onChange={e => setRootName(e.target.value)}
-          className="bg-surface border border-border rounded-[6px] px-2 py-[3px] text-[12px] text-on-surface outline-none focus:border-accent transition-colors duration-150 w-24 font-[inherit]"
+          className="bg-surface border border-border rounded-[0.38rem] px-2 py-[0.19rem] text-[0.75rem] text-on-surface outline-none focus:border-accent transition-colors duration-150 w-24 font-[inherit]"
         />
 
         <div className="w-px h-4 bg-border" />
@@ -58,7 +58,7 @@ export default function TypesMode({ input, typeLang, setTypeLang, rootName, setR
         {output && !error && (
           <button
             onClick={() => navigator.clipboard.writeText(output)}
-            className="flex items-center gap-[5px] text-[11px] text-on-surface-muted hover:text-on-surface transition-colors duration-150 cursor-pointer bg-transparent border-none font-[inherit]"
+            className="flex items-center gap-[0.31rem] text-[0.69rem] text-on-surface-muted hover:text-on-surface transition-colors duration-150 cursor-pointer bg-transparent border-none font-[inherit]"
           >
             <Copy size={12} /> Copy
           </button>
@@ -66,7 +66,7 @@ export default function TypesMode({ input, typeLang, setTypeLang, rootName, setR
       </div>
 
       {error && (
-        <div className="p-4 text-[12px] text-red-500 font-mono">
+        <div className="p-4 text-[0.75rem] text-red-500 font-mono">
           {error}
         </div>
       )}
@@ -79,7 +79,7 @@ export default function TypesMode({ input, typeLang, setTypeLang, rootName, setR
 
       {!input.trim() && (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-[12px] text-on-surface-muted">Enter JSON to generate types</p>
+          <p className="text-[0.75rem] text-on-surface-muted">Enter JSON to generate types</p>
         </div>
       )}
     </div>

@@ -12,10 +12,10 @@ interface Props {
 export default function Gallery({ presets, tiles, activeId, onSelect }: Props) {
   return (
     <div className="flex-1 overflow-auto p-6">
-      <div className="max-w-[1100px] mx-auto">
+      <div className="max-w-[68.75rem] mx-auto">
         <div className="mb-5">
-          <h2 className="text-[15px] font-semibold text-on-surface">Choose a result</h2>
-          <p className="text-[12px] text-on-surface-muted mt-0.5">
+          <h2 className="text-[0.94rem] font-semibold text-on-surface">Choose a result</h2>
+          <p className="text-[0.75rem] text-on-surface-muted mt-0.5">
             Each engine traces independently — pick one to refine. Stats show how minimal each output is.
           </p>
         </div>

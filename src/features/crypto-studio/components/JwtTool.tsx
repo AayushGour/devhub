@@ -201,7 +201,7 @@ function JwtEncode() {
             {error}
           </div>
         ) : (
-          <div className={cn(BLOCK_CLS, !output && 'text-on-surface-muted italic min-h-[80px]')}>
+          <div className={cn(BLOCK_CLS, !output && 'text-on-surface-muted italic min-h-20')}>
             {output || 'Signed token appears here…'}
           </div>
         )}

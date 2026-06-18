@@ -126,10 +126,10 @@ export default function DiagramPreview({ code, mermaidTheme, svgRef }: DiagramPr
         )}
         {error && (
           <div className="w-full max-w-lg">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-red-500 mb-2">
+            <p className="text-[0.69rem] font-semibold uppercase tracking-[0.06em] text-red-500 mb-2">
               Syntax Error
             </p>
-            <pre className="text-[12px] text-red-400 bg-white/80 border border-red-200 rounded-lg p-3 whitespace-pre-wrap font-mono leading-relaxed">
+            <pre className="text-[0.75rem] text-red-400 bg-white/80 border border-red-200 rounded-lg p-3 whitespace-pre-wrap font-mono leading-relaxed">
               {error}
             </pre>
           </div>
@@ -143,7 +143,7 @@ export default function DiagramPreview({ code, mermaidTheme, svgRef }: DiagramPr
 
       {/* Zoom controls */}
       {!empty && !error && (
-        <div className="absolute bottom-4 right-4 flex items-center gap-px bg-surface border border-border rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.12)] overflow-hidden">
+        <div className="absolute bottom-4 right-4 flex items-center gap-px bg-surface border border-border rounded-lg shadow-[0_0.12rem_0.5rem_rgba(0,0,0,0.12)] overflow-hidden">
           <ZoomBtn onClick={zoomOut} title="Zoom out (Ctrl+scroll)">
             <ZoomOut size={13} />
           </ZoomBtn>
@@ -151,7 +151,7 @@ export default function DiagramPreview({ code, mermaidTheme, svgRef }: DiagramPr
           <button
             onClick={zoomFit}
             title="Fit to screen"
-            className="px-[10px] py-[6px] text-[11px] font-semibold text-on-surface-muted bg-transparent border-none cursor-pointer font-[inherit] hover:bg-surface-hover hover:text-on-surface transition-colors duration-150 min-w-[46px] text-center tabular-nums"
+            className="px-[0.62rem] py-[0.38rem] text-[0.69rem] font-semibold text-on-surface-muted bg-transparent border-none cursor-pointer font-[inherit] hover:bg-surface-hover hover:text-on-surface transition-colors duration-150 min-w-[2.88rem] text-center tabular-nums"
           >
             {Math.round(zoom * 100)}%
           </button>
@@ -183,7 +183,7 @@ function ZoomBtn({ children, onClick, title, disabled }: {
       title={title}
       disabled={disabled}
       className={cn(
-        'flex items-center justify-center w-[30px] py-[6px] bg-transparent border-none cursor-pointer text-on-surface-muted transition-colors duration-150',
+        'flex items-center justify-center w-[1.88rem] py-[0.38rem] bg-transparent border-none cursor-pointer text-on-surface-muted transition-colors duration-150',
         disabled ? 'opacity-30 cursor-default' : 'hover:bg-surface-hover hover:text-on-surface'
       )}
     >

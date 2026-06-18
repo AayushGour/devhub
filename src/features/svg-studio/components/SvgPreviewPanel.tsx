@@ -17,7 +17,7 @@ function ZoomBtn({ children, onClick, title }: { children: React.ReactNode; onCl
     <button
       onClick={onClick}
       title={title}
-      className="flex items-center justify-center w-[30px] py-[6px] bg-transparent border-none cursor-pointer text-on-surface-muted hover:bg-surface-hover hover:text-on-surface transition-colors duration-150"
+      className="flex items-center justify-center w-[1.88rem] py-[0.38rem] bg-transparent border-none cursor-pointer text-on-surface-muted hover:bg-surface-hover hover:text-on-surface transition-colors duration-150"
     >
       {children}
     </button>
@@ -69,7 +69,7 @@ export default function SvgPreviewPanel({ svg }: Props) {
     <div className="flex-1 relative flex flex-col min-h-0 bg-surface">
       {/* Panel header */}
       <div className="shrink-0 h-9 flex items-center px-3 border-b border-border bg-surface-raised">
-        <span className="text-[11px] font-semibold text-on-surface-muted uppercase tracking-[0.06em]">Preview</span>
+        <span className="text-[0.69rem] font-semibold text-on-surface-muted uppercase tracking-[0.06em]">Preview</span>
       </div>
 
       {/* Viewport */}
@@ -100,11 +100,11 @@ export default function SvgPreviewPanel({ svg }: Props) {
       </div>
 
       {/* Zoom controls */}
-      <div className="absolute bottom-4 right-4 flex items-center gap-px bg-surface border border-border rounded-[9px] shadow-[0_2px_8px_rgba(0,0,0,0.12)] overflow-hidden">
+      <div className="absolute bottom-4 right-4 flex items-center gap-px bg-surface border border-border rounded-[0.56rem] shadow-[0_0.12rem_0.5rem_rgba(0,0,0,0.12)] overflow-hidden">
         <ZoomBtn onClick={zoomOut} title="Zoom out"><ZoomOut size={13} /></ZoomBtn>
         <button
           onClick={zoomReset}
-          className="px-[10px] py-[6px] text-[11px] font-semibold text-on-surface-muted bg-transparent border-none cursor-pointer font-[inherit] hover:bg-surface-hover hover:text-on-surface transition-colors duration-150 min-w-[46px] text-center tabular-nums"
+          className="px-[0.62rem] py-[0.38rem] text-[0.69rem] font-semibold text-on-surface-muted bg-transparent border-none cursor-pointer font-[inherit] hover:bg-surface-hover hover:text-on-surface transition-colors duration-150 min-w-[2.88rem] text-center tabular-nums"
         >
           {Math.round(zoom * 100)}%
         </button>

@@ -37,20 +37,20 @@ export default function SettingsPage() {
   }, [])
 
   return (
-    <div className="max-w-[680px] mx-auto py-8 px-10">
+    <div className="max-w-[42.5rem] mx-auto py-8 px-10">
       {/* Hero */}
       <div className="mb-10">
-        <h1 className="font-sans text-[40px] font-semibold leading-[1.1] tracking-[-0.5px] text-on-surface mb-2">
+        <h1 className="font-sans text-[2.5rem] font-semibold leading-[1.1] tracking-[-0.03rem] text-on-surface mb-2">
           Settings
         </h1>
-        <p className="text-[17px] text-on-surface-muted tracking-[-0.374px] leading-[1.47]">
+        <p className="text-[1.06rem] text-on-surface-muted tracking-[-0.02rem] leading-[1.47]">
           Customize your DevHub experience.
         </p>
       </div>
 
       {/* RAG Studio section */}
-      <section className="bg-surface border border-border rounded-[18px] p-6 mb-4">
-        <h2 className="text-[17px] font-semibold tracking-[-0.374px] text-on-surface mb-1">
+      <section className="bg-surface border border-border rounded-[1.12rem] p-6 mb-4">
+        <h2 className="text-[1.06rem] font-semibold tracking-[-0.02rem] text-on-surface mb-1">
           RAG Studio
         </h2>
         <p className="text-sm text-on-surface-muted mb-5">
@@ -77,7 +77,7 @@ export default function SettingsPage() {
             <span
               className={cn(
                 'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-[left] duration-200',
-                contextAwareExpansion ? 'left-[22px]' : 'left-0.5',
+                contextAwareExpansion ? 'left-[1.38rem]' : 'left-0.5',
               )}
             />
           </button>
@@ -98,7 +98,7 @@ export default function SettingsPage() {
               const familyModels = CURATED_MODELS.filter((m) => m.family === family)
               return (
                 <div key={family}>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-on-surface-muted mb-2">
+                  <p className="text-[0.69rem] font-semibold uppercase tracking-[0.06em] text-on-surface-muted mb-2">
                     {family}
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -109,7 +109,7 @@ export default function SettingsPage() {
                           key={model.id}
                           onClick={() => setRagLlmModel(model.id)}
                           className={cn(
-                            'flex flex-col items-start gap-1 px-3 py-2.5 rounded-[10px] border-2 bg-transparent cursor-pointer transition-colors duration-150 font-[inherit] text-left',
+                            'flex flex-col items-start gap-1 px-3 py-2.5 rounded-[0.62rem] border-2 bg-transparent cursor-pointer transition-colors duration-150 font-[inherit] text-left',
                             active
                               ? 'border-accent bg-accent/5'
                               : 'border-border hover:border-on-surface-muted',
@@ -117,7 +117,7 @@ export default function SettingsPage() {
                         >
                           <div className="flex items-center gap-1.5">
                             <span className={cn(
-                              'text-[13px] leading-none tracking-[-0.2px]',
+                              'text-[0.81rem] leading-none tracking-[-0.01rem]',
                               active ? 'font-semibold text-on-surface' : 'font-medium text-on-surface',
                             )}>
                               {model.label}
@@ -126,7 +126,7 @@ export default function SettingsPage() {
                               <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" title="Cached" />
                             )}
                           </div>
-                          <span className="text-[11px] text-on-surface-muted leading-none">
+                          <span className="text-[0.69rem] text-on-surface-muted leading-none">
                             {formatVram(model.vramMB)} VRAM
                           </span>
                         </button>
@@ -141,8 +141,8 @@ export default function SettingsPage() {
       </section>
 
       {/* Theme section */}
-      <section className="bg-surface border border-border rounded-[18px] p-6">
-        <h2 className="text-[17px] font-semibold tracking-[-0.374px] text-on-surface mb-5">
+      <section className="bg-surface border border-border rounded-[1.12rem] p-6">
+        <h2 className="text-[1.06rem] font-semibold tracking-[-0.02rem] text-on-surface mb-5">
           Appearance
         </h2>
 
@@ -152,7 +152,7 @@ export default function SettingsPage() {
               key={t.value}
               onClick={() => setTheme(t.value)}
               className={cn(
-                'flex flex-col items-center gap-2 p-[10px] rounded-[11px] border-2 bg-transparent cursor-pointer transition-colors duration-150 w-24 font-[inherit]',
+                'flex flex-col items-center gap-2 p-[0.62rem] rounded-[0.69rem] border-2 bg-transparent cursor-pointer transition-colors duration-150 w-24 font-[inherit]',
                 theme === t.value
                   ? 'border-accent'
                   : 'border-border hover:border-on-surface-muted'
@@ -169,7 +169,7 @@ export default function SettingsPage() {
                 />
               </div>
               <span className={cn(
-                'text-xs tracking-[-0.12px] text-on-surface',
+                'text-xs tracking-[-0.01rem] text-on-surface',
                 theme === t.value ? 'font-semibold' : 'font-normal'
               )}>
                 {t.label}

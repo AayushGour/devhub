@@ -67,9 +67,9 @@ function AiBubble({ msg, stage }: { msg: ChatMessage; stage: RetrievalStage }) {
       </div>
       {!msg.streaming && (
         <div className="flex items-center gap-3 px-1">
-          <span className="text-[10px] text-on-surface-muted">{formatTime(msg.timestamp)}</span>
+          <span className="text-[0.62rem] text-on-surface-muted">{formatTime(msg.timestamp)}</span>
           {msg.generationMs != null && (
-            <span className="text-[10px] text-on-surface-muted">
+            <span className="text-[0.62rem] text-on-surface-muted">
               Generated in {formatMs(msg.generationMs)}
             </span>
           )}
@@ -116,7 +116,7 @@ export default function ChatPanel({ messages, disabled, stage, onSend }: Props) 
               <div className="rounded-xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words bg-surface-raised text-on-surface">
                 {msg.content}
               </div>
-              <span className="text-[10px] text-on-surface-muted px-1">{formatTime(msg.timestamp)}</span>
+              <span className="text-[0.62rem] text-on-surface-muted px-1">{formatTime(msg.timestamp)}</span>
             </div>
           ) : (
             <AiBubble key={msg.id} msg={msg} stage={stage} />

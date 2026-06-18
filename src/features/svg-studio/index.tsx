@@ -50,8 +50,8 @@ export default function SvgStudioPage() {
           <div className="flex-1 flex flex-col items-center justify-center gap-4">
             <Loader2 size={28} className="text-accent animate-spin" />
             <div className="flex flex-col items-center gap-1">
-              <span className="text-[14px] font-medium text-on-surface">Loading image…</span>
-              <span className="text-[12px] text-on-surface-muted">Preparing tracers</span>
+              <span className="text-[0.88rem] font-medium text-on-surface">Loading image…</span>
+              <span className="text-[0.75rem] text-on-surface-muted">Preparing tracers</span>
             </div>
           </div>
         )}

@@ -30,12 +30,12 @@ export default function Toolbar({
   }
 
   return (
-    <div className="h-11 flex items-center px-4 gap-[10px] shrink-0 border-b border-border bg-surface">
+    <div className="h-11 flex items-center px-4 gap-[0.62rem] shrink-0 border-b border-border bg-surface">
       <input
         value={title}
         onChange={e => onTitleChange(e.target.value)}
         placeholder="Untitled"
-        className="toolbar-title bg-transparent border-0 border-b border-b-transparent outline-none text-on-surface text-[13px] font-semibold tracking-[-0.2px] font-[inherit] w-[180px] px-1 py-0.5 focus:border-b-accent transition-colors duration-150"
+        className="toolbar-title bg-transparent border-0 border-b border-b-transparent outline-none text-on-surface text-[0.81rem] font-semibold tracking-[-0.01rem] font-[inherit] w-[11.25rem] px-1 py-0.5 focus:border-b-accent transition-colors duration-150"
       />
 
       <div className="flex-1" />
@@ -44,7 +44,7 @@ export default function Toolbar({
         onClick={onToggleStyles}
         title="Toggle style panel"
         className={cn(
-          'flex items-center gap-[5px] px-[10px] py-[5px] rounded-[7px] border text-xs cursor-pointer font-[inherit] transition-all duration-150',
+          'flex items-center gap-[0.31rem] px-[0.62rem] py-[0.31rem] rounded-[0.44rem] border text-xs cursor-pointer font-[inherit] transition-all duration-150',
           stylesOpen
             ? 'border-accent bg-accent text-accent-text'
             : 'border-border bg-transparent text-on-surface-muted'
@@ -58,14 +58,14 @@ export default function Toolbar({
 
       <button
         onClick={onExportPDF}
-        className="flex items-center gap-[5px] px-[14px] py-1.5 rounded-full bg-accent text-accent-text border-none text-xs font-medium cursor-pointer font-[inherit] tracking-[-0.15px] hover:bg-accent-hover active:scale-95 transition-[background-color,transform] duration-150"
+        className="flex items-center gap-[0.31rem] px-[0.88rem] py-1.5 rounded-full bg-accent text-accent-text border-none text-xs font-medium cursor-pointer font-[inherit] tracking-[-0.01rem] hover:bg-accent-hover active:scale-95 transition-[background-color,transform] duration-150"
       >
         <FileDown size={13} /> PDF
       </button>
 
       <button
         onClick={onExportHTML}
-        className="flex items-center gap-[5px] px-[14px] py-1.5 rounded-full bg-transparent text-accent border border-accent text-xs font-normal cursor-pointer font-[inherit] tracking-[-0.15px] active:scale-95 transition-transform duration-150"
+        className="flex items-center gap-[0.31rem] px-[0.88rem] py-1.5 rounded-full bg-transparent text-accent border border-accent text-xs font-normal cursor-pointer font-[inherit] tracking-[-0.01rem] active:scale-95 transition-transform duration-150"
       >
         <FileText size={13} /> HTML
       </button>
@@ -73,7 +73,7 @@ export default function Toolbar({
       <button
         onClick={onExportMarkdown}
         title="Download .md"
-        className="flex items-center justify-center w-[30px] h-[30px] rounded-[7px] border border-border bg-transparent text-on-surface-muted cursor-pointer text-[10px] font-semibold font-[inherit] hover:text-on-surface transition-colors duration-150"
+        className="flex items-center justify-center w-[1.88rem] h-[1.88rem] rounded-[0.44rem] border border-border bg-transparent text-on-surface-muted cursor-pointer text-[0.62rem] font-semibold font-[inherit] hover:text-on-surface transition-colors duration-150"
       >
         .md
       </button>
@@ -88,7 +88,7 @@ export default function Toolbar({
       <button
         onClick={() => fileInputRef.current?.click()}
         title="Upload .md file"
-        className="flex items-center justify-center w-[30px] h-[30px] rounded-[7px] border border-border bg-transparent text-on-surface-muted cursor-pointer hover:text-on-surface transition-colors duration-150"
+        className="flex items-center justify-center w-[1.88rem] h-[1.88rem] rounded-[0.44rem] border border-border bg-transparent text-on-surface-muted cursor-pointer hover:text-on-surface transition-colors duration-150"
       >
         <Upload size={13} />
       </button>

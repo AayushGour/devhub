@@ -21,14 +21,14 @@ export default function Sidebar() {
     <Tooltip.Provider delayDuration={150}>
       <aside className={cn(
         'shrink-0 flex flex-col bg-surface-raised border-r border-border transition-[width] duration-200 ease',
-        sidebarCollapsed ? 'w-12' : 'w-[220px]'
+        sidebarCollapsed ? 'w-12' : 'w-[13.75rem]'
       )}>
         {/* Logo */}
         <div className={cn(
           'h-11 flex items-center shrink-0 border-b border-border gap-2',
           sidebarCollapsed ? 'px-3 justify-center' : 'px-4 justify-start'
         )}>
-          <span className="text-[18px] font-bold tracking-[-0.5px] text-on-surface leading-none font-sans">
+          <span className="text-[1.12rem] font-bold tracking-[-0.03rem] text-on-surface leading-none font-sans">
             {sidebarCollapsed ? 'D' : 'DevHub'}
           </span>
         </div>
@@ -68,10 +68,10 @@ export default function Sidebar() {
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             className={cn(
-              'flex items-center gap-2 bg-transparent border-none cursor-pointer text-on-surface-muted text-xs tracking-[-0.12px] w-full mt-1 hover:bg-surface-hover transition-colors duration-150',
+              'flex items-center gap-2 bg-transparent border-none cursor-pointer text-on-surface-muted text-xs tracking-[-0.01rem] w-full mt-1 hover:bg-surface-hover transition-colors duration-150',
               sidebarCollapsed
-                ? 'justify-center py-[7px] px-0 rounded-none'
-                : 'justify-start py-[7px] px-[10px] rounded-lg'
+                ? 'justify-center py-[0.44rem] px-0 rounded-none'
+                : 'justify-start py-[0.44rem] px-[0.62rem] rounded-lg'
             )}
           >
             {sidebarCollapsed
@@ -101,10 +101,10 @@ function NavItem({ to, label, icon, collapsed, end }: NavItemProps) {
       to={to}
       end={end}
       className={cn(
-        'sidebar-nav-link flex items-center gap-2 w-full no-underline text-[13px] tracking-[-0.2px] text-on-surface-muted transition-colors duration-150',
+        'sidebar-nav-link flex items-center gap-2 w-full no-underline text-[0.81rem] tracking-[-0.01rem] text-on-surface-muted transition-colors duration-150',
         collapsed
           ? 'justify-center py-2 px-0 rounded-none'
-          : 'justify-start py-2 px-[10px] rounded-lg',
+          : 'justify-start py-2 px-[0.62rem] rounded-lg',
         isActive && 'text-accent'
       )}
     >
@@ -122,7 +122,7 @@ function NavItem({ to, label, icon, collapsed, end }: NavItemProps) {
         <Tooltip.Content
           side="right"
           sideOffset={10}
-          className="bg-surface-raised text-on-surface text-xs font-medium tracking-[-0.12px] px-[10px] py-[5px] rounded-lg border border-border shadow-[0_2px_8px_rgba(0,0,0,0.12)] z-50"
+          className="bg-surface-raised text-on-surface text-xs font-medium tracking-[-0.01rem] px-[0.62rem] py-[0.31rem] rounded-lg border border-border shadow-[0_0.12rem_0.5rem_rgba(0,0,0,0.12)] z-50"
         >
           {label}
           <Tooltip.Arrow className="fill-border" />

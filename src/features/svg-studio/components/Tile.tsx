@@ -19,14 +19,14 @@ function formatBytes(n: number) {
 
 function StatBadge({ label, value }: { label: string; value: string | number }) {
   return (
-    <span className="flex items-baseline gap-1 text-[11px]">
+    <span className="flex items-baseline gap-1 text-[0.69rem]">
       <span className="font-semibold tabular-nums text-on-surface">{value}</span>
       <span className="text-on-surface-muted">{label}</span>
     </span>
   )
 }
 
-const DOTTED = 'bg-[radial-gradient(circle,var(--border)_1px,transparent_1px)] bg-[length:20px_20px]'
+const DOTTED = 'bg-[radial-gradient(circle,var(--border)_0.06rem,transparent_0.06rem)] bg-[length:1.25rem_1.25rem]'
 
 export default function Tile({ preset, state, active, onSelect }: Props) {
   const done = state.status === 'done'
@@ -41,16 +41,16 @@ export default function Tile({ preset, state, active, onSelect }: Props) {
       onClick={onSelect}
       disabled={!done}
       className={cn(
-        'flex flex-col rounded-[16px] border-2 overflow-hidden transition-all duration-150 text-left group',
+        'flex flex-col rounded-[1rem] border-2 overflow-hidden transition-all duration-150 text-left group',
         'disabled:cursor-default',
         active
-          ? 'border-accent shadow-[0_4px_24px_rgba(0,0,0,0.12)]'
-          : 'border-border enabled:hover:border-accent enabled:hover:shadow-[0_4px_24px_rgba(0,0,0,0.12)]',
+          ? 'border-accent shadow-[0_0.25rem_1.5rem_rgba(0,0,0,0.12)]'
+          : 'border-border enabled:hover:border-accent enabled:hover:shadow-[0_0.25rem_1.5rem_rgba(0,0,0,0.12)]',
       )}
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 bg-surface-raised border-b border-border shrink-0">
-        <span className="text-[11px] font-bold tracking-[0.06em] uppercase text-accent">
+        <span className="text-[0.69rem] font-bold tracking-[0.06em] uppercase text-accent">
           {preset.label}
         </span>
         <div className="flex-1" />
@@ -66,7 +66,7 @@ export default function Tile({ preset, state, active, onSelect }: Props) {
       </div>
 
       {/* Preview */}
-      <div className={cn('flex-1 flex items-center justify-center overflow-hidden relative min-h-[220px]', DOTTED)}>
+      <div className={cn('flex-1 flex items-center justify-center overflow-hidden relative min-h-[13.75rem]', DOTTED)}>
         {state.status === 'pending' && (
           <Loader2 size={22} className="text-accent animate-spin" />
         )}
@@ -74,18 +74,18 @@ export default function Tile({ preset, state, active, onSelect }: Props) {
         {state.status === 'failed' && (
           <div className="flex flex-col items-center gap-2 px-4 text-center">
             <AlertCircle size={20} className="text-red-500" />
-            <span className="text-[11px] text-on-surface-muted">{state.error || 'Trace failed'}</span>
+            <span className="text-[0.69rem] text-on-surface-muted">{state.error || 'Trace failed'}</span>
           </div>
         )}
 
         {done && (
           <>
             <div
-              className="w-full p-6 [&>svg]:block [&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[180px] [&>svg]:drop-shadow-md"
+              className="w-full p-6 [&>svg]:block [&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[11.25rem] [&>svg]:drop-shadow-md"
               dangerouslySetInnerHTML={{ __html: clean }}
             />
             <div className="absolute bottom-3 left-0 right-0 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-              <span className="bg-accent text-accent-text text-[11px] font-semibold px-3 py-1.5 rounded-full shadow-lg">
+              <span className="bg-accent text-accent-text text-[0.69rem] font-semibold px-3 py-1.5 rounded-full shadow-lg">
                 {active ? 'Selected' : 'Use this one'}
               </span>
             </div>
@@ -95,7 +95,7 @@ export default function Tile({ preset, state, active, onSelect }: Props) {
 
       {/* Hint */}
       <div className="px-4 py-2 bg-surface border-t border-border shrink-0">
-        <span className="text-[11px] text-on-surface-muted">{preset.hint}</span>
+        <span className="text-[0.69rem] text-on-surface-muted">{preset.hint}</span>
       </div>
     </button>
   )

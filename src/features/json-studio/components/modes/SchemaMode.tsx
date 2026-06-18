@@ -19,13 +19,13 @@ export default function SchemaMode({ input }: Props) {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="h-9 flex items-center px-4 gap-2 shrink-0 border-b border-border bg-surface-raised">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-on-surface-muted flex-1">
+        <span className="text-[0.69rem] font-semibold uppercase tracking-[0.06em] text-on-surface-muted flex-1">
           JSON Schema (draft-07)
         </span>
         {schema && (
           <button
             onClick={() => navigator.clipboard.writeText(schema)}
-            className="flex items-center gap-[5px] text-[11px] text-on-surface-muted hover:text-on-surface transition-colors duration-150 cursor-pointer bg-transparent border-none font-[inherit]"
+            className="flex items-center gap-[0.31rem] text-[0.69rem] text-on-surface-muted hover:text-on-surface transition-colors duration-150 cursor-pointer bg-transparent border-none font-[inherit]"
           >
             <Copy size={12} /> Copy
           </button>
@@ -33,7 +33,7 @@ export default function SchemaMode({ input }: Props) {
       </div>
 
       {error && (
-        <div className="p-4 text-[12px] text-red-500 font-mono">
+        <div className="p-4 text-[0.75rem] text-red-500 font-mono">
           {error}
         </div>
       )}
@@ -46,7 +46,7 @@ export default function SchemaMode({ input }: Props) {
 
       {!input.trim() && (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-[12px] text-on-surface-muted">Enter JSON to generate schema</p>
+          <p className="text-[0.75rem] text-on-surface-muted">Enter JSON to generate schema</p>
         </div>
       )}
     </div>

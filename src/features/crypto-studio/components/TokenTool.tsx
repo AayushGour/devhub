@@ -6,7 +6,7 @@ import type { TokenFormat, TokenBits } from '../utils/constants'
 import { useCopy } from '../hooks/useCopy'
 
 const OUTPUT_CLS =
-  'w-full bg-surface-raised border border-border rounded-lg px-3 py-3 text-sm font-mono text-on-surface break-all select-all min-h-[80px]'
+  'w-full bg-surface-raised border border-border rounded-lg px-3 py-3 text-sm font-mono text-on-surface break-all select-all min-h-20'
 
 const ALPH = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 
@@ -16,7 +16,7 @@ function generateToken(format: TokenFormat, bits: number): string {
     bytes[6] = (bytes[6] & 0x0f) | 0x40
     bytes[8] = (bytes[8] & 0x3f) | 0x80
     const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
-    return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
   }
   const bytes = crypto.getRandomValues(new Uint8Array(bits / 8))
   if (format === 'hex') {

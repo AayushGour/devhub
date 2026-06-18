@@ -16,10 +16,10 @@ export default function TreeMode({ input }: Props) {
   return (
     <div className="flex-1 overflow-auto p-5 font-mono">
       {!input.trim() && (
-        <p className="text-[12px] text-on-surface-muted">Enter JSON to explore the tree…</p>
+        <p className="text-[0.75rem] text-on-surface-muted">Enter JSON to explore the tree…</p>
       )}
       {parsed.error && (
-        <div className="text-[12px] text-red-500 bg-red-50 border border-red-200 rounded-[8px] p-3 font-mono">
+        <div className="text-[0.75rem] text-red-500 bg-red-50 border border-red-200 rounded-[0.5rem] p-3 font-mono">
           {parsed.error}
         </div>
       )}

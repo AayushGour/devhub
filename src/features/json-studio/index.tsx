@@ -113,12 +113,12 @@ export default function JsonStudioPage() {
       {/* Persistent footer */}
       <div className="shrink-0 border-t border-border bg-surface h-9 flex items-center px-4 gap-4">
         {!footerStats && (
-          <span className="text-[11px] text-on-surface-muted">No input</span>
+          <span className="text-[0.69rem] text-on-surface-muted">No input</span>
         )}
         {footerStats && (
           <>
             <span className={cn(
-              'flex items-center gap-1.5 text-[11px] font-medium',
+              'flex items-center gap-1.5 text-[0.69rem] font-medium',
               footerStats.valid ? 'text-emerald-600' : 'text-red-500'
             )}>
               {footerStats.valid
@@ -129,7 +129,7 @@ export default function JsonStudioPage() {
             </span>
 
             {!footerStats.valid && footerStats.error && (
-              <span className="text-[11px] text-red-400 font-mono truncate max-w-[320px]">
+              <span className="text-[0.69rem] text-red-400 font-mono truncate max-w-[20rem]">
                 {footerStats.error}
               </span>
             )}
@@ -143,7 +143,7 @@ export default function JsonStudioPage() {
                   { label: 'keys', value: footerStats.keys },
                   { label: 'depth', value: footerStats.depth },
                 ].map(s => (
-                  <span key={s.label} className="flex items-baseline gap-1 text-[11px]">
+                  <span key={s.label} className="flex items-baseline gap-1 text-[0.69rem]">
                     <span className="font-semibold tabular-nums text-on-surface">{s.value}</span>
                     <span className="text-on-surface-muted">{s.label}</span>
                   </span>

@@ -7,7 +7,7 @@ import { useSettingsStore } from '@/store/settingsStore'
 
 const DARK_THEMES = new Set(['dark', 'github', 'nord', 'dracula'])
 
-const BTN_CLS = 'flex items-center gap-[5px] px-2 py-1 rounded-[6px] border border-border bg-transparent text-on-surface-muted text-[11px] cursor-pointer font-[inherit] transition-colors duration-150 hover:text-on-surface hover:border-on-surface-muted disabled:opacity-40 disabled:cursor-not-allowed'
+const BTN_CLS = 'flex items-center gap-[0.31rem] px-2 py-1 rounded-[0.38rem] border border-border bg-transparent text-on-surface-muted text-[0.69rem] cursor-pointer font-[inherit] transition-colors duration-150 hover:text-on-surface hover:border-on-surface-muted disabled:opacity-40 disabled:cursor-not-allowed'
 
 interface JsonEditorProps {
   value: string
