@@ -39,10 +39,18 @@ export function extractImports(content: string, language: string): string[] {
       break
     }
     case 'Rust': {
-      // use crate::foo or use ::foo or use foo::bar
+      // Capture everything after `use` up to `;` or `{`
       const re = /^\s*use\s+([\w:]+)/gm
       let m: RegExpExecArray | null
-      while ((m = re.exec(content)) !== null) imports.push(m[1])
+      while ((m = re.exec(content)) !== null) {
+        // Extract crate/module root (first segment before ::)
+        const root = m[1].split('::')[0]
+        if (root && root !== 'self' && root !== 'super' && root !== 'crate') {
+          imports.push(root)
+        } else {
+          imports.push(m[1])
+        }
+      }
       break
     }
     case 'Java':

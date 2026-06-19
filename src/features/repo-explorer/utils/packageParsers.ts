@@ -27,11 +27,20 @@ function parseRequirementsTxt(content: string): ExternalPackage[] {
   return content
     .split('\n')
     .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith('#') && !l.startsWith('-'))
+    .filter((l) => l && !l.startsWith('#') && !l.startsWith('-') && !l.startsWith('http'))
     .map((l) => {
-      const [name, version] = l.split(/[=><~!]+/)
-      return { name: name.trim(), version: version?.trim(), ecosystem: 'pip' }
+      // Strip extras like package[extra] and markers like package; python_version>='3.8'
+      const cleanLine = l.split(';')[0].trim()
+      const nameMatch = cleanLine.match(/^([A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?)/)
+      const versionMatch = cleanLine.match(/[><=~!][^,\s]+(?:,[><=~!][^,\s]+)*/)
+      if (!nameMatch) return null
+      return {
+        name: nameMatch[1],
+        version: versionMatch?.[0],
+        ecosystem: 'pip' as const,
+      }
     })
+    .filter((p): p is ExternalPackage => p !== null)
 }
 
 // Cargo.toml → Rust crates
@@ -71,10 +80,13 @@ function parseGemfile(content: string): ExternalPackage[] {
 // pyproject.toml → Python deps (PEP 621)
 function parsePyprojectToml(content: string): ExternalPackage[] {
   const deps: ExternalPackage[] = []
-  const section = content.match(/\[project\][\s\S]*?dependencies\s*=\s*\[([\s\S]*?)\]/)?.[1] ?? ''
-  const re = /["']([a-zA-Z][\w.-]*)/g
+  // Find the dependencies array — handle multiline
+  const depSection = content.match(/\bdependencies\s*=\s*\[([\s\S]*?)\]/)?.[1]
+  if (!depSection) return deps
+  // Extract quoted package specifiers
+  const re = /["']([A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?)/g
   let m: RegExpExecArray | null
-  while ((m = re.exec(section)) !== null) {
+  while ((m = re.exec(depSection)) !== null) {
     deps.push({ name: m[1], ecosystem: 'pip' })
   }
   return deps
