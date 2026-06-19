@@ -21,7 +21,7 @@ export function useIndexer() {
     repo: string,
     files: RepoFile[],
   ): Promise<Map<string, number[]>> => {
-    indexing.setPhase('embedding', 'Loading embedding model…')
+    indexing.start('Indexing files', () => {})
 
     // Boot embedder (downloads model on first run, cached after)
     await getEmbedder((pct) => {
@@ -29,7 +29,6 @@ export function useIndexer() {
     })
 
     indexing.setPhase('embedding', 'Embedding files…')
-    indexing.setProgress(0, files.length)
 
     const result = new Map<string, number[]>()
     for (let i = 0; i < files.length; i++) {
