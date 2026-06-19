@@ -8,6 +8,7 @@ import { routeQuery, expandQuery, expandQueryWithContext } from '../utils/queryE
 import { ragSystemPrompt, noDocsSystemPrompt } from '../utils/prompts'
 import { useSettingsStore } from '@/store/settingsStore'
 import { clearAll, clearBySource, getSourceFiles, countNodes } from '../utils/vectorDb'
+import { useIndexingStore } from '@/store/indexingStore'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -40,24 +41,11 @@ export function useRagEngine() {
 
   const [docs, setDocs] = useState<DocEntry[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [overlay, setOverlay] = useState<OverlayState>({ open: false })
   const [chatDisabled, setChatDisabled] = useState(false)
   const [retrievalStage, setRetrievalStage] = useState<RetrievalStage>('idle')
   const embeddingReadyRef = useRef(false)
 
-  const showOverlay = useCallback((label: string) => {
-    setOverlay({ open: true, label, pct: 0, detail: '' })
-  }, [])
-
-  const updateOverlay = useCallback((pct: number, detail: string) => {
-    setOverlay((prev) =>
-      prev.open ? { ...prev, pct, detail } : prev,
-    )
-  }, [])
-
-  const hideOverlay = useCallback(() => {
-    setOverlay({ open: false })
-  }, [])
+  const indexing = useIndexingStore()
 
   const loadPersistedDocs = useCallback(async () => {
     const total = await countNodes()
@@ -70,17 +58,17 @@ export function useRagEngine() {
 
   const bootEmbedder = useCallback(async () => {
     if (embeddingReadyRef.current) return
-    showOverlay('Loading embedding model…')
+    indexing.start('Loading embedding model', () => {})
     try {
-      await getEmbedder((pct, file) => updateOverlay(pct, file))
+      await getEmbedder((pct, file) => indexing.setProgress(pct, 100))
       embeddingReadyRef.current = true
     } catch (err) {
       console.error('Embedder load failed', err)
-      setOverlay({ open: true, label: 'Failed to load embedding model. Refresh to retry.', pct: 0, detail: '' })
+      indexing.setError('Failed to load embedding model. Refresh to retry.')
       return
     }
-    hideOverlay()
-  }, [showOverlay, updateOverlay, hideOverlay])
+    indexing.finish()
+  }, [indexing])
 
   const upsertDoc = useCallback((name: string, status: DocEntry['status'], statusText: string) => {
     setDocs((prev) => {
@@ -100,16 +88,17 @@ export function useRagEngine() {
 
       const modelEntry = getModelById(ragLlmModel)
       const sizeHint = modelEntry ? ` (~${formatVram(modelEntry.vramMB)})` : ''
-      showOverlay(`Loading ${modelEntry?.label ?? 'LLM'}${sizeHint}…`)
+      indexing.start(`Loading ${modelEntry?.label ?? 'LLM'}${sizeHint}`, () => {})
       try {
-        await getEngine(ragLlmModel, (pct, text) => updateOverlay(pct, text))
+        await getEngine(ragLlmModel, (pct, text) => indexing.setProgress(pct, 100))
       } catch (err) {
         console.error('LLM load failed', err)
-        setOverlay({ open: true, label: 'Failed to load LLM. Check network & refresh.', pct: 0, detail: '' })
+        indexing.setError('Failed to load LLM. Check network & refresh.')
         return
       }
-      hideOverlay()
+      indexing.finish()
 
+      indexing.start('Indexing documents', () => {})
       for (const file of files) {
         upsertDoc(file.name, 'processing', 'starting…')
         try {
@@ -122,8 +111,9 @@ export function useRagEngine() {
           upsertDoc(file.name, 'error', err instanceof Error ? err.message : String(err))
         }
       }
+      indexing.finish()
     },
-    [bootEmbedder, showOverlay, updateOverlay, hideOverlay, upsertDoc, ragLlmModel],
+    [bootEmbedder, indexing, upsertDoc, ragLlmModel],
   )
 
   const sendMessage = useCallback(
@@ -281,7 +271,6 @@ export function useRagEngine() {
   return {
     docs,
     messages,
-    overlay,
     chatDisabled,
     retrievalStage,
     bootEmbedder,
