@@ -1,4 +1,4 @@
-import { embed } from './embed'
+import { embed } from '@/lib/llm/embed'
 import { getAllNodes, type KnowledgeNode } from './vectorDb'
 import { bgeQueryPrefix } from './prompts'
 
