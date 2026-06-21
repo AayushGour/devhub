@@ -17,8 +17,8 @@ export const CURATED_MODELS: ModelEntry[] = [
   // Qwen3
   { id: 'Qwen3-0.6B-q4f16_1-MLC',  label: 'Qwen3 0.6B',  family: 'Qwen3',    sizeLabel: '0.6B', vramMB: 1403,  supportsTools: false, contextWindow: 4096  },
   { id: 'Qwen3-1.7B-q4f16_1-MLC',  label: 'Qwen3 1.7B',  family: 'Qwen3',    sizeLabel: '1.7B', vramMB: 2037,  supportsTools: false, contextWindow: 4096  },
-  { id: 'Qwen3-4B-q4f16_1-MLC',    label: 'Qwen3 4B',    family: 'Qwen3',    sizeLabel: '4B',   vramMB: 3432,  supportsTools: true,  contextWindow: 8192  },
-  { id: 'Qwen3-8B-q4f16_1-MLC',    label: 'Qwen3 8B',    family: 'Qwen3',    sizeLabel: '8B',   vramMB: 5696,  supportsTools: true,  contextWindow: 8192  },
+  { id: 'Qwen3-4B-q4f16_1-MLC',    label: 'Qwen3 4B',    family: 'Qwen3',    sizeLabel: '4B',   vramMB: 3432,  supportsTools: false, contextWindow: 8192  },
+  { id: 'Qwen3-8B-q4f16_1-MLC',    label: 'Qwen3 8B',    family: 'Qwen3',    sizeLabel: '8B',   vramMB: 5696,  supportsTools: false, contextWindow: 8192  },
   // Qwen3.5
   { id: 'Qwen3.5-0.8B-q4f16_1-MLC', label: 'Qwen3.5 0.8B', family: 'Qwen3.5', sizeLabel: '0.8B', vramMB: 1629, supportsTools: false, contextWindow: 4096 },
   { id: 'Qwen3.5-2B-q4f16_1-MLC',   label: 'Qwen3.5 2B',   family: 'Qwen3.5', sizeLabel: '2B',   vramMB: 2245, supportsTools: false, contextWindow: 4096 },
@@ -26,8 +26,8 @@ export const CURATED_MODELS: ModelEntry[] = [
   { id: 'Qwen3.5-9B-q4f16_1-MLC',   label: 'Qwen3.5 9B',   family: 'Qwen3.5', sizeLabel: '9B',   vramMB: 6433, supportsTools: false, contextWindow: 4096 },
   // Llama 3.x
   { id: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', label: 'Llama 3.2 1B', family: 'Llama', sizeLabel: '1B', vramMB: 879,  supportsTools: false, contextWindow: 4096 },
-  { id: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', label: 'Llama 3.2 3B', family: 'Llama', sizeLabel: '3B', vramMB: 2264, supportsTools: true,  contextWindow: 4096 },
-  { id: 'Llama-3.1-8B-Instruct-q4f16_1-MLC', label: 'Llama 3.1 8B', family: 'Llama', sizeLabel: '8B', vramMB: 5001, supportsTools: true,  contextWindow: 8192 },
+  { id: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', label: 'Llama 3.2 3B', family: 'Llama', sizeLabel: '3B', vramMB: 2264, supportsTools: false, contextWindow: 4096 },
+  { id: 'Llama-3.1-8B-Instruct-q4f16_1-MLC', label: 'Llama 3.1 8B', family: 'Llama', sizeLabel: '8B', vramMB: 5001, supportsTools: false, contextWindow: 8192 },
   // Phi
   { id: 'Phi-4-mini-instruct-q4f16_1-MLC',   label: 'Phi-4 Mini',   family: 'Phi', sizeLabel: '3.8B', vramMB: 3438, supportsTools: false, contextWindow: 4096 },
   { id: 'Phi-3.5-mini-instruct-q4f16_1-MLC', label: 'Phi-3.5 Mini', family: 'Phi', sizeLabel: '3.8B', vramMB: 3672, supportsTools: false, contextWindow: 4096 },
@@ -48,9 +48,11 @@ export const CURATED_MODELS: ModelEntry[] = [
   // OLMo 2
   { id: 'OLMo-2-0425-1B-Instruct-q4f16_1-MLC', label: 'OLMo 2 1B', family: 'OLMo', sizeLabel: '1B', vramMB: 1777, supportsTools: false, contextWindow: 4096 },
   { id: 'OLMo-2-1124-7B-Instruct-q4f16_1-MLC', label: 'OLMo 2 7B', family: 'OLMo', sizeLabel: '7B', vramMB: 6479, supportsTools: false, contextWindow: 4096 },
-  // Hermes
-  { id: 'Hermes-3-Llama-3.2-3B-q4f16_1-MLC', label: 'Hermes 3 3B', family: 'Hermes', sizeLabel: '3B', vramMB: 2264, supportsTools: true,  contextWindow: 4096 },
-  { id: 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC', label: 'Hermes 3 8B', family: 'Hermes', sizeLabel: '8B', vramMB: 4876, supportsTools: true,  contextWindow: 8192 },
+  // Hermes — only these IDs are confirmed by web-llm to support ChatCompletionRequest.tools
+  { id: 'Hermes-2-Pro-Llama-3-8B-q4f16_1-MLC',  label: 'Hermes 2 Pro Llama 8B',   family: 'Hermes', sizeLabel: '8B', vramMB: 4876, supportsTools: true,  contextWindow: 8192 },
+  { id: 'Hermes-2-Pro-Mistral-7B-q4f16_1-MLC',  label: 'Hermes 2 Pro Mistral 7B',  family: 'Hermes', sizeLabel: '7B', vramMB: 4500, supportsTools: true,  contextWindow: 4096 },
+  { id: 'Hermes-3-Llama-3.2-3B-q4f16_1-MLC',    label: 'Hermes 3 3B',              family: 'Hermes', sizeLabel: '3B', vramMB: 2264, supportsTools: false, contextWindow: 4096 },
+  { id: 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC',    label: 'Hermes 3 8B',              family: 'Hermes', sizeLabel: '8B', vramMB: 4876, supportsTools: true,  contextWindow: 8192 },
 ]
 
 export const DEFAULT_MODEL_ID = 'Qwen3-4B-q4f16_1-MLC'
