@@ -109,6 +109,10 @@ export async function callWithTools(
   opts: { max_tokens?: number } = {},
 ): Promise<LLMResponse> {
   const engine = await getEngine(modelId)
+  // Hermes-2-Pro (and other web-llm tool models) throw if any system message
+  // is present — including one cached from a prior RAG/streamComplete call on
+  // the same engine instance. resetChat() flushes that state.
+  await engine.resetChat()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const reply = await (engine.chat.completions.create as any)({
     messages,
