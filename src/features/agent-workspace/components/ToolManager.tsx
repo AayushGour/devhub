@@ -18,17 +18,12 @@ function BuiltInToolRow({ name, description, enabled, onToggle, setupNote }: Bui
       <button
         onClick={onToggle}
         className={cn(
-          'mt-0.5 w-8 h-[1.1rem] rounded-full shrink-0 transition-colors duration-150 relative overflow-hidden',
-          enabled ? 'bg-accent' : 'bg-border',
+          'mt-0.5 flex items-center w-8 h-[1.1rem] rounded-full shrink-0 px-[0.15rem] transition-colors duration-150',
+          enabled ? 'bg-accent justify-end' : 'bg-border justify-start',
         )}
         aria-label={enabled ? 'Disable' : 'Enable'}
       >
-        <span
-          className={cn(
-            'absolute top-[0.1rem] w-[0.9rem] h-[0.9rem] rounded-full bg-white transition-transform duration-150',
-            enabled ? 'translate-x-[1.05rem]' : 'translate-x-[0.1rem]',
-          )}
-        />
+        <span className="w-[0.8rem] h-[0.8rem] rounded-full bg-white transition-all duration-150" />
       </button>
       <div className="min-w-0">
         <p className="text-xs text-on-surface font-medium leading-tight">{name}</p>
