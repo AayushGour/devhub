@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
-import { getEmbedder } from '../utils/embed'
-import { getEngine, streamComplete } from '../utils/llm'
-import { getModelById, formatVram, DEFAULT_MODEL_ID } from '../utils/models'
+import { getEmbedder } from '@/lib/llm/embed'
+import { getEngine, streamComplete } from '@/lib/llm/engine'
+import { getModelById, formatVram, DEFAULT_MODEL_ID } from '@/lib/llm/models'
 import { ingestFile } from '../utils/ingest'
 import { retrieveMulti, retrieve } from '../utils/retrieve'
 import { routeQuery, expandQuery, expandQueryWithContext } from '../utils/queryExpansion'
@@ -45,7 +45,10 @@ export function useRagEngine() {
   const [retrievalStage, setRetrievalStage] = useState<RetrievalStage>('idle')
   const embeddingReadyRef = useRef(false)
 
-  const indexing = useIndexingStore()
+  const indexingStart = useIndexingStore((s) => s.start)
+  const indexingSetProgress = useIndexingStore((s) => s.setProgress)
+  const indexingFinish = useIndexingStore((s) => s.finish)
+  const indexingSetError = useIndexingStore((s) => s.setError)
 
   const loadPersistedDocs = useCallback(async () => {
     const total = await countNodes()
@@ -58,17 +61,17 @@ export function useRagEngine() {
 
   const bootEmbedder = useCallback(async () => {
     if (embeddingReadyRef.current) return
-    indexing.start('Loading embedding model', () => {})
+    indexingStart('Loading embedding model', () => {})
     try {
-      await getEmbedder((pct, file) => indexing.setProgress(pct, 100))
+      await getEmbedder((pct) => indexingSetProgress(pct, 100))
       embeddingReadyRef.current = true
     } catch (err) {
       console.error('Embedder load failed', err)
-      indexing.setError('Failed to load embedding model. Refresh to retry.')
+      indexingSetError('Failed to load embedding model. Refresh to retry.')
       return
     }
-    indexing.finish()
-  }, [indexing])
+    indexingFinish()
+  }, [indexingStart, indexingSetProgress, indexingSetError, indexingFinish])
 
   const upsertDoc = useCallback((name: string, status: DocEntry['status'], statusText: string) => {
     setDocs((prev) => {
@@ -88,17 +91,17 @@ export function useRagEngine() {
 
       const modelEntry = getModelById(ragLlmModel)
       const sizeHint = modelEntry ? ` (~${formatVram(modelEntry.vramMB)})` : ''
-      indexing.start(`Loading ${modelEntry?.label ?? 'LLM'}${sizeHint}`, () => {})
+      indexingStart(`Loading ${modelEntry?.label ?? 'LLM'}${sizeHint}`, () => {})
       try {
-        await getEngine(ragLlmModel, (pct, text) => indexing.setProgress(pct, 100))
+        await getEngine(ragLlmModel, (pct) => indexingSetProgress(pct, 100))
       } catch (err) {
         console.error('LLM load failed', err)
-        indexing.setError('Failed to load LLM. Check network & refresh.')
+        indexingSetError('Failed to load LLM. Check network & refresh.')
         return
       }
-      indexing.finish()
+      indexingFinish()
 
-      indexing.start('Indexing documents', () => {})
+      indexingStart('Indexing documents', () => {})
       for (const file of files) {
         upsertDoc(file.name, 'processing', 'starting…')
         try {
@@ -111,9 +114,9 @@ export function useRagEngine() {
           upsertDoc(file.name, 'error', err instanceof Error ? err.message : String(err))
         }
       }
-      indexing.finish()
+      indexingFinish()
     },
-    [bootEmbedder, indexing, upsertDoc, ragLlmModel],
+    [bootEmbedder, indexingStart, indexingSetProgress, indexingSetError, indexingFinish, upsertDoc, ragLlmModel],
   )
 
   const sendMessage = useCallback(

@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react'
-import { getEmbedder } from '@/features/rag-studio/utils/embed'
-import { embed } from '@/features/rag-studio/utils/embed'
+import { getEmbedder, embed } from '@/lib/llm/embed'
 import { saveEmbeddings, loadEmbeddings } from '../utils/repoDb'
 import { useIndexingStore } from '@/store/indexingStore'
 import type { RepoFile } from '../types'
@@ -32,8 +31,11 @@ export function useIndexer() {
 
     const result = new Map<string, number[]>()
     for (let i = 0; i < files.length; i++) {
+      // Yield to main thread every 5 files — WASM inference is synchronous and
+      // will block paint if we never release the thread.
+      if (i % 5 === 0) await new Promise<void>((r) => setTimeout(r, 0))
+
       const file = files[i]
-      // Use first 1500 chars for embedding (matches RAG chunk size)
       const text = `File: ${file.path}\n\n${file.content.slice(0, 1500)}`
       try {
         const vec = await embed(text)

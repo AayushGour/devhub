@@ -1,5 +1,5 @@
-import { getEngine } from './llm'
-import { embedBatch } from './embed'
+import { getEngine } from '@/lib/llm/engine'
+import { embedBatch } from '@/lib/llm/embed'
 import { putNode } from './vectorDb'
 import { extractText } from './extractText'
 import { chunkSummarisationSystemPrompt } from './prompts'

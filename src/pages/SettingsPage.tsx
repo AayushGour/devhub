@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { hasModelInCache } from '@mlc-ai/web-llm'
 import { useSettingsStore } from '@/store/settingsStore'
 import { cn } from '@/lib/utils'
-import { CURATED_MODELS, MODEL_FAMILIES, formatVram } from '@/features/rag-studio/utils/models'
+import { CURATED_MODELS, MODEL_FAMILIES, formatVram } from '@/lib/llm/models'
 import type { Theme } from '@/types'
 
 const themes: { value: Theme; label: string; surface: string; accent: string }[] = [

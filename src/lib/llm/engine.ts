@@ -78,3 +78,52 @@ export async function* streamComplete(
     if (delta) yield delta
   }
 }
+
+// --- Agent tool-calling types and function ---
+
+export interface ToolDefinition {
+  type: 'function'
+  function: { name: string; description: string; parameters: Record<string, unknown> }
+}
+
+export interface ToolCall {
+  id: string
+  type: 'function'
+  function: { name: string; arguments: string }
+}
+
+export interface LLMResponse {
+  content: string | null
+  tool_calls: ToolCall[] | null
+  finish_reason: 'stop' | 'tool_calls' | 'length'
+}
+
+export type AgentMessage =
+  | ChatMessage
+  | { role: 'tool'; tool_call_id: string; content: string }
+
+export async function callWithTools(
+  modelId: string,
+  messages: AgentMessage[],
+  tools: ToolDefinition[],
+  opts: { max_tokens?: number } = {},
+): Promise<LLMResponse> {
+  const engine = await getEngine(modelId)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const reply = await (engine.chat.completions.create as any)({
+    messages,
+    tools,
+    tool_choice: 'auto',
+    max_tokens: opts.max_tokens ?? 1024,
+    temperature: 0.1,
+  })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const msg = reply.choices[0].message as any
+  // finish_reason is unreliable across model builds — check tool_calls directly
+  const tool_calls: ToolCall[] | null = msg.tool_calls?.length ? msg.tool_calls : null
+  return {
+    content: msg.content ?? null,
+    tool_calls,
+    finish_reason: tool_calls ? 'tool_calls' : (reply.choices[0].finish_reason ?? 'stop'),
+  }
+}
