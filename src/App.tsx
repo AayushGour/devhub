@@ -12,6 +12,7 @@ import SvgStudioPage from '@/features/svg-studio'
 import CryptoStudioPage from '@/features/crypto-studio'
 import ImageStudioPage from '@/features/image-studio'
 import RepoExplorerPage from '@/features/repo-explorer'
+import { AgentWorkspacePage } from '@/features/agent-workspace'
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
         <Route path="tools/crypto" element={<CryptoStudioPage />} />
         <Route path="tools/image" element={<ImageStudioPage />} />
         <Route path="tools/repo-explorer" element={<RepoExplorerPage />} />
+        <Route path="tools/agent-workspace" element={<AgentWorkspacePage />} />
       </Route>
     </Routes>
   )
