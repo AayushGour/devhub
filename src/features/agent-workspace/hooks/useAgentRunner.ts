@@ -1,15 +1,13 @@
 import { useRef } from 'react'
-import { get_encoding } from 'tiktoken'
 import { callWithTools, complete, type AgentMessage, type ToolDefinition } from '@/lib/llm/engine'
 import { getModelById } from '@/lib/llm/models'
 import { useAgentStore, type AgentStep } from '../utils/agentStore'
 
-const enc = get_encoding('cl100k_base')
-
+// ~4 chars per token is a standard approximation for BPE tokenizers
 function countTokens(messages: AgentMessage[]): number {
   return messages.reduce((sum, m) => {
     const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '')
-    return sum + enc.encode(text).length + 4
+    return sum + Math.ceil(text.length / 4) + 4
   }, 0)
 }
 
