@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 import { callWithTools, complete, type AgentMessage, type ToolDefinition } from '@/lib/llm/engine'
+// complete is used only for context compaction summaries
 import { getModelById } from '@/lib/llm/models'
 import { useAgentStore, type AgentStep } from '../utils/agentStore'
 
@@ -15,7 +16,8 @@ async function compactMessages(
   messages: AgentMessage[],
   modelId: string,
 ): Promise<AgentMessage[]> {
-  const system = messages[0]
+  // messages[0] is always the original task (user) — preserve it
+  const taskMsg = messages[0]
   const recent = messages.slice(-4)
   const middle = messages.slice(1, -4)
   if (middle.length === 0) return messages
@@ -36,18 +38,10 @@ async function compactMessages(
   )
 
   return [
-    system,
+    taskMsg,
     { role: 'user', content: `[Earlier steps compressed]\n${summary}` } as AgentMessage,
     ...recent,
   ]
-}
-
-function buildSystemPrompt(tools: ToolDefinition[]): string {
-  const toolList = tools
-    .map((t) => `- ${t.function.name}: ${t.function.description}`)
-    .join('\n')
-
-  return `You are an autonomous AI agent. Available tools:\n${toolList}\n\nThink step by step. Use tools to gather information. Give your final answer when done.\nIf a tool errors, try a different approach. Do not repeat failed tool calls.`
 }
 
 function makeStep(type: AgentStep['type'], content: string, extra?: Partial<AgentStep>): AgentStep {
@@ -72,8 +66,9 @@ export function useAgentRunner(
     const contextWindow = modelEntry?.contextWindow ?? 4096
     const threshold = contextWindow * 0.6
 
+    // Hermes-2-Pro (and likely other web-llm tool models) forbid custom system
+    // prompts when tools are present. Start with just the user task.
     let messages: AgentMessage[] = [
-      { role: 'system', content: buildSystemPrompt(allToolSchemas) },
       { role: 'user', content: task },
     ]
 
