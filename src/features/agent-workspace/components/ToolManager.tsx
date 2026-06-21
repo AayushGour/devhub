@@ -14,19 +14,19 @@ interface BuiltInRow {
 
 function BuiltInToolRow({ name, description, enabled, onToggle, setupNote }: BuiltInRow) {
   return (
-    <div className="flex items-start gap-2 py-1.5">
+    <div className="flex items-start gap-3 py-1.5">
       <button
         onClick={onToggle}
         className={cn(
-          'mt-0.5 w-7 h-4 rounded-full shrink-0 transition-colors duration-150 relative',
+          'mt-0.5 w-8 h-[1.1rem] rounded-full shrink-0 transition-colors duration-150 relative overflow-hidden',
           enabled ? 'bg-accent' : 'bg-border',
         )}
         aria-label={enabled ? 'Disable' : 'Enable'}
       >
         <span
           className={cn(
-            'absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform duration-150',
-            enabled ? 'translate-x-3.5' : 'translate-x-0.5',
+            'absolute top-[0.1rem] w-[0.9rem] h-[0.9rem] rounded-full bg-white transition-transform duration-150',
+            enabled ? 'translate-x-[1.05rem]' : 'translate-x-[0.1rem]',
           )}
         />
       </button>
