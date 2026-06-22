@@ -1,10 +1,10 @@
 import * as pdfjs from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('rag:extract')
 
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
+// Use CDN worker URL to avoid Vite's ?import transformation breaking the worker load
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`
 
 export type ExtractionStatusCallback = (status: string) => void
 
@@ -33,8 +33,16 @@ async function extractPdf(file: File, onStatus: ExtractionStatusCallback): Promi
   }
 
   pdf.destroy()
+
+  const fullText = pageTexts.join('\n\n')
+  if (!fullText.trim()) {
+    throw new Error(
+      'This PDF has no extractable text layer. It is likely a scanned document. OCR is not supported — please use a text-searchable PDF.',
+    )
+  }
+
   onStatus('PDF extraction complete')
-  return pageTexts.join('\n\n')
+  return fullText
 }
 
 async function extractDocx(file: File, onStatus: ExtractionStatusCallback): Promise<string> {

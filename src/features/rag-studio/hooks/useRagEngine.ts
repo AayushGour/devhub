@@ -33,7 +33,7 @@ export interface ChatMessage {
 
 export type OverlayState =
   | { open: false }
-  | { open: true; label: string; pct: number; detail: string }
+  | { open: true; label: string; pct: number; detail: string; error?: boolean }
 
 export type RetrievalStage = 'idle' | 'expanding' | 'retrieving' | 'generating'
 
@@ -68,7 +68,7 @@ export function useRagEngine() {
 
   const bootEmbedder = useCallback(async () => {
     if (embeddingReadyRef.current) return
-    indexingStart('Loading embedding model', () => {})
+    indexingStart('Loading embedding model', () => { })
     try {
       await getEmbedder((pct, _file) => indexingSetProgress(pct, 100))
       embeddingReadyRef.current = true
@@ -102,7 +102,7 @@ export function useRagEngine() {
 
       const modelEntry = getModelById(ragLlmModel)
       const sizeHint = modelEntry ? ` (~${formatVram(modelEntry.vramMB)})` : ''
-      indexingStart(`Loading ${modelEntry?.label ?? 'LLM'}${sizeHint}`, () => {})
+      indexingStart(`Loading ${modelEntry?.label ?? 'LLM'}${sizeHint}`, () => { })
       try {
         await getEngine(ragLlmModel, (pct, _text) => indexingSetProgress(pct, 100))
       } catch (err) {
@@ -112,7 +112,7 @@ export function useRagEngine() {
       }
       indexingFinish()
 
-      indexingStart('Indexing documents', () => {})
+      indexingStart('Indexing documents', () => { })
       for (const file of files) {
         upsertDoc(file.name, 'processing', 'starting…')
         try {

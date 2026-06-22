@@ -2,6 +2,9 @@ import { pipeline, env } from '@xenova/transformers'
 import { createLogger } from '@/lib/logger'
 
 env.allowLocalModels = false
+// Disable multi-threading to prevent onnxruntime-web from creating blob workers,
+// which break in production builds due to minified variable scoping.
+env.backends.onnx.wasm.numThreads = 1
 
 const log = createLogger('rag:embed')
 const MODEL = 'Xenova/bge-base-en-v1.5'
