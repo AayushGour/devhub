@@ -1,4 +1,18 @@
 import * as webllm from '@mlc-ai/web-llm'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('rag:llm')
+
+async function logStorage(when: string): Promise<void> {
+  try {
+    const est = await navigator.storage?.estimate?.()
+    if (!est) return
+    const gb = (n = 0) => `${(n / 1e9).toFixed(2)}GB`
+    log.log(`storage @ ${when}: ${gb(est.usage)} / ${gb(est.quota)} used`)
+  } catch {
+    // estimate() unavailable — ignore
+  }
+}
 
 export type LLMProgressCallback = (pct: number, text: string) => void
 
@@ -12,6 +26,13 @@ export function resetEngine(): void {
   _loadedModelId = null
 }
 
+// Stop the in-flight generation on the loaded engine. web-llm ends the active
+// stream/completion; any `streamComplete` loop awaiting it then finishes.
+export function interruptGenerate(): void {
+  log.log('interruptGenerate')
+  _engine?.interruptGenerate()
+}
+
 export async function getEngine(modelId: string, onProgress?: LLMProgressCallback): Promise<webllm.MLCEngine> {
   if (!modelId) throw new Error('getEngine called with empty modelId — check settingsStore ragLlmModel')
   if (_engine && _loadedModelId === modelId) return _engine
@@ -23,6 +44,10 @@ export async function getEngine(modelId: string, onProgress?: LLMProgressCallbac
     _loadingPromise = null
   }
 
+  log.log(`loading model "${modelId}"`)
+  await logStorage('before load')
+  const done = log.time(`model loaded "${modelId}"`)
+
   _loadedModelId = modelId
   _loadingPromise = webllm.CreateMLCEngine(modelId, {
     initProgressCallback: (p: webllm.InitProgressReport) => {
@@ -32,10 +57,14 @@ export async function getEngine(modelId: string, onProgress?: LLMProgressCallbac
   }).then((engine) => {
     _engine = engine
     _loadingPromise = null
+    done()
     return engine
-  }).catch((err) => {
+  }).catch(async (err) => {
     _loadingPromise = null
     _loadedModelId = null
+    const e = err as Error
+    log.error(`model load FAILED "${modelId}": ${e?.name}: ${e?.message}`, err)
+    await logStorage('at failure')
     throw err
   })
 

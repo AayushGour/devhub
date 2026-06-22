@@ -15,6 +15,7 @@ export default function RagStudioPage() {
     loadPersistedDocs,
     processFiles,
     sendMessage,
+    stopGeneration,
     clearDocs,
     removeDoc,
   } = useRagEngine()
@@ -45,6 +46,7 @@ export default function RagStudioPage() {
             disabled={chatDisabled}
             stage={retrievalStage}
             onSend={sendMessage}
+            onStop={stopGeneration}
           />
         </div>
       </div>

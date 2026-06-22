@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { getEmbedder } from '../utils/embed'
-import { getEngine, streamComplete } from '../utils/llm'
+import { getEngine, streamComplete, interruptGenerate } from '../utils/llm'
 import { getModelById, formatVram, DEFAULT_MODEL_ID } from '../utils/models'
 import { ingestFile } from '../utils/ingest'
 import { retrieveMulti, retrieve } from '../utils/retrieve'
@@ -9,6 +9,9 @@ import { ragSystemPrompt, noDocsSystemPrompt } from '../utils/prompts'
 import { useSettingsStore } from '@/store/settingsStore'
 import { clearAll, clearBySource, getSourceFiles, countNodes } from '../utils/vectorDb'
 import { useIndexingStore } from '@/store/indexingStore'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('rag:engine')
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -25,6 +28,7 @@ export interface ChatMessage {
   streaming?: boolean
   timestamp: number
   generationMs?: number
+  model?: string
 }
 
 export type OverlayState =
@@ -44,13 +48,19 @@ export function useRagEngine() {
   const [chatDisabled, setChatDisabled] = useState(false)
   const [retrievalStage, setRetrievalStage] = useState<RetrievalStage>('idle')
   const embeddingReadyRef = useRef(false)
+  const stopRef = useRef(false)
 
-  const indexing = useIndexingStore()
+  // Select actions individually (stable refs) — never subscribe to the whole
+  // store, or every progress tick would re-render this hook's consumers.
+  const indexingStart = useIndexingStore((s) => s.start)
+  const indexingSetProgress = useIndexingStore((s) => s.setProgress)
+  const indexingSetError = useIndexingStore((s) => s.setError)
+  const indexingFinish = useIndexingStore((s) => s.finish)
 
   const loadPersistedDocs = useCallback(async () => {
     const total = await countNodes()
     const files = await getSourceFiles()
-    console.log('[RAG:hook] loadPersistedDocs — nodes in DB:', total, '| files:', files)
+    log.log('loadPersistedDocs — nodes in DB:', total, '| files:', files)
     if (files.length > 0) {
       setDocs(files.map((name) => ({ name, status: 'done', statusText: '' })))
     }
@@ -58,17 +68,17 @@ export function useRagEngine() {
 
   const bootEmbedder = useCallback(async () => {
     if (embeddingReadyRef.current) return
-    indexing.start('Loading embedding model', () => {})
+    indexingStart('Loading embedding model', () => {})
     try {
-      await getEmbedder((pct, _file) => indexing.setProgress(pct, 100))
+      await getEmbedder((pct, _file) => indexingSetProgress(pct, 100))
       embeddingReadyRef.current = true
     } catch (err) {
-      console.error('Embedder load failed', err)
-      indexing.setError('Failed to load embedding model. Refresh to retry.')
+      log.error('embedder load failed', err)
+      indexingSetError('Failed to load embedding model. Refresh to retry.')
       return
     }
-    indexing.finish()
-  }, [indexing])
+    indexingFinish()
+  }, [indexingStart, indexingSetProgress, indexingSetError, indexingFinish])
 
   const upsertDoc = useCallback((name: string, status: DocEntry['status'], statusText: string) => {
     setDocs((prev) => {
@@ -83,22 +93,26 @@ export function useRagEngine() {
 
   const processFiles = useCallback(
     async (files: File[]) => {
+      log.log(`processFiles: ${files.length} file(s): ${files.map((f) => f.name).join(', ')}`)
       await bootEmbedder()
-      if (!embeddingReadyRef.current) return
+      if (!embeddingReadyRef.current) {
+        log.warn('embedder not ready — aborting processFiles')
+        return
+      }
 
       const modelEntry = getModelById(ragLlmModel)
       const sizeHint = modelEntry ? ` (~${formatVram(modelEntry.vramMB)})` : ''
-      indexing.start(`Loading ${modelEntry?.label ?? 'LLM'}${sizeHint}`, () => {})
+      indexingStart(`Loading ${modelEntry?.label ?? 'LLM'}${sizeHint}`, () => {})
       try {
-        await getEngine(ragLlmModel, (pct, _text) => indexing.setProgress(pct, 100))
+        await getEngine(ragLlmModel, (pct, _text) => indexingSetProgress(pct, 100))
       } catch (err) {
-        console.error('LLM load failed', err)
-        indexing.setError('Failed to load LLM. Check network & refresh.')
+        log.error('LLM load failed', err)
+        indexingSetError('Failed to load LLM. Check network & refresh.')
         return
       }
-      indexing.finish()
+      indexingFinish()
 
-      indexing.start('Indexing documents', () => {})
+      indexingStart('Indexing documents', () => {})
       for (const file of files) {
         upsertDoc(file.name, 'processing', 'starting…')
         try {
@@ -107,19 +121,24 @@ export function useRagEngine() {
           })
           upsertDoc(file.name, 'done', '')
         } catch (err) {
-          console.error(`Ingest failed: ${file.name}`, err)
+          log.error(`ingest failed: ${file.name}`, err)
           upsertDoc(file.name, 'error', err instanceof Error ? err.message : String(err))
         }
       }
-      indexing.finish()
+      indexingFinish()
     },
-    [bootEmbedder, indexing, upsertDoc, ragLlmModel],
+    [bootEmbedder, indexingStart, indexingSetProgress, indexingSetError, indexingFinish, upsertDoc, ragLlmModel],
   )
 
   const sendMessage = useCallback(
     async (question: string) => {
-      if (chatDisabled) return
+      if (chatDisabled) {
+        log.warn('sendMessage ignored — already generating')
+        return
+      }
+      log.log(`sendMessage: "${question.slice(0, 80)}" (model=${ragLlmModel})`)
       setChatDisabled(true)
+      stopRef.current = false
 
       const now = Date.now()
       const userMsg: ChatMessage = {
@@ -129,7 +148,7 @@ export function useRagEngine() {
         timestamp: now,
       }
       const aiMsgId = `ai-${now}`
-      const aiMsg: ChatMessage = { id: aiMsgId, role: 'ai', content: '', streaming: true, timestamp: now }
+      const aiMsg: ChatMessage = { id: aiMsgId, role: 'ai', content: '', streaming: true, timestamp: now, model: ragLlmModel }
       setMessages((prev) => [...prev, userMsg, aiMsg])
 
       let genStart = 0
@@ -137,9 +156,10 @@ export function useRagEngine() {
       try {
         setRetrievalStage('expanding')
         const route = await routeQuery(ragLlmModel, question).catch(() => 'rag' as const)
+        if (stopRef.current) return
 
         if (route === 'direct') {
-          console.log('[RAG:chat] routed to direct answer, skipping retrieval')
+          log.log('routed to direct answer, skipping retrieval')
           setRetrievalStage('generating')
           genStart = Date.now()
           try {
@@ -151,6 +171,7 @@ export function useRagEngine() {
               ],
               { max_tokens: 1024 },
             )) {
+              if (stopRef.current) break
               setMessages((prev) =>
                 prev.map((m) => m.id === aiMsgId ? { ...m, content: m.content + delta } : m)
               )
@@ -163,7 +184,7 @@ export function useRagEngine() {
                   : m,
               ),
             )
-            console.error('Stream error', err)
+            log.error('stream error', err)
           }
           return
         }
@@ -176,12 +197,14 @@ export function useRagEngine() {
         } else {
           expansions = await expandQuery(ragLlmModel, question).catch(() => [])
         }
-        console.log('[RAG:chat] expansions:', expansions)
+        if (stopRef.current) return
+        log.log('expansions:', expansions)
 
         setRetrievalStage('retrieving')
         const allQueries = [question, ...expansions]
         const nodes = await retrieveMulti(allQueries, 5)
-        console.log('[RAG:chat] retrieved nodes after expansion:', nodes.length)
+        if (stopRef.current) return
+        log.log('retrieved nodes after expansion:', nodes.length)
 
         let contextBlock = ''
         let charBudget = 3500
@@ -194,15 +217,15 @@ export function useRagEngine() {
           if (charBudget <= 0) break
         }
 
-        console.log(`[RAG:chat] context block length=${contextBlock.length}, nodes used=${nodes.length}`)
-        console.log('[RAG:chat] context preview:', contextBlock.slice(0, 300))
+        log.log(`context block length=${contextBlock.length}, nodes used=${nodes.length}`)
+        log.log('context preview:', contextBlock.slice(0, 300))
 
         const systemPrompt =
           nodes.length > 0 && contextBlock.trim().length > 0
             ? ragSystemPrompt(contextBlock)
             : noDocsSystemPrompt
 
-        console.log('[RAG:chat] system prompt length:', systemPrompt.length)
+        log.log('system prompt length:', systemPrompt.length)
 
         setRetrievalStage('generating')
         genStart = Date.now()
@@ -216,6 +239,7 @@ export function useRagEngine() {
             ],
             { max_tokens: 1536 },
           )) {
+            if (stopRef.current) break
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === aiMsgId ? { ...m, content: m.content + delta } : m,
@@ -230,10 +254,10 @@ export function useRagEngine() {
                 : m,
             ),
           )
-          console.error('Stream error', err)
+          log.error('stream error', err)
         }
       } catch (err) {
-        console.error('RAG pipeline error', err)
+        log.error('pipeline error', err)
         setMessages((prev) =>
           prev.map((m) =>
             m.id === aiMsgId
@@ -243,8 +267,13 @@ export function useRagEngine() {
         )
       } finally {
         const generationMs = genStart > 0 ? Date.now() - genStart : undefined
+        const stopped = stopRef.current
         setMessages((prev) =>
-          prev.map((m) => (m.id === aiMsgId ? { ...m, streaming: false, generationMs } : m)),
+          prev.map((m) => {
+            if (m.id !== aiMsgId) return m
+            const content = stopped && !m.content.trim() ? '_Stopped._' : m.content
+            return { ...m, content, streaming: false, generationMs }
+          }),
         )
         setRetrievalStage('idle')
         setChatDisabled(false)
@@ -253,12 +282,18 @@ export function useRagEngine() {
     [chatDisabled, contextAwareExpansion, ragLlmModel],
   )
 
+  const stopGeneration = useCallback(() => {
+    log.log('stopGeneration requested')
+    stopRef.current = true
+    interruptGenerate()
+  }, [])
+
   const clearDocs = useCallback(async () => {
     const before = await countNodes()
-    console.log('[RAG:hook] clearDocs — nodes before clear:', before)
+    log.log('clearDocs — nodes before clear:', before)
     await clearAll()
     const after = await countNodes()
-    console.log('[RAG:hook] clearDocs — nodes after clear:', after)
+    log.log('clearDocs — nodes after clear:', after)
     setDocs([])
     setMessages([])
   }, [])
@@ -277,6 +312,7 @@ export function useRagEngine() {
     loadPersistedDocs,
     processFiles,
     sendMessage,
+    stopGeneration,
     clearDocs,
     removeDoc,
   }
