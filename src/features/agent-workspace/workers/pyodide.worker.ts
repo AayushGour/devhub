@@ -3,7 +3,7 @@ let pyodide: any = null
 
 self.onmessage = async ({ data: { id, code } }: MessageEvent<{ id: string; code: string }>) => {
   if (!pyodide) {
-    importScripts('https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js')
+    ;(self as any).importScripts('https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js')
     pyodide = await (self as any).loadPyodide()
   }
 

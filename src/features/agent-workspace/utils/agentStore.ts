@@ -41,7 +41,7 @@ export const useAgentStore = create<AgentStoreState>()((set) => ({
     set((s) => ({
       activeSessionId: id,
       sessions: [
-        { id, task, modelId, status: 'running', steps: [], enabledTools, createdAt: Date.now() },
+        { id, task, modelId, status: 'running' as const, steps: [], enabledTools, createdAt: Date.now() },
         ...s.sessions,
       ].slice(0, MAX_SESSIONS),
     }))
