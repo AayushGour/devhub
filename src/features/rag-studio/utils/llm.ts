@@ -87,6 +87,82 @@ function installFetchLogger(): void {
   }
 }
 
+// Max attempts to load the model. WebLLM resumes from shards already in the
+// cache, so a retry only re-fetches the shard(s) that failed — cheap and fast.
+const MAX_LOAD_ATTEMPTS = 4
+
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+// A model-shard download that breaks mid-stream (e.g. ERR_HTTP2_PROTOCOL_ERROR
+// from the HuggingFace CDN) surfaces as a QuotaExceededError when WebLLM tries
+// to cache.put() the aborted response — even with plenty of storage free. These
+// failures are transient: a fresh fetch opens a new connection, so we retry.
+function isTransientLoadError(err: unknown): boolean {
+  const e = err as Error
+  const name = e?.name ?? ''
+  const msg = (e?.message ?? '').toLowerCase()
+  return (
+    name === 'QuotaExceededError' ||
+    name === 'NetworkError' ||
+    name === 'AbortError' ||
+    /http2|protocol error|network|failed to fetch|fetch failed|err_|load failed|timeout|connection/.test(msg)
+  )
+}
+
+function describeLoadError(err: unknown): Error {
+  if (isTransientLoadError(err)) {
+    return new Error(
+      'Model download was interrupted by a network/CDN error and did not finish ' +
+        `after ${MAX_LOAD_ATTEMPTS} attempts. Your browser storage is fine — please ` +
+        'retry; the download resumes from the shards already fetched.',
+    )
+  }
+  return err instanceof Error ? err : new Error(String(err))
+}
+
+async function loadEngineWithRetry(modelId: string, onProgress?: LLMProgressCallback): Promise<webllm.MLCEngine> {
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= MAX_LOAD_ATTEMPTS; attempt++) {
+    const startedAt = performance.now()
+    let lastPct = -1
+    try {
+      log(`load attempt ${attempt}/${MAX_LOAD_ATTEMPTS} for "${modelId}"`)
+      const engine = await webllm.CreateMLCEngine(modelId, {
+        initProgressCallback: (p: webllm.InitProgressReport) => {
+          const pct = Math.round(p.progress * 100)
+          if (pct !== lastPct) {
+            lastPct = pct
+            log(`progress ${pct}% — ${p.text}`)
+          }
+          onProgress?.(pct, p.text)
+        },
+      })
+      log(`✅ engine ready in ${((performance.now() - startedAt) / 1000).toFixed(1)}s`)
+      await logStorage('after load')
+      return engine
+    } catch (err) {
+      lastErr = err
+      const e = err as Error
+      log(`❌ attempt ${attempt}/${MAX_LOAD_ATTEMPTS} FAILED after ${((performance.now() - startedAt) / 1000).toFixed(1)}s`)
+      log(`  name:    ${e?.name}`)
+      log(`  message: ${e?.message}`)
+      log(`  stack:   ${e?.stack}`)
+      log('  raw error object:', err)
+      await logStorage('at failure')
+
+      if (attempt < MAX_LOAD_ATTEMPTS && isTransientLoadError(err)) {
+        const waitMs = 1500 * attempt
+        log(`transient error — retrying in ${waitMs}ms (resumes from cached shards)`)
+        onProgress?.(lastPct < 0 ? 0 : lastPct, `Network hiccup — retrying (${attempt + 1}/${MAX_LOAD_ATTEMPTS})…`)
+        await delay(waitMs)
+        continue
+      }
+      break
+    }
+  }
+  throw describeLoadError(lastErr)
+}
+
 export async function getEngine(modelId: string, onProgress?: LLMProgressCallback): Promise<webllm.MLCEngine> {
   if (!modelId) throw new Error('getEngine called with empty modelId — check settingsStore ragLlmModel')
   if (_engine && _loadedModelId === modelId) return _engine
@@ -108,36 +184,17 @@ export async function getEngine(modelId: string, onProgress?: LLMProgressCallbac
   await logStorage('before load')
 
   _loadedModelId = modelId
-  const startedAt = performance.now()
-  let lastPct = -1
-  _loadingPromise = webllm.CreateMLCEngine(modelId, {
-    initProgressCallback: (p: webllm.InitProgressReport) => {
-      const pct = Math.round(p.progress * 100)
-      if (pct !== lastPct) {
-        lastPct = pct
-        log(`progress ${pct}% — ${p.text}`)
-      }
-      onProgress?.(pct, p.text)
-    },
-  }).then(async (engine) => {
-    _engine = engine
-    _loadingPromise = null
-    log(`✅ engine ready in ${((performance.now() - startedAt) / 1000).toFixed(1)}s`)
-    await logStorage('after load')
-    return engine
-  }).catch(async (err) => {
-    _loadingPromise = null
-    _loadedModelId = null
-    // Surface the REAL error in full — no rewriting, no guessing the cause.
-    const e = err as Error
-    log(`❌ model load FAILED after ${((performance.now() - startedAt) / 1000).toFixed(1)}s`)
-    log(`  name:    ${e?.name}`)
-    log(`  message: ${e?.message}`)
-    log(`  stack:   ${e?.stack}`)
-    log('  raw error object:', err)
-    await logStorage('at failure')
-    throw err
-  })
+  _loadingPromise = loadEngineWithRetry(modelId, onProgress)
+    .then((engine) => {
+      _engine = engine
+      _loadingPromise = null
+      return engine
+    })
+    .catch((err) => {
+      _loadingPromise = null
+      _loadedModelId = null
+      throw err
+    })
 
   return _loadingPromise
 }
