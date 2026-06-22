@@ -41,10 +41,12 @@ async function logStorage(when: string): Promise<void> {
       const quota = est.quota ?? 0
       const usage = est.usage ?? 0
       const pct = quota ? ((usage / quota) * 100).toFixed(1) : '?'
+      // usageDetails is non-standard and absent from the lib's StorageEstimate type.
+      const details = (est as StorageEstimate & { usageDetails?: Record<string, number> }).usageDetails ?? {}
       log(
         `storage @ ${when}: usage=${fmtBytes(usage)} / quota=${fmtBytes(quota)} ` +
           `(${pct}% used, ${fmtBytes(quota - usage)} free)`,
-        est.usageDetails ?? {},
+        details,
       )
     } else {
       log(`storage @ ${when}: navigator.storage.estimate() unavailable`)
