@@ -60,7 +60,7 @@ export function useRagEngine() {
     if (embeddingReadyRef.current) return
     indexing.start('Loading embedding model', () => {})
     try {
-      await getEmbedder((pct, file) => indexing.setProgress(pct, 100))
+      await getEmbedder((pct, _file) => indexing.setProgress(pct, 100))
       embeddingReadyRef.current = true
     } catch (err) {
       console.error('Embedder load failed', err)
@@ -90,7 +90,7 @@ export function useRagEngine() {
       const sizeHint = modelEntry ? ` (~${formatVram(modelEntry.vramMB)})` : ''
       indexing.start(`Loading ${modelEntry?.label ?? 'LLM'}${sizeHint}`, () => {})
       try {
-        await getEngine(ragLlmModel, (pct, text) => indexing.setProgress(pct, 100))
+        await getEngine(ragLlmModel, (pct, _text) => indexing.setProgress(pct, 100))
       } catch (err) {
         console.error('LLM load failed', err)
         indexing.setError('Failed to load LLM. Check network & refresh.')

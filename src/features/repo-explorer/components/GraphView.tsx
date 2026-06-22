@@ -314,7 +314,7 @@ export default function GraphView({ graph, onNodeClick, selectedNode }: Props) {
         <Controls />
         <MiniMap
           maskColor="var(--surface)88"
-          nodeColor={(n) => 'var(--accent)'}
+          nodeColor={() => 'var(--accent)'}
         />
       </ReactFlow>
     </div>
