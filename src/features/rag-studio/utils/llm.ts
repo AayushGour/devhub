@@ -36,6 +36,9 @@ export async function getEngine(modelId: string, onProgress?: LLMProgressCallbac
   }).catch((err) => {
     _loadingPromise = null
     _loadedModelId = null
+    if (err instanceof Error && err.name === 'QuotaExceededError') {
+      throw new Error('Browser cross-origin isolation is not active — SharedArrayBuffer is unavailable. Try a hard refresh (Ctrl+Shift+R) to activate the service worker.')
+    }
     throw err
   })
 

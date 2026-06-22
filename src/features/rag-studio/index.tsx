@@ -19,6 +19,7 @@ export default function RagStudioPage() {
     sendMessage,
     clearDocs,
     removeDoc,
+    dismissOverlay,
   } = useRagEngine()
 
   useEffect(() => {
@@ -28,7 +29,7 @@ export default function RagStudioPage() {
 
   return (
     <>
-      <ModelOverlay state={overlay} />
+      <ModelOverlay state={overlay} onDismiss={dismissOverlay} />
 
       <div className="studio-root">
         <RagToolbar onClearAll={clearDocs} />

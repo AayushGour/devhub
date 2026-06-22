@@ -28,7 +28,7 @@ export interface ChatMessage {
 
 export type OverlayState =
   | { open: false }
-  | { open: true; label: string; pct: number; detail: string }
+  | { open: true; label: string; pct: number; detail: string; error?: boolean }
 
 export type RetrievalStage = 'idle' | 'expanding' | 'retrieving' | 'generating'
 
@@ -76,7 +76,7 @@ export function useRagEngine() {
       embeddingReadyRef.current = true
     } catch (err) {
       console.error('Embedder load failed', err)
-      setOverlay({ open: true, label: 'Failed to load embedding model. Refresh to retry.', pct: 0, detail: '' })
+      setOverlay({ open: true, label: 'Failed to load embedding model. Refresh to retry.', pct: 0, detail: '', error: true })
       return
     }
     hideOverlay()
@@ -105,7 +105,8 @@ export function useRagEngine() {
         await getEngine(ragLlmModel, (pct, text) => updateOverlay(pct, text))
       } catch (err) {
         console.error('LLM load failed', err)
-        setOverlay({ open: true, label: 'Failed to load LLM. Check network & refresh.', pct: 0, detail: '' })
+        const msg = err instanceof Error ? err.message : 'Failed to load LLM. Check network & refresh.'
+        setOverlay({ open: true, label: msg, pct: 0, detail: '', error: true })
         return
       }
       hideOverlay()
@@ -290,5 +291,6 @@ export function useRagEngine() {
     sendMessage,
     clearDocs,
     removeDoc,
+    dismissOverlay: hideOverlay,
   }
 }
