@@ -1,19 +1,34 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useGitHubFetcher } from './useGitHubFetcher'
 import { useIndexer } from './useIndexer'
 import { useWikiGen } from './useWikiGen'
 import { useRepoChat } from './useRepoChat'
-import { loadRepo } from '../utils/repoDb'
-import type { RepoFile, RepoGraph, RepoMeta, ExplorerView } from '../types'
+import { loadRepo, listRepos, deleteRepo } from '../utils/repoDb'
+import { createLogger } from '@/lib/logger'
+import type { RepoFile, RepoGraph, RepoMeta } from '../types'
 
 export { type ChatMessage } from './useRepoChat'
+
+const log = createLogger('repo:explorer')
 
 export function useRepoExplorer() {
   const [meta, setMeta] = useState<RepoMeta | null>(null)
   const [files, setFiles] = useState<RepoFile[]>([])
   const [graph, setGraph] = useState<RepoGraph>({ nodes: [], edges: [] })
   const [selectedFile, setSelectedFile] = useState<RepoFile | null>(null)
-  const [view, setView] = useState<ExplorerView>('graph')
+  const [savedToken, setSavedToken] = useState<string | undefined>(undefined)
+  const [indexedRepos, setIndexedRepos] = useState<RepoMeta[]>([])
+
+  const refreshIndexedRepos = useCallback(async () => {
+    const repos = await listRepos()
+    repos.sort((a, b) => b.fetchedAt - a.fetchedAt)
+    log.log(`indexed repos: ${repos.length}`)
+    setIndexedRepos(repos)
+  }, [])
+
+  useEffect(() => {
+    refreshIndexedRepos()
+  }, [refreshIndexedRepos])
 
   const { fetchRepo, loading: fetching, error: fetchError } = useGitHubFetcher()
   const { indexFiles, loadIndex, embeddings } = useIndexer()
@@ -21,18 +36,48 @@ export function useRepoExplorer() {
   const chat = useRepoChat(meta, files, embeddings)
 
   const loadExistingRepo = useCallback(async (owner: string, repo: string) => {
+    const done = log.time(`loadExistingRepo ${owner}/${repo}`)
     const stored = await loadRepo(owner, repo)
-    if (!stored) return false
+    if (!stored) {
+      log.log(`no cached repo for ${owner}/${repo} — will fetch`)
+      return false
+    }
+    log.log(`cache hit ${owner}/${repo}: ${stored.files.length} files, ` +
+      `${stored.graph.nodes.length} nodes, ${stored.graph.edges.length} edges`)
     setMeta(stored.meta)
     setFiles(stored.files)
     setGraph(stored.graph)
-    // Load embeddings from DB
     await loadIndex(owner, repo)
+    done()
     return true
   }, [loadIndex])
 
+  const runFetch = useCallback(async (url: string, token?: string) => {
+    const done = log.time(`runFetch ${url}`)
+    log.log(`fetching ${url}${token ? ' (with token)' : ''}`)
+    const data = await fetchRepo(url, token)
+    if (!data) {
+      log.warn(`fetch returned no data for ${url}`)
+      return
+    }
+    log.log(`fetched ${data.meta.owner}/${data.meta.repo}: ${data.files.length} files, ` +
+      `${data.graph.nodes.length} nodes, ${data.graph.edges.length} edges`)
+
+    setMeta(data.meta)
+    setFiles(data.files)
+    setGraph(data.graph)
+    setSelectedFile(null)
+
+    await new Promise<void>((r) => setTimeout(r, 0))
+    await indexFiles(data.meta.owner, data.meta.repo, data.files)
+    await refreshIndexedRepos()
+    done()
+  }, [fetchRepo, indexFiles, refreshIndexedRepos])
+
   const handleFetch = useCallback(async (url: string, token?: string) => {
-    // Try loading from cache first
+    log.log(`handleFetch: ${url}`)
+    setSavedToken(token)
+
     const parsed = url.match(/github\.com\/([^/]+)\/([^/?\s#]+)/)
     if (parsed) {
       const [, owner, repo] = parsed
@@ -40,19 +85,27 @@ export function useRepoExplorer() {
       if (loaded) return
     }
 
-    const data = await fetchRepo(url, token)
-    if (!data) return
+    await runFetch(url, token)
+  }, [runFetch, loadExistingRepo])
 
-    setMeta(data.meta)
-    setFiles(data.files)
-    setGraph(data.graph)
+  const handleRefetch = useCallback(async () => {
+    if (!meta) return
+    await runFetch(meta.url, savedToken)
+  }, [meta, savedToken, runFetch])
 
-    // Index in background (updates indexingStore footer)
-    await indexFiles(data.meta.owner, data.meta.repo, data.files)
-  }, [fetchRepo, indexFiles, loadExistingRepo])
+  const handleDeleteRepo = useCallback(async (owner: string, repo: string) => {
+    log.log(`delete indexed repo: ${owner}/${repo}`)
+    await deleteRepo(owner, repo)
+    await refreshIndexedRepos()
+  }, [refreshIndexedRepos])
 
   const handleSelectFile = useCallback((file: RepoFile) => {
+    log.log(`select file: ${file.path}`)
     setSelectedFile(file)
+  }, [])
+
+  const handleClosePanel = useCallback(() => {
+    setSelectedFile(null)
   }, [])
 
   const handleGenerateWiki = useCallback((file: RepoFile) => {
@@ -60,7 +113,7 @@ export function useRepoExplorer() {
     generateWiki(meta.owner, meta.repo, file)
   }, [meta, generateWiki])
 
-  const fileMap = new Map(files.map((f) => [f.path, f]))
+  const fileMap = useMemo(() => new Map(files.map((f) => [f.path, f])), [files])
 
   const handleNodeClick = useCallback((path: string) => {
     const file = fileMap.get(path)
@@ -68,13 +121,17 @@ export function useRepoExplorer() {
   }, [fileMap])
 
   return {
-    meta, files, graph, selectedFile, view, setView,
+    meta, files, graph, selectedFile,
     fetching, fetchError,
     embeddings,
     wikiPages, generating,
     chat,
+    indexedRepos,
     handleFetch,
+    handleRefetch,
+    handleDeleteRepo,
     handleSelectFile,
+    handleClosePanel,
     handleGenerateWiki,
     handleNodeClick,
   }

@@ -3,7 +3,15 @@ import { cn } from '@/lib/utils'
 import { useIndexingStore } from '@/store/indexingStore'
 
 export default function IndexingFooter() {
-  const { phase, label, pct, filesDone, filesTotal, error, cancel, dismiss } = useIndexingStore()
+  // Per-field selectors so progress ticks re-render only this footer.
+  const phase = useIndexingStore((s) => s.phase)
+  const label = useIndexingStore((s) => s.label)
+  const pct = useIndexingStore((s) => s.pct)
+  const filesDone = useIndexingStore((s) => s.filesDone)
+  const filesTotal = useIndexingStore((s) => s.filesTotal)
+  const error = useIndexingStore((s) => s.error)
+  const cancel = useIndexingStore((s) => s.cancel)
+  const dismiss = useIndexingStore((s) => s.dismiss)
 
   if (phase === 'idle') return null
 

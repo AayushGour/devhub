@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Send } from 'lucide-react'
+import { Send, Square } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type ChatMessage, type RetrievalStage } from '../hooks/useRagEngine'
+import { getModelById } from '@/lib/llm/models'
 import { parseMarkdown, postProcessPreview } from '@/features/markdown-studio/utils/parser'
 
 const STAGE_LABELS: Record<RetrievalStage, string> = {
@@ -24,6 +25,7 @@ interface Props {
   disabled: boolean
   stage: RetrievalStage
   onSend: (text: string) => void
+  onStop: () => void
 }
 
 function AiBubble({ msg, stage }: { msg: ChatMessage; stage: RetrievalStage }) {
@@ -31,6 +33,7 @@ function AiBubble({ msg, stage }: { msg: ChatMessage; stage: RetrievalStage }) {
   const stageLabel = STAGE_LABELS[stage]
   const visibleContent = msg.content.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<think>[\s\S]*/i, '').trim()
   const showStage = msg.streaming && !visibleContent && stageLabel
+  const modelLabel = msg.model ? getModelById(msg.model)?.label ?? msg.model : null
 
   useEffect(() => {
     if (!ref.current) return
@@ -43,19 +46,23 @@ function AiBubble({ msg, stage }: { msg: ChatMessage; stage: RetrievalStage }) {
 
   if (showStage) {
     return (
-      <div className="rag-ai-bubble self-start max-w-[80%] rounded-xl px-4 py-3 text-sm leading-relaxed bg-surface border border-border text-on-surface-muted flex items-center gap-2">
-        <span className="inline-flex gap-0.5">
-          <span className="animate-bounce [animation-delay:0ms]">·</span>
-          <span className="animate-bounce [animation-delay:150ms]">·</span>
-          <span className="animate-bounce [animation-delay:300ms]">·</span>
-        </span>
-        {stageLabel}
+      <div className="rag-ai-bubble self-start max-w-[80%] flex flex-col gap-1">
+        {modelLabel && <span className="text-[0.62rem] text-on-surface-muted px-1">{modelLabel}</span>}
+        <div className="rounded-xl px-4 py-3 text-sm leading-relaxed bg-surface border border-border text-on-surface-muted flex items-center gap-2">
+          <span className="inline-flex gap-0.5">
+            <span className="animate-bounce [animation-delay:0ms]">·</span>
+            <span className="animate-bounce [animation-delay:150ms]">·</span>
+            <span className="animate-bounce [animation-delay:300ms]">·</span>
+          </span>
+          {stageLabel}
+        </div>
       </div>
     )
   }
 
   return (
     <div className="rag-ai-bubble self-start max-w-[80%] flex flex-col gap-1">
+      {modelLabel && <span className="text-[0.62rem] text-on-surface-muted px-1">{modelLabel}</span>}
       <div
         className={cn(
           'rounded-xl px-4 py-3 text-sm leading-relaxed',
@@ -79,7 +86,7 @@ function AiBubble({ msg, stage }: { msg: ChatMessage; stage: RetrievalStage }) {
   )
 }
 
-export default function ChatPanel({ messages, disabled, stage, onSend }: Props) {
+export default function ChatPanel({ messages, disabled, stage, onSend, onStop }: Props) {
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -138,13 +145,24 @@ export default function ChatPanel({ messages, disabled, stage, onSend }: Props) 
           disabled={disabled}
           className="flex-1 resize-none rounded-lg border border-border bg-surface-raised text-sm text-on-surface placeholder:text-on-surface-muted px-3 py-2 focus:outline-none focus:border-accent transition-colors duration-150 disabled:opacity-50 font-[inherit]"
         />
-        <button
-          type="submit"
-          disabled={disabled || !input.trim()}
-          className="self-end flex items-center justify-center w-9 h-9 rounded-lg bg-accent text-accent-text border-none cursor-pointer transition-[background-color,opacity] duration-150 hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <Send size={15} />
-        </button>
+        {disabled ? (
+          <button
+            type="button"
+            onClick={onStop}
+            title="Stop generating"
+            className="self-end flex items-center justify-center w-9 h-9 rounded-lg bg-surface-raised text-on-surface border border-border cursor-pointer transition-colors duration-150 hover:border-accent"
+          >
+            <Square size={13} className="fill-current" />
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="self-end flex items-center justify-center w-9 h-9 rounded-lg bg-accent text-accent-text border-none cursor-pointer transition-[background-color,opacity] duration-150 hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Send size={15} />
+          </button>
+        )}
       </form>
     </div>
   )

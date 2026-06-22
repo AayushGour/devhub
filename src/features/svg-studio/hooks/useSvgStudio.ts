@@ -2,7 +2,10 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { fileToCanvas } from '../utils/canvas'
 import { runSvgo, formatSvg, svgStats, type SvgStats } from '../utils/postprocess'
 import { ENGINES, PRESETS, getPreset } from '../engines'
+import { createLogger } from '@/lib/logger'
 import type { EnginePreset, TraceParams } from '../engines/types'
+
+const log = createLogger('svg')
 
 export type Phase = 'idle' | 'processing' | 'gallery' | 'done'
 
@@ -67,6 +70,7 @@ export function useSvgStudio(): SvgStudioState {
 
   const handleFile = useCallback(async (f: File) => {
     const myRun = ++runId.current
+    log.log(`handleFile: ${f.name} (${f.type}, ${f.size} bytes)`)
     setFile(f)
     setPhase('processing')
     setError(null)
@@ -90,6 +94,7 @@ export function useSvgStudio(): SvgStudioState {
       canvas = await fileToCanvas(f)
     } catch (e) {
       if (myRun !== runId.current) return
+      log.error('fileToCanvas failed', e)
       setError((e as Error).message)
       setPhase('idle')
       return
@@ -107,7 +112,7 @@ export function useSvgStudio(): SvgStudioState {
         })
         .catch(e => {
           if (myRun !== runId.current) return
-          console.error(`[${preset.label}]`, e)
+          log.error(`trace failed [${preset.label}]`, e)
           setTiles(prev => ({
             ...prev,
             [preset.id]: { status: 'failed', error: (e as Error).message },
@@ -156,6 +161,7 @@ export function useSvgStudio(): SvgStudioState {
         })
         .catch(e => {
           if (!fresh()) return
+          log.error(`refine failed [${id}]`, e)
           setTiles(prevTiles => ({
             ...prevTiles,
             [id]: { status: 'failed', error: (e as Error).message },

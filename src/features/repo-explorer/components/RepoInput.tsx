@@ -1,14 +1,28 @@
 import { useState, type FormEvent } from 'react'
-import { GitBranch, Key, Search } from 'lucide-react'
+import { GitBranch, Key, Search, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import type { RepoMeta } from '../types'
 
 interface Props {
   onFetch: (url: string, token?: string) => void
   loading: boolean
   error: string | null
+  repos: RepoMeta[]
+  onOpen: (repo: RepoMeta) => void
+  onDelete: (repo: RepoMeta) => void
 }
 
-export default function RepoInput({ onFetch, loading, error }: Props) {
+function timeAgo(ts: number): string {
+  const s = Math.floor((Date.now() - ts) / 1000)
+  if (s < 60) return 'just now'
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
+}
+
+export default function RepoInput({ onFetch, loading, error, repos, onOpen, onDelete }: Props) {
   const [url, setUrl] = useState('')
   const [token, setToken] = useState('')
   const [showToken, setShowToken] = useState(false)
@@ -86,6 +100,51 @@ export default function RepoInput({ onFetch, loading, error }: Props) {
           <p className="text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2">{error}</p>
         )}
       </form>
+
+      {repos.length > 0 && (
+        <div className="w-full max-w-lg flex flex-col gap-2">
+          <h2 className="text-xs font-semibold text-on-surface-muted uppercase tracking-widest px-1">
+            Indexed repositories
+          </h2>
+          <ul className="flex flex-col gap-1.5">
+            {repos.map((r) => (
+              <li key={`${r.owner}/${r.repo}`}>
+                <div
+                  className={cn(
+                    'group flex items-center gap-3 rounded-lg border border-border bg-surface-raised',
+                    'px-3 py-2 transition-colors duration-150 hover:border-accent',
+                    loading && 'opacity-50 pointer-events-none',
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onOpen(r)}
+                    className="flex-1 min-w-0 flex flex-col items-start text-left cursor-pointer"
+                  >
+                    <span className="text-sm text-on-surface truncate w-full">
+                      {r.owner}/{r.repo}
+                    </span>
+                    <span className="text-xs text-on-surface-muted truncate w-full">
+                      {r.fileCount} files
+                      {r.languages.length > 0 && ` · ${r.languages.slice(0, 3).join(', ')}`}
+                      {` · ${timeAgo(r.fetchedAt)}`}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(r)}
+                    title="Remove from cache"
+                    aria-label={`Remove ${r.owner}/${r.repo}`}
+                    className="shrink-0 text-on-surface-muted hover:text-red-400 transition-colors duration-150 opacity-0 group-hover:opacity-100"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="text-xs text-on-surface-muted text-center">
         <p>Files are indexed locally in your browser. Nothing is sent to any server.</p>

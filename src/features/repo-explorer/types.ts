@@ -6,7 +6,6 @@ export interface RepoMeta {
   fetchedAt: number
   fileCount: number
   languages: string[]
-  githubToken?: string
 }
 
 export interface RepoFile {
@@ -50,8 +49,6 @@ export interface RepoIndexedData {
   graph: RepoGraph
   // embeddings stored separately in repoDb
 }
-
-export type ExplorerView = 'graph' | 'wiki'
 
 export interface GithubTreeItem {
   path: string

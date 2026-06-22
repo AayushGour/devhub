@@ -2,7 +2,10 @@ import { useCallback, useState } from 'react'
 import { streamComplete } from '@/lib/llm/engine'
 import { embed } from '@/lib/llm/embed'
 import { useSettingsStore } from '@/store/settingsStore'
+import { createLogger } from '@/lib/logger'
 import type { RepoFile, RepoMeta } from '../types'
+
+const log = createLogger('repo:chat')
 
 export interface ChatMessage {
   id: string
@@ -60,7 +63,11 @@ export function useRepoChat(
   const ragLlmModel = useSettingsStore((s) => s.ragLlmModel)
 
   const sendMessage = useCallback(async (text: string) => {
-    if (disabled || !meta) return
+    if (disabled || !meta) {
+      log.warn(`send blocked (disabled=${disabled}, hasMeta=${!!meta})`)
+      return
+    }
+    log.log(`send: "${text.slice(0, 80)}" (${embeddings.size} embeddings, ${files.length} files)`)
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -84,6 +91,8 @@ export function useRepoChat(
       const queryVec = await embed(text)
       const topFiles = retrieveTopK(queryVec, embeddings, files)
       const context = buildContext(topFiles)
+      log.log(`retrieved ${topFiles.length} files: ${topFiles.map((f) => f.path).join(', ')}`)
+      log.log(`context: ${context.length} chars, streaming with ${ragLlmModel}`)
 
       const systemPrompt = `You are a code assistant for the ${meta.owner}/${meta.repo} repository.
 Answer questions about the codebase using the file excerpts below.
@@ -106,7 +115,7 @@ ${context.trim()}`
           m.id === aiId ? { ...m, content: 'Error generating response.', streaming: false } : m,
         ),
       )
-      console.error('Chat error', err)
+      log.error('chat error', err)
     } finally {
       setMessages((prev) => prev.map((m) => m.id === aiId ? { ...m, streaming: false } : m))
       setDisabled(false)

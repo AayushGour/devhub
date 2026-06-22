@@ -68,7 +68,7 @@ Output nothing else.`
 }
 
 export function ragSystemPrompt(contextBlock: string): string {
-  return `You are a helpful assistant. Answer the user's question using ONLY the context below.\nIf the answer is not in the context, say "I couldn't find that in the uploaded documents."\n\n=== CONTEXT ===\n${contextBlock.trim()}\n=== END CONTEXT ===`
+  return `You are a helpful assistant. Answer the user's question using ONLY the context below.\nIf the answer is not in the context, say "I couldn't find that in the uploaded documents."\n\n=== CONTEXT ===\n${contextBlock.trim()}\n=== END CONTEXT ===. Do not add any phrases like "based on the context..." or "according to the documents...". Just answer the question directly.`
 }
 
 export const noDocsSystemPrompt =

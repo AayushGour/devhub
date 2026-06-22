@@ -1,6 +1,11 @@
-import type { GithubTreeItem, RepoMeta } from '../types'
+import type { RepoMeta } from '../types'
+import { isBinary } from './languageDetect'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('repo:github-api')
 
 const BASE = 'https://api.github.com'
+const RAW_BASE = 'https://raw.githubusercontent.com'
 
 const SKIP_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', 'out', '.next', '.nuxt',
@@ -10,9 +15,10 @@ const SKIP_DIRS = new Set([
 ])
 
 const MAX_FILE_BYTES = 100_000
+const FETCH_CONCURRENCY = 20
 
 function makeHeaders(token?: string): HeadersInit {
-  const h: HeadersInit = { Accept: 'application/vnd.github.v3+json' }
+  const h: HeadersInit = {}
   if (token) h['Authorization'] = `Bearer ${token}`
   return h
 }
@@ -28,7 +34,9 @@ export async function fetchRepoMeta(
   repo: string,
   token?: string,
 ): Promise<{ defaultBranch: string; description: string }> {
-  const res = await fetch(`${BASE}/repos/${owner}/${repo}`, { headers: makeHeaders(token) })
+  const res = await fetch(`${BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {
+    headers: { ...makeHeaders(token), Accept: 'application/vnd.github.v3+json' },
+  })
   if (res.status === 401 || res.status === 403) throw new Error('AUTH_REQUIRED')
   if (res.status === 404) throw new Error('REPO_NOT_FOUND')
   if (!res.ok) throw new Error(`GitHub API error: ${res.status}`)
@@ -36,75 +44,80 @@ export async function fetchRepoMeta(
   return { defaultBranch: data.default_branch ?? 'main', description: data.description ?? '' }
 }
 
-export async function fetchRepoTree(
+export async function fetchRepoFiles(
   owner: string,
   repo: string,
   branch: string,
   token?: string,
-): Promise<GithubTreeItem[]> {
-  const res = await fetch(
-    `${BASE}/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`,
-    { headers: makeHeaders(token) },
-  )
-  if (!res.ok) throw new Error(`Tree fetch failed: ${res.status}`)
-  const data = await res.json()
-  if (data.truncated) {
-    console.warn('[repo-explorer] Tree truncated — repo has >100k files, results partial')
-  }
-  const items: GithubTreeItem[] = data.tree ?? []
-  return items.filter((item) => {
-    if (item.type !== 'blob') return false
-    const parts = item.path.split('/')
-    if (parts.some((p) => SKIP_DIRS.has(p))) return false
-    if ((item.size ?? 0) > MAX_FILE_BYTES) return false
-    return true
-  })
-}
-
-export async function fetchFileContent(
-  owner: string,
-  repo: string,
-  path: string,
-  token?: string,
-): Promise<string> {
-  const res = await fetch(
-    `${BASE}/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`,
-    { headers: makeHeaders(token) },
-  )
-  if (!res.ok) throw new Error(`File fetch failed: ${path} — ${res.status}`)
-  const data = await res.json()
-  if (data.encoding === 'base64') {
-    return atob(data.content.replace(/\n/g, ''))
-  }
-  return data.content ?? ''
-}
-
-export async function fetchFilesBatched(
-  owner: string,
-  repo: string,
-  paths: string[],
-  token?: string,
-  onProgress?: (done: number, total: number) => void,
+  onProgress?: (label: string) => void,
   signal?: AbortSignal,
 ): Promise<Map<string, string>> {
-  const BATCH = 5
-  const results = new Map<string, string>()
-  for (let i = 0; i < paths.length; i += BATCH) {
+  const headers = makeHeaders(token)
+
+  // 1. Get commit tree SHA for branch
+  onProgress?.('Reading file tree…')
+  const branchRes = await fetch(
+    `${BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches/${encodeURIComponent(branch)}`,
+    { headers, signal },
+  )
+  if (branchRes.status === 401 || branchRes.status === 403) throw new Error('AUTH_REQUIRED')
+  if (branchRes.status === 404) throw new Error('REPO_NOT_FOUND')
+  if (!branchRes.ok) throw new Error(`Branch fetch failed: ${branchRes.status}`)
+  const branchData = await branchRes.json()
+  const treeSha: string = branchData.commit.commit.tree.sha
+
+  // 2. Get full recursive tree (1 API call, CORS-safe)
+  const treeRes = await fetch(
+    `${BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${treeSha}?recursive=1`,
+    { headers, signal },
+  )
+  if (treeRes.status === 429) throw new Error('RATE_LIMITED')
+  if (!treeRes.ok) throw new Error(`Tree fetch failed: ${treeRes.status}`)
+  const treeData = await treeRes.json()
+  log.log(`tree ${treeSha.slice(0, 7)}: ${treeData.tree?.length ?? 0} items`)
+
+  if (treeData.truncated) {
+    log.warn('tree truncated (repo >100k items) — some files may be missing')
+  }
+
+  // 3. Filter to text blobs we care about
+  type TreeItem = { type: string; path: string; size: number }
+  const blobs = (treeData.tree as TreeItem[]).filter((item) => {
+    if (item.type !== 'blob') return false
+    if (item.size > MAX_FILE_BYTES) return false
+    const parts = item.path.split('/')
+    if (parts.some((p) => SKIP_DIRS.has(p))) return false
+    if (isBinary(item.path)) return false
+    return true
+  })
+  log.log(`${blobs.length} text blobs to fetch (filtered from ${treeData.tree?.length ?? 0} tree items, ` +
+    `max ${MAX_FILE_BYTES} bytes/file)`)
+
+  // 4. Fetch content from raw.githubusercontent.com in parallel batches
+  // raw.githubusercontent.com is CORS-accessible and supports Bearer auth for private repos
+  const result = new Map<string, string>()
+  const rawBase = `${RAW_BASE}/${owner}/${repo}/${branch}`
+
+  for (let i = 0; i < blobs.length; i += FETCH_CONCURRENCY) {
     if (signal?.aborted) break
-    const batch = paths.slice(i, i + BATCH)
-    await Promise.all(
-      batch.map(async (path) => {
-        try {
-          const content = await fetchFileContent(owner, repo, path, token)
-          results.set(path, content)
-        } catch {
-          results.set(path, '')
+    const batch = blobs.slice(i, i + FETCH_CONCURRENCY)
+    const end = Math.min(i + FETCH_CONCURRENCY, blobs.length)
+    onProgress?.(`Fetching files ${i + 1}–${end} of ${blobs.length}…`)
+
+    await Promise.allSettled(
+      batch.map(async ({ path }) => {
+        const res = await fetch(`${rawBase}/${path}`, { headers, signal })
+        if (!res.ok) {
+          log.warn(`skip ${path} — HTTP ${res.status}`)
+          return
         }
+        result.set(path, await res.text())
       }),
     )
-    onProgress?.(Math.min(i + BATCH, paths.length), paths.length)
   }
-  return results
+
+  log.log(`fetched ${result.size}/${blobs.length} file contents`)
+  return result
 }
 
 export function buildRepoMeta(
@@ -113,7 +126,6 @@ export function buildRepoMeta(
   defaultBranch: string,
   languages: string[],
   fileCount: number,
-  token?: string,
 ): RepoMeta {
   return {
     owner,
@@ -123,6 +135,5 @@ export function buildRepoMeta(
     fetchedAt: Date.now(),
     fileCount,
     languages,
-    githubToken: token,
   }
 }
