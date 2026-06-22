@@ -1,5 +1,7 @@
 import { openDB, type IDBPDatabase } from 'idb'
+import { createLogger } from '@/lib/logger'
 
+const log = createLogger('rag:db')
 const DB_NAME = 'rag-studio-vectors'
 const DB_VERSION = 1
 const STORE = 'knowledge_nodes'
@@ -44,10 +46,9 @@ export async function getAllNodes(): Promise<KnowledgeNode[]> {
 export async function clearAll(): Promise<void> {
   const db = await getDB()
   await db.clear(STORE)
-  console.log('[RAG:db] clearAll — store wiped')
   // Verify it actually cleared
   const remaining = await db.count(STORE)
-  console.log('[RAG:db] nodes remaining after clear:', remaining)
+  log.log(`clearAll — store wiped, nodes remaining: ${remaining}`)
 }
 
 export async function clearBySource(sourceFile: string): Promise<void> {

@@ -1,6 +1,9 @@
 import { useState, useCallback, useRef } from 'react'
 import type { OutputFormat } from '../utils/formatInfo'
 import { convertImage } from '../utils/converters'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('image')
 
 export interface ResizeOpts {
   width: string
@@ -103,8 +106,10 @@ export function useImageStudio() {
         maintainAspectRatio: item.resize.maintainAspectRatio,
       })
       const url = URL.createObjectURL(blob)
+      log.log(`converted ${item.file.name} → ${item.outputFormat}, ${blob.size} bytes`)
       patchItem(id, { status: 'done', outputBlob: blob, outputUrl: url, outputSize: blob.size })
     } catch (e) {
+      log.error(`convert failed: ${item.file.name} → ${item.outputFormat}`, e)
       patchItem(id, { status: 'error', error: (e as Error).message })
     }
   }, [patchItem])

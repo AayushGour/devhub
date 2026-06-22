@@ -2,7 +2,10 @@ import { useCallback, useState } from 'react'
 import { complete } from '@/features/rag-studio/utils/llm'
 import { saveWikiPage, loadWikiPage } from '../utils/repoDb'
 import { useSettingsStore } from '@/store/settingsStore'
+import { createLogger } from '@/lib/logger'
 import type { WikiPage, RepoFile } from '../types'
+
+const log = createLogger('repo:wiki')
 
 function wikiPrompt(file: RepoFile): string {
   const snippet = file.content.slice(0, 3000)
@@ -43,16 +46,25 @@ export function useWikiGen() {
   ): Promise<WikiPage | null> => {
     // Check cache
     const cached = wikiPages.get(file.path)
-    if (cached) return cached
+    if (cached) {
+      log.log(`memory cache hit: ${file.path}`)
+      return cached
+    }
 
     const dbCached = await loadWikiPage(owner, repo, file.path)
     if (dbCached) {
+      log.log(`db cache hit: ${file.path}`)
       setWikiPages((prev) => new Map(prev).set(file.path, dbCached))
       return dbCached
     }
 
-    if (generating.has(file.path)) return null
+    if (generating.has(file.path)) {
+      log.log(`already generating: ${file.path}`)
+      return null
+    }
 
+    log.log(`generating wiki for ${file.path} (model=${ragLlmModel})`)
+    const done = log.time(`wiki ${file.path}`)
     setGenerating((prev) => new Set(prev).add(file.path))
     try {
       const content = await complete(ragLlmModel, [
@@ -67,8 +79,10 @@ export function useWikiGen() {
 
       await saveWikiPage(owner, repo, page)
       setWikiPages((prev) => new Map(prev).set(file.path, page))
+      done(`${content.length} chars`)
       return page
-    } catch {
+    } catch (err) {
+      log.error(`wiki generation failed for ${file.path}`, err)
       return null
     } finally {
       setGenerating((prev) => {

@@ -1,5 +1,8 @@
 import type { RepoMeta } from '../types'
 import { isBinary } from './languageDetect'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('repo:github-api')
 
 const BASE = 'https://api.github.com'
 const RAW_BASE = 'https://raw.githubusercontent.com'
@@ -71,9 +74,10 @@ export async function fetchRepoFiles(
   if (treeRes.status === 429) throw new Error('RATE_LIMITED')
   if (!treeRes.ok) throw new Error(`Tree fetch failed: ${treeRes.status}`)
   const treeData = await treeRes.json()
+  log.log(`tree ${treeSha.slice(0, 7)}: ${treeData.tree?.length ?? 0} items`)
 
   if (treeData.truncated) {
-    console.warn('[repo] Tree truncated (repo >100k items) — some files may be missing')
+    log.warn('tree truncated (repo >100k items) — some files may be missing')
   }
 
   // 3. Filter to text blobs we care about
@@ -86,6 +90,8 @@ export async function fetchRepoFiles(
     if (isBinary(item.path)) return false
     return true
   })
+  log.log(`${blobs.length} text blobs to fetch (filtered from ${treeData.tree?.length ?? 0} tree items, ` +
+    `max ${MAX_FILE_BYTES} bytes/file)`)
 
   // 4. Fetch content from raw.githubusercontent.com in parallel batches
   // raw.githubusercontent.com is CORS-accessible and supports Bearer auth for private repos
@@ -101,12 +107,16 @@ export async function fetchRepoFiles(
     await Promise.allSettled(
       batch.map(async ({ path }) => {
         const res = await fetch(`${rawBase}/${path}`, { headers, signal })
-        if (!res.ok) return
+        if (!res.ok) {
+          log.warn(`skip ${path} — HTTP ${res.status}`)
+          return
+        }
         result.set(path, await res.text())
       }),
     )
   }
 
+  log.log(`fetched ${result.size}/${blobs.length} file contents`)
   return result
 }
 

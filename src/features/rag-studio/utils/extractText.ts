@@ -1,5 +1,8 @@
 import * as pdfjs from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('rag:extract')
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 
@@ -40,13 +43,14 @@ async function extractDocx(file: File, onStatus: ExtractionStatusCallback): Prom
   const arrayBuffer = await file.arrayBuffer()
   onStatus('extracting DOCX text…')
   const result = await mammoth.extractRawText({ arrayBuffer })
-  if (result.messages.length > 0) console.warn('[RAG:extract] mammoth warnings:', result.messages)
+  if (result.messages.length > 0) log.warn('mammoth warnings:', result.messages)
   onStatus('DOCX extraction complete')
   return result.value
 }
 
 export async function extractText(file: File, onStatus: ExtractionStatusCallback): Promise<string> {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+  log.log(`extracting "${file.name}" (.${ext}, ${file.size} bytes)`)
   switch (ext) {
     case 'pdf':
       return extractPdf(file, onStatus)
