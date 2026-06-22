@@ -106,16 +106,16 @@ export async function callWithTools(
   modelId: string,
   messages: AgentMessage[],
   tools: ToolDefinition[],
-  opts: { max_tokens?: number } = {},
+  opts: { max_tokens?: number; resetFirst?: boolean } = {},
 ): Promise<LLMResponse> {
   const engine = await getEngine(modelId)
-  // Hermes-2-Pro (and other web-llm tool models) throw if any system message
-  // is present — including one cached from a prior RAG/streamComplete call on
-  // the same engine instance. resetChat() flushes that state.
-  await engine.resetChat()
+  // resetChat() clears the KV cache and flushes any system message cached from
+  // prior RAG/chat calls. Only do it on the FIRST call per agent run — repeated
+  // resets on every iteration exhaust WebGPU memory and crash the instance.
+  if (opts.resetFirst) await engine.resetChat()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const reply = await (engine.chat.completions.create as any)({
-    messages,
+    messages: [...messages], // shallow copy — web-llm mutates via unshift(system) for Hermes-2-Pro
     tools,
     tool_choice: 'auto',
     max_tokens: opts.max_tokens ?? 1024,

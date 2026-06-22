@@ -4,6 +4,8 @@ import { callWithTools, complete, type AgentMessage, type ToolDefinition } from 
 import { getModelById } from '@/lib/llm/models'
 import { useAgentStore, type AgentStep } from '../utils/agentStore'
 
+const log = (...args: unknown[]) => console.log('[agent]', ...args)
+
 // ~4 chars per token is a standard approximation for BPE tokenizers
 function countTokens(messages: AgentMessage[]): number {
   return messages.reduce((sum, m) => {
@@ -61,6 +63,7 @@ export function useAgentRunner(
 
     const enabledTools = allToolSchemas.map((t) => t.function.name)
     const sessionId = createSession(task, modelId, enabledTools)
+    log('session started', { sessionId, modelId, tools: enabledTools, task })
 
     const modelEntry = getModelById(modelId)
     const contextWindow = modelEntry?.contextWindow ?? 4096
@@ -75,37 +78,55 @@ export function useAgentRunner(
     const MAX_ITER = 12
     let i = 0
     for (; i < MAX_ITER; i++) {
+      log(`iteration ${i + 1}/${MAX_ITER}, messages:`, messages.length)
+
       if (abortRef.current) {
+        log('aborted by user')
         setStatus(sessionId, 'stopped')
         break
       }
 
       if (countTokens(messages) > threshold) {
+        log('compacting context, token estimate exceeded threshold', threshold)
         messages = await compactMessages(messages, modelId)
         appendStep(sessionId, makeStep('compact', 'earlier context summarised'))
       }
 
       let resp
       try {
-        resp = await callWithTools(modelId, messages, allToolSchemas, { max_tokens: 1024 })
+        log('calling LLM...')
+        resp = await callWithTools(modelId, messages, allToolSchemas, { max_tokens: 1024, resetFirst: i === 0 })
+        log('LLM response', { finish_reason: resp.finish_reason, tool_calls: resp.tool_calls?.length ?? 0, content_len: resp.content?.length ?? 0 })
       } catch (err) {
-        appendStep(sessionId, makeStep('error', `LLM error: ${err instanceof Error ? err.message : String(err)}`))
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error('[agent] LLM call failed:', err)
+        appendStep(sessionId, makeStep('error', `LLM error: ${msg}`))
         setStatus(sessionId, 'error')
         return
       }
 
       if (resp.tool_calls && resp.tool_calls.length > 0) {
-        // push assistant turn with tool_calls into history
-        messages.push({ role: 'assistant', content: resp.content ?? '' } as AgentMessage)
+        // web-llm's conversation renderer ignores tool_calls on assistant messages —
+        // it only uses `content`. For Hermes-2-Pro the raw model output IS the JSON
+        // array of tool calls. Reconstruct it so the model sees what it generated.
+        const rawToolCallJson = JSON.stringify(
+          resp.tool_calls.map((tc) => ({
+            name: tc.function.name,
+            arguments: JSON.parse(tc.function.arguments),
+          }))
+        )
+        messages.push({ role: 'assistant', content: rawToolCallJson })
 
         for (const tc of resp.tool_calls) {
           const toolName = tc.function.name
           let parsedArgs: Record<string, unknown> = {}
           try { parsedArgs = JSON.parse(tc.function.arguments) } catch { /* ignore */ }
 
+          log('tool call', toolName, parsedArgs)
           appendStep(sessionId, makeStep('call', tc.function.arguments, { toolName, args: parsedArgs }))
 
           const result = await executeTool(toolName, tc.function.arguments)
+          log('tool result length:', result.length)
           appendStep(sessionId, makeStep('observe', result))
 
           messages.push({
@@ -115,6 +136,7 @@ export function useAgentRunner(
           })
         }
       } else {
+        log('done, final content length:', resp.content?.length ?? 0)
         appendStep(sessionId, makeStep('done', resp.content ?? ''))
         setStatus(sessionId, 'done')
         return
@@ -122,6 +144,7 @@ export function useAgentRunner(
     }
 
     if (i === MAX_ITER) {
+      console.warn('[agent] hit max iterations', MAX_ITER)
       appendStep(sessionId, makeStep('error', 'Max iterations reached'))
       setStatus(sessionId, 'error')
     }

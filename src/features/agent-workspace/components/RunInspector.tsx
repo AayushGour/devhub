@@ -1,83 +1,96 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { parseMarkdown, postProcessPreview } from '@/features/markdown-studio/utils/parser'
 import { useAgentStore, type AgentStep } from '../utils/agentStore'
 
-function parseMarkdown(text: string): string {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`(.+?)`/g, '<code style="font-family:monospace">$1</code>')
-    .replace(/\n/g, '<br>')
+function partitionSteps(steps: AgentStep[]): { thinking: AgentStep[]; final: AgentStep | null } {
+  let finalIdx = -1
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (steps[i].type === 'done' || steps[i].type === 'error') {
+      finalIdx = i
+      break
+    }
+  }
+  if (finalIdx === -1) return { thinking: steps, final: null }
+  return { thinking: steps.slice(0, finalIdx), final: steps[finalIdx] }
 }
 
-interface StepRowProps {
-  step: AgentStep
+function ThinkingBlock({ steps }: { steps: AgentStep[] }) {
+  const [open, setOpen] = useState(false)
+  const toolCallCount = steps.filter((s) => s.type === 'call').length
+
+  return (
+    <div className="rounded-xl border border-border bg-surface-raised overflow-hidden self-start max-w-[85%]">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 w-full px-3 py-2 text-xs text-on-surface-muted hover:text-on-surface transition-colors duration-150 text-left"
+      >
+        {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        <span>
+          Thinking
+          {toolCallCount > 0 && (
+            <span className="ml-1 text-[0.65rem] opacity-60">
+              · {toolCallCount} tool call{toolCallCount !== 1 ? 's' : ''}
+            </span>
+          )}
+        </span>
+      </button>
+
+      {open && (
+        <div className="border-t border-border">
+          {steps.map((step, i) => {
+            if (step.type === 'compact') {
+              return (
+                <div key={step.id} className="px-3 py-1.5 text-[0.65rem] text-on-surface-muted text-center border-b border-border last:border-b-0">
+                  ↑ earlier context summarised
+                </div>
+              )
+            }
+
+            if (step.type === 'call') {
+              const nextStep = steps[i + 1]
+              const hasObserve = nextStep?.type === 'observe'
+              const preview = `${step.toolName ?? '?'}(${step.content.slice(0, 80)}${step.content.length > 80 ? '…' : ''})`
+              return (
+                <div key={step.id} className={cn('px-3 py-2 border-b border-border', !hasObserve && 'last:border-b-0')}>
+                  <span className="text-accent font-mono text-[0.7rem]">▶ {preview}</span>
+                </div>
+              )
+            }
+
+            if (step.type === 'observe') {
+              return (
+                <div key={step.id} className="px-3 py-2 bg-surface border-b border-border last:border-b-0">
+                  <pre className="text-[0.65rem] text-on-surface-muted whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                    {step.content.length > 500 ? step.content.slice(0, 500) + '…' : step.content}
+                  </pre>
+                </div>
+              )
+            }
+
+            return null
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
-function StepRow({ step }: StepRowProps) {
-  const [expanded, setExpanded] = useState(false)
+function AiAnswer({ content }: { content: string }) {
+  const ref = useRef<HTMLDivElement>(null)
 
-  if (step.type === 'compact') {
-    return (
-      <div className="text-on-surface-muted text-[0.65rem] text-center border-y border-border py-1 my-1">
-        ↑ earlier context summarised
-      </div>
-    )
-  }
+  useEffect(() => {
+    if (!ref.current) return
+    ref.current.innerHTML = parseMarkdown(content || ' ')
+    postProcessPreview(ref.current)
+  }, [content])
 
-  if (step.type === 'done') {
-    return (
-      <div
-        className="text-on-surface text-xs leading-relaxed"
-        dangerouslySetInnerHTML={{ __html: parseMarkdown(step.content) }}
-      />
-    )
-  }
-
-  if (step.type === 'error') {
-    return <div className="text-red-400 text-xs font-mono">{step.content}</div>
-  }
-
-  if (step.type === 'call') {
-    const preview = `${step.toolName ?? '?'}(${step.content.slice(0, 60)}${step.content.length > 60 ? '…' : ''})`
-    return (
-      <div>
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="flex items-center gap-1 text-accent font-mono text-xs hover:opacity-80 transition-opacity"
-        >
-          {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-          <span>▶ {preview}</span>
-        </button>
-        {expanded && (
-          <pre className="mt-1 ml-4 text-[0.65rem] text-on-surface-muted whitespace-pre-wrap break-all bg-surface-raised rounded px-2 py-1">
-            {step.content}
-          </pre>
-        )}
-      </div>
-    )
-  }
-
-  if (step.type === 'observe') {
-    const truncated = step.content.length > 300
-    const display = truncated && !expanded ? step.content.slice(0, 300) + '…' : step.content
-    return (
-      <div className="text-on-surface-muted text-xs">
-        <span>{display}</span>
-        {truncated && (
-          <button
-            onClick={() => setExpanded((v) => !v)}
-            className="ml-1 text-accent text-[0.65rem] hover:underline"
-          >
-            {expanded ? 'show less' : 'show more'}
-          </button>
-        )}
-      </div>
-    )
-  }
-
-  return null
+  return (
+    <div className="self-start max-w-[85%] rounded-xl px-4 py-3 text-sm leading-relaxed bg-surface border border-border text-on-surface">
+      <div ref={ref} className="markdown-preview" />
+    </div>
+  )
 }
 
 export default function RunInspector() {
@@ -97,30 +110,53 @@ export default function RunInspector() {
     )
   }
 
-  const statusColor: Record<string, string> = {
-    running: 'text-accent',
-    done: 'text-green-400',
-    error: 'text-red-400',
-    stopped: 'text-on-surface-muted',
-  }
+  const { thinking, final } = partitionSteps(session.steps)
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
-      <div className="flex items-baseline gap-2 mb-4">
-        <span className={cn('text-[0.65rem] font-medium uppercase tracking-wide', statusColor[session.status])}>
-          {session.status}
-        </span>
-        <span className="text-xs text-on-surface-muted truncate">{session.task}</span>
+    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto px-6 py-5 gap-4">
+      {/* User task bubble */}
+      <div className="flex justify-end">
+        <div className="max-w-[80%] bg-accent text-accent-text rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed">
+          {session.task}
+        </div>
       </div>
 
-      {session.steps.map((step) => (
-        <StepRow key={step.id} step={step} />
-      ))}
+      {/* Thinking block — only when steps exist */}
+      {thinking.length > 0 && <ThinkingBlock steps={thinking} />}
 
-      {session.status === 'running' && (
-        <div className="flex items-center gap-1.5 text-xs text-on-surface-muted">
+      {/* Running indicator — no thinking steps yet */}
+      {session.status === 'running' && thinking.length === 0 && !final && (
+        <div className="self-start flex items-center gap-1.5 text-xs text-on-surface-muted">
+          <span className="inline-flex gap-0.5">
+            <span className="animate-bounce [animation-delay:0ms]">·</span>
+            <span className="animate-bounce [animation-delay:150ms]">·</span>
+            <span className="animate-bounce [animation-delay:300ms]">·</span>
+          </span>
+          <span>Thinking…</span>
+        </div>
+      )}
+
+      {/* Running indicator while tool calls in progress */}
+      {session.status === 'running' && thinking.length > 0 && !final && (
+        <div className="self-start flex items-center gap-1.5 text-xs text-on-surface-muted">
           <span className="animate-pulse">●</span>
-          <span>thinking…</span>
+          <span>Working…</span>
+        </div>
+      )}
+
+      {/* Final answer as AI bubble */}
+      {final?.type === 'done' && (
+        final.content.trim()
+          ? <AiAnswer content={final.content} />
+          : <div className="self-start rounded-xl px-4 py-3 text-sm text-on-surface-muted bg-surface border border-border italic">
+              (no response)
+            </div>
+      )}
+
+      {/* Error */}
+      {final?.type === 'error' && (
+        <div className="self-start text-red-400 text-sm font-mono bg-surface-raised border border-red-900/40 rounded-xl px-4 py-3">
+          {final.content}
         </div>
       )}
 
