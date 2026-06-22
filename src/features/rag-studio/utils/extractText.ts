@@ -30,8 +30,16 @@ async function extractPdf(file: File, onStatus: ExtractionStatusCallback): Promi
   }
 
   pdf.destroy()
+
+  const fullText = pageTexts.join('\n\n')
+  if (!fullText.trim()) {
+    throw new Error(
+      'This PDF has no extractable text layer. It is likely a scanned document. OCR is not supported — please use a text-searchable PDF.',
+    )
+  }
+
   onStatus('PDF extraction complete')
-  return pageTexts.join('\n\n')
+  return fullText
 }
 
 async function extractDocx(file: File, onStatus: ExtractionStatusCallback): Promise<string> {
