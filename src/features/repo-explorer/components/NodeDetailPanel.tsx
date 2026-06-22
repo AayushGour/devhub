@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { X, BookOpen, Code2, Loader2 } from 'lucide-react'
 import MonacoEditor from '@monaco-editor/react'
 import { cn } from '@/lib/utils'
@@ -35,8 +35,13 @@ export default function NodeDetailPanel({
   const wikiPage: WikiPage | undefined = file ? wikiPages.get(file.path) : undefined
   const isGenerating = file ? generating.has(file.path) : false
 
+  // Track the last path we auto-requested so the effect fires once per file —
+  // guards against React StrictMode double-invoking the effect (which would
+  // launch two concurrent generations for the same file).
+  const autoRequestedPath = useRef<string | null>(null)
   useEffect(() => {
-    if (file && tab === 'wiki' && !wikiPage && !isGenerating) {
+    if (file && tab === 'wiki' && !wikiPage && !isGenerating && autoRequestedPath.current !== file.path) {
+      autoRequestedPath.current = file.path
       onGenerateWiki(file)
     }
   }, [file, tab, wikiPage, isGenerating, onGenerateWiki])

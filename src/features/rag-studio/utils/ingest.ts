@@ -1,4 +1,4 @@
-import { getEngine } from './llm'
+import { complete } from './llm'
 import { embedBatch } from './embed'
 import { putNode } from './vectorDb'
 import { extractText } from './extractText'
@@ -61,17 +61,16 @@ function chunkText(text: string): string[] {
 
 async function summariseChunk(modelId: string, chunk: string, idx: number): Promise<string> {
   log.log(`summarising chunk ${idx}, length=${chunk.length}`)
-  const engine = await getEngine(modelId)
   try {
-    const reply = await engine.chat.completions.create({
-      messages: [
+    // Goes through complete() so it shares the single-generation mutex.
+    const summary = (await complete(
+      modelId,
+      [
         { role: 'system', content: chunkSummarisationSystemPrompt },
         { role: 'user', content: chunk },
       ],
-      max_tokens: 120,
-      temperature: 0,
-    })
-    const summary = reply.choices[0].message.content?.trim() ?? ''
+      { max_tokens: 120, temperature: 0 },
+    )).trim()
     log.log(`chunk ${idx} summary: "${summary.slice(0, 100)}…"`)
     return summary.length > 20 ? summary : chunk
   } catch (err) {

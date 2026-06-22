@@ -76,18 +76,38 @@ export interface ChatMessage {
   content: string
 }
 
+// A single MLCEngine cannot run two generations at once — overlapping
+// `chat.completions.create` calls corrupt its tokenizer/grammar bindings
+// (e.g. "Expected null or instance of VectorInt"). Serialize every generation
+// through this async mutex so concurrent callers (wiki + chat, fast clicks,
+// StrictMode double-effects) queue instead of colliding.
+let _genLock: Promise<void> = Promise.resolve()
+
+function acquireGenLock(): Promise<() => void> {
+  let release!: () => void
+  const next = new Promise<void>((r) => (release = r))
+  const prev = _genLock
+  _genLock = prev.then(() => next)
+  return prev.then(() => release)
+}
+
 export async function complete(
   modelId: string,
   messages: ChatMessage[],
-  opts: { max_tokens?: number } = {},
+  opts: { max_tokens?: number; temperature?: number } = {},
 ): Promise<string> {
-  const engine = await getEngine(modelId)
-  const reply = await engine.chat.completions.create({
-    messages,
-    max_tokens: opts.max_tokens ?? 512,
-    temperature: 0.1,
-  })
-  return reply.choices[0]?.message?.content ?? ''
+  const release = await acquireGenLock()
+  try {
+    const engine = await getEngine(modelId)
+    const reply = await engine.chat.completions.create({
+      messages,
+      max_tokens: opts.max_tokens ?? 512,
+      temperature: opts.temperature ?? 0.1,
+    })
+    return reply.choices[0]?.message?.content ?? ''
+  } finally {
+    release()
+  }
 }
 
 export async function* streamComplete(
@@ -95,15 +115,20 @@ export async function* streamComplete(
   messages: ChatMessage[],
   opts: { max_tokens?: number } = {},
 ): AsyncGenerator<string> {
-  const engine = await getEngine(modelId)
-  const stream = await engine.chat.completions.create({
-    messages,
-    max_tokens: opts.max_tokens ?? 512,
-    temperature: 0.1,
-    stream: true,
-  })
-  for await (const chunk of stream) {
-    const delta = chunk.choices[0]?.delta?.content ?? ''
-    if (delta) yield delta
+  const release = await acquireGenLock()
+  try {
+    const engine = await getEngine(modelId)
+    const stream = await engine.chat.completions.create({
+      messages,
+      max_tokens: opts.max_tokens ?? 512,
+      temperature: 0.1,
+      stream: true,
+    })
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta?.content ?? ''
+      if (delta) yield delta
+    }
+  } finally {
+    release()
   }
 }
