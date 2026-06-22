@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ReactFlow,
   Background,
@@ -15,7 +15,10 @@ import {
 import '@xyflow/react/dist/style.css'
 import './GraphView.css'
 import { cn } from '@/lib/utils'
+import { createLogger } from '@/lib/logger'
 import type { RepoGraph } from '../types'
+
+const log = createLogger('repo:graph')
 
 interface Props {
   graph: RepoGraph
@@ -223,7 +226,7 @@ function buildTreeLayout(
   return { nodes: flowNodes, edges: flowEdges }
 }
 
-export default function GraphView({ graph, onNodeClick, selectedNode }: Props) {
+function GraphView({ graph, onNodeClick, selectedNode }: Props) {
   const [showExternal, setShowExternal] = useState(false)
 
   const filteredGraph = useMemo(() => {
@@ -244,6 +247,7 @@ export default function GraphView({ graph, onNodeClick, selectedNode }: Props) {
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges)
 
   useEffect(() => {
+    const done = log.time('buildTreeLayout')
     const { nodes: n, edges: e } = buildTreeLayout(
       filteredGraph.nodes,
       filteredGraph.edges,
@@ -251,7 +255,8 @@ export default function GraphView({ graph, onNodeClick, selectedNode }: Props) {
     )
     setNodes(n)
     setEdges(e)
-  }, [filteredGraph, selectedNode, setNodes, setEdges])
+    done(`${n.length} nodes, ${e.length} edges (showExternal=${showExternal})`)
+  }, [filteredGraph, selectedNode, setNodes, setEdges, showExternal])
 
   const handleNodeClick: NodeMouseHandler = useCallback(
     (_, node) => {
@@ -320,3 +325,7 @@ export default function GraphView({ graph, onNodeClick, selectedNode }: Props) {
     </div>
   )
 }
+
+// Memoized: props are stable, so unrelated app state (e.g. indexing progress)
+// won't re-render the heavy React Flow tree.
+export default memo(GraphView)
