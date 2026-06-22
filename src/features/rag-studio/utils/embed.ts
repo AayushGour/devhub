@@ -1,6 +1,9 @@
 import { pipeline, env } from '@xenova/transformers'
 
 env.allowLocalModels = false
+// Disable multi-threading to prevent onnxruntime-web from creating blob workers,
+// which break in production builds due to minified variable scoping.
+env.backends.onnx.wasm.numThreads = 1
 
 const MODEL = 'Xenova/bge-base-en-v1.5'
 

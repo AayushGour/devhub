@@ -12,7 +12,7 @@ export default defineConfig({
   },
   base: '/devhub/',
   optimizeDeps: {
-    exclude: ['pdfjs-dist', 'tiktoken'],
+    exclude: ['pdfjs-dist', 'tiktoken', '@xenova/transformers'],
   },
   worker: {
     format: 'es',
