@@ -1,0 +1,11 @@
+.node-detail-wiki .markdown-preview {
+  --md-bg: transparent;
+  --md-text: var(--on-surface);
+  --md-text-muted: var(--on-surface-muted);
+  --md-border: var(--border);
+  --md-code-bg: var(--surface-raised);
+  --md-blockquote-bg: var(--surface-raised);
+  --md-blockquote-border: var(--accent);
+  --md-accent: var(--accent);
+  max-width: 100%;
+}

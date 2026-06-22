@@ -1,10 +1,12 @@
 import { pipeline, env } from '@xenova/transformers'
+import { createLogger } from '@/lib/logger'
 
 env.allowLocalModels = false
 // Disable multi-threading to prevent onnxruntime-web from creating blob workers,
 // which break in production builds due to minified variable scoping.
 env.backends.onnx.wasm.numThreads = 1
 
+const log = createLogger('rag:embed')
 const MODEL = 'Xenova/bge-base-en-v1.5'
 
 type FeatureExtractionPipeline = Awaited<ReturnType<typeof pipeline>>
@@ -15,6 +17,8 @@ export type EmbedProgressCallback = (pct: number, file: string) => void
 export async function getEmbedder(onProgress?: EmbedProgressCallback): Promise<FeatureExtractionPipeline> {
   if (_pipe) return _pipe
 
+  log.log(`loading embedding model "${MODEL}"`)
+  const done = log.time('embedder loaded')
   _pipe = await pipeline('feature-extraction', MODEL, {
     progress_callback: onProgress
       ? (p: { progress?: number; file?: string }) => {
@@ -23,6 +27,7 @@ export async function getEmbedder(onProgress?: EmbedProgressCallback): Promise<F
         }
       : undefined,
   })
+  done()
   return _pipe
 }
 
@@ -31,7 +36,7 @@ export async function embed(text: string): Promise<number[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const output = await (pipe as any)(text, { pooling: 'mean', normalize: true })
   const vec = Array.from(output.data as Float32Array)
-  console.log(`[RAG:embed] text="${text.slice(0, 60)}…" → dim=${vec.length}, sample=[${(vec as number[]).slice(0, 3).map((v: number) => v.toFixed(4)).join(', ')}…]`)
+  log.log(`text="${text.slice(0, 60)}…" → dim=${vec.length}, sample=[${(vec as number[]).slice(0, 3).map((v: number) => v.toFixed(4)).join(', ')}…]`)
   return vec as number[]
 }
 

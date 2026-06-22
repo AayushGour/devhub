@@ -1,6 +1,6 @@
 import {
   FileText, GitGraph, Braces, Globe, Database,
-  KeyRound, Wrench, FolderOpen, Sparkles, BrainCircuit, Cpu, Spline, ImageDown,
+  KeyRound, Wrench, FolderOpen, Sparkles, BrainCircuit, Cpu, Spline, ImageDown, Network,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -88,6 +88,15 @@ const studios: Studio[] = [
     status: 'available',
     phase: 'Phase 14',
     href: '/tools/image',
+  },
+  {
+    id: 'repo-explorer',
+    title: 'Repo Explorer',
+    description: 'Visualize dependency graphs and get AI-powered wiki pages for any public GitHub repository.',
+    icon: <Network size={20} />,
+    status: 'available',
+    phase: 'Phase 5',
+    href: '/tools/repo-explorer',
   },
   {
     id: 'api',

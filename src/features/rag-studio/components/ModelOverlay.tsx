@@ -43,6 +43,10 @@ export default function ModelOverlay({ state, onDismiss }: Props) {
         <p className="text-xs text-on-surface-muted mt-1">
           Models are cached after first download.
         </p>
+        <p className="text-xs text-on-surface-muted">
+          Use a regular (non-incognito) window — incognito has a smaller storage
+          quota and large models may fail to download.
+        </p>
       </div>
     </div>
   )

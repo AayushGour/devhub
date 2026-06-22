@@ -1,12 +1,13 @@
-import { getEngine } from './llm'
+import { complete } from './llm'
 import { embedBatch } from './embed'
 import { putNode } from './vectorDb'
 import { extractText } from './extractText'
 import { chunkSummarisationSystemPrompt } from './prompts'
+import { createLogger } from '@/lib/logger'
 
 const CHUNK_SIZE = 1500
 const CHUNK_OVERLAP = 150
-const LOG = '[RAG:ingest]'
+const log = createLogger('rag:ingest')
 
 interface HeadingEntry { pos: number; level: number; text: string }
 
@@ -59,22 +60,21 @@ function chunkText(text: string): string[] {
 }
 
 async function summariseChunk(modelId: string, chunk: string, idx: number): Promise<string> {
-  console.log(`${LOG} summarising chunk ${idx}, length=${chunk.length}`)
-  const engine = await getEngine(modelId)
+  log.log(`summarising chunk ${idx}, length=${chunk.length}`)
   try {
-    const reply = await engine.chat.completions.create({
-      messages: [
+    // Goes through complete() so it shares the single-generation mutex.
+    const summary = (await complete(
+      modelId,
+      [
         { role: 'system', content: chunkSummarisationSystemPrompt },
         { role: 'user', content: chunk },
       ],
-      max_tokens: 120,
-      temperature: 0,
-    })
-    const summary = reply.choices[0].message.content?.trim() ?? ''
-    console.log(`${LOG} chunk ${idx} summary: "${summary.slice(0, 100)}…"`)
+      { max_tokens: 120, temperature: 0 },
+    )).trim()
+    log.log(`chunk ${idx} summary: "${summary.slice(0, 100)}…"`)
     return summary.length > 20 ? summary : chunk
   } catch (err) {
-    console.warn(`${LOG} chunk ${idx} summarisation failed, using raw chunk. Error:`, err)
+    log.warn(`chunk ${idx} summarisation failed, using raw chunk. Error:`, err)
     return chunk
   }
 }
@@ -86,12 +86,12 @@ export async function ingestFile(
   modelId: string,
   onStatus: IngestStatusCallback,
 ): Promise<void> {
-  console.log(`${LOG} starting ingest for "${file.name}", size=${file.size}`)
+  log.log(`starting ingest for "${file.name}", size=${file.size}`)
   const text = await extractText(file, onStatus)
   if (!text.trim()) throw new Error('No extractable text found in file')
   const chunks = chunkText(text)
   const headings = extractHeadings(text)
-  console.log(`${LOG} split into ${chunks.length} chunks, found ${headings.length} headings`)
+  log.log(`split into ${chunks.length} chunks, found ${headings.length} headings`)
 
   type Segment = { text: string; embedText: string; raw: string; tags: string[] }
   const segments: Segment[] = []
@@ -111,17 +111,17 @@ export async function ingestFile(
     }
   }
 
-  console.log(`${LOG} total segments to embed: ${segments.length}`)
+  log.log(`total segments to embed: ${segments.length}`)
   onStatus(`embedding ${segments.length} segments…`)
   const vectors = await embedBatch(
     segments.map((s) => s.embedText),
     (i, total) => {
       onStatus(`embedding ${i}/${total}`)
-      if (i % 5 === 0) console.log(`${LOG} embedded ${i}/${total}`)
+      if (i % 5 === 0) log.log(`embedded ${i}/${total}`)
     },
   )
 
-  console.log(`${LOG} storing ${vectors.length} nodes to IndexedDB`)
+  log.log(`storing ${vectors.length} nodes to IndexedDB`)
   onStatus('storing vectors…')
   for (let i = 0; i < segments.length; i++) {
     await putNode({
@@ -133,6 +133,6 @@ export async function ingestFile(
     })
   }
 
-  console.log(`${LOG} ingest complete for "${file.name}" — ${segments.length} nodes stored`)
+  log.log(`ingest complete for "${file.name}" — ${segments.length} nodes stored`)
   onStatus('done')
 }
