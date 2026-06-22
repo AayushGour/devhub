@@ -1,4 +1,3 @@
-import RepoSidebar from './RepoSidebar'
 import NodeDetailPanel from './NodeDetailPanel'
 import type { RepoFile, RepoMeta } from '../types'
 import type { useWikiGen } from '../hooks/useWikiGen'
@@ -6,41 +5,38 @@ import type { useWikiGen } from '../hooks/useWikiGen'
 type WikiGenReturn = ReturnType<typeof useWikiGen>
 
 interface Props {
-  files: RepoFile[]
   meta: RepoMeta
   selectedFile: RepoFile | null
   wikiPages: WikiGenReturn['wikiPages']
   generating: WikiGenReturn['generating']
-  onSelectFile: (file: RepoFile) => void
   onGenerateWiki: (file: RepoFile) => void
+  onClose: () => void
 }
 
 export default function WikiView({
-  files,
   meta,
   selectedFile,
   wikiPages,
   generating,
-  onSelectFile,
   onGenerateWiki,
+  onClose,
 }: Props) {
-  return (
-    <div className="flex flex-1 min-h-0">
-      <RepoSidebar
-        files={files}
-        selectedPath={selectedFile?.path ?? null}
-        onSelect={onSelectFile}
-      />
-      <div className="flex-1 min-w-0">
-        <NodeDetailPanel
-          file={selectedFile}
-          meta={meta}
-          wikiPages={wikiPages}
-          generating={generating}
-          onGenerateWiki={onGenerateWiki}
-          onClose={() => onSelectFile(files[0])}
-        />
+  if (!selectedFile) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-sm text-on-surface-muted">
+        Select a file from the sidebar to view its wiki
       </div>
-    </div>
+    )
+  }
+
+  return (
+    <NodeDetailPanel
+      file={selectedFile}
+      meta={meta}
+      wikiPages={wikiPages}
+      generating={generating}
+      onGenerateWiki={onGenerateWiki}
+      onClose={onClose}
+    />
   )
 }

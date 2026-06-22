@@ -6,7 +6,6 @@ export interface RepoMeta {
   fetchedAt: number
   fileCount: number
   languages: string[]
-  githubToken?: string
 }
 
 export interface RepoFile {

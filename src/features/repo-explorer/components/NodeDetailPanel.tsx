@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { X, BookOpen, Code2, Loader2 } from 'lucide-react'
 import MonacoEditor from '@monaco-editor/react'
 import { cn } from '@/lib/utils'
-import { parseMarkdown, postProcessPreview } from '@/features/markdown-studio/utils/parser'
+import MarkdownViewer from '@/components/MarkdownViewer'
 import type { RepoFile, RepoMeta, WikiPage } from '../types'
 import type { useWikiGen } from '../hooks/useWikiGen'
+import './NodeDetailPanel.css'
 
 type WikiGenReturn = ReturnType<typeof useWikiGen>
 
@@ -30,16 +31,9 @@ export default function NodeDetailPanel({
   onClose,
 }: Props) {
   const [tab, setTab] = useState<Tab>('wiki')
-  const wikiRef = useRef<HTMLDivElement>(null)
 
   const wikiPage: WikiPage | undefined = file ? wikiPages.get(file.path) : undefined
   const isGenerating = file ? generating.has(file.path) : false
-
-  useEffect(() => {
-    if (!wikiRef.current || !wikiPage) return
-    wikiRef.current.innerHTML = parseMarkdown(wikiPage.content)
-    postProcessPreview(wikiRef.current)
-  }, [wikiPage])
 
   useEffect(() => {
     if (file && tab === 'wiki' && !wikiPage && !isGenerating) {
@@ -97,7 +91,9 @@ export default function NodeDetailPanel({
                 Generating wiki page&hellip;
               </div>
             ) : wikiPage ? (
-              <div ref={wikiRef} className="markdown-preview text-sm" />
+              <div className="node-detail-wiki">
+                <MarkdownViewer content={wikiPage.content} className="text-sm" />
+              </div>
             ) : (
               <div className="text-sm text-on-surface-muted py-8 text-center">
                 <p>No wiki page yet.</p>

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Github, Key, Search } from 'lucide-react'
+import { GitBranch, Key, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -22,7 +22,7 @@ export default function RepoInput({ onFetch, loading, error }: Props) {
   return (
     <div className="flex flex-col items-center justify-center flex-1 gap-6 p-8">
       <div className="flex flex-col items-center gap-2">
-        <Github size={40} className="text-on-surface-muted" />
+        <GitBranch size={40} className="text-on-surface-muted" />
         <h1 className="text-xl font-semibold text-on-surface">Repo Explorer</h1>
         <p className="text-sm text-on-surface-muted text-center max-w-md">
           Paste any public GitHub repo URL to explore its dependency graph and get AI-powered code explanations.
