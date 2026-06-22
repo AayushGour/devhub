@@ -2,19 +2,20 @@ import { useRepoExplorer } from './hooks/useRepoExplorer'
 import RepoInput from './components/RepoInput'
 import RepoSidebar from './components/RepoSidebar'
 import GraphView from './components/GraphView'
-import WikiView from './components/WikiView'
 import NodeDetailPanel from './components/NodeDetailPanel'
-import ViewToggle from './components/ViewToggle'
+import RepoHeader from './components/RepoHeader'
 import ChatPanel from './components/ChatPanel'
 
 export default function RepoExplorerPage() {
   const {
-    meta, files, graph, selectedFile, view, setView,
+    meta, files, graph, selectedFile,
     fetching, fetchError,
     wikiPages, generating,
     chat,
+    indexedRepos,
     handleFetch,
     handleRefetch,
+    handleDeleteRepo,
     handleSelectFile,
     handleClosePanel,
     handleGenerateWiki,
@@ -26,16 +27,17 @@ export default function RepoExplorerPage() {
   return (
     <div className="studio-root">
       {!hasRepo ? (
-        <RepoInput onFetch={handleFetch} loading={fetching} error={fetchError} />
+        <RepoInput
+          onFetch={handleFetch}
+          loading={fetching}
+          error={fetchError}
+          repos={indexedRepos}
+          onOpen={(r) => handleFetch(r.url)}
+          onDelete={(r) => handleDeleteRepo(r.owner, r.repo)}
+        />
       ) : (
         <>
-          <ViewToggle
-            view={view}
-            onChange={setView}
-            meta={meta}
-            fetching={fetching}
-            onRefetch={handleRefetch}
-          />
+          <RepoHeader meta={meta} fetching={fetching} onRefetch={handleRefetch} />
 
           <div className="flex flex-1 min-h-0">
             {/* Col 1: chat */}
@@ -45,28 +47,17 @@ export default function RepoExplorerPage() {
               onSend={chat.sendMessage}
             />
 
-            {/* Col 2: main content */}
+            {/* Col 2: dependency graph */}
             <div className="flex flex-1 min-w-0">
-              {view === 'graph' ? (
-                <GraphView
-                  graph={graph}
-                  onNodeClick={handleNodeClick}
-                  selectedNode={selectedFile?.path ?? null}
-                />
-              ) : (
-                <WikiView
-                  meta={meta}
-                  selectedFile={selectedFile}
-                  wikiPages={wikiPages}
-                  generating={generating}
-                  onGenerateWiki={handleGenerateWiki}
-                  onClose={handleClosePanel}
-                />
-              )}
+              <GraphView
+                graph={graph}
+                onNodeClick={handleNodeClick}
+                selectedNode={selectedFile?.path ?? null}
+              />
             </div>
 
-            {/* Col 3: file tree */}
-            {view === 'graph' && selectedFile ? (
+            {/* Col 3: file wiki when a node is selected, else file tree */}
+            {selectedFile ? (
               <NodeDetailPanel
                 file={selectedFile}
                 meta={meta}
@@ -78,7 +69,7 @@ export default function RepoExplorerPage() {
             ) : (
               <RepoSidebar
                 files={files}
-                selectedPath={selectedFile?.path ?? null}
+                selectedPath={null}
                 onSelect={handleSelectFile}
               />
             )}

@@ -50,8 +50,6 @@ export interface RepoIndexedData {
   // embeddings stored separately in repoDb
 }
 
-export type ExplorerView = 'graph' | 'wiki'
-
 export interface GithubTreeItem {
   path: string
   type: 'blob' | 'tree'
