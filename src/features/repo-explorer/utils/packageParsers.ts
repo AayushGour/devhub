@@ -28,19 +28,13 @@ function parseRequirementsTxt(content: string): ExternalPackage[] {
     .split('\n')
     .map((l) => l.trim())
     .filter((l) => l && !l.startsWith('#') && !l.startsWith('-') && !l.startsWith('http'))
-    .map((l) => {
-      // Strip extras like package[extra] and markers like package; python_version>='3.8'
+    .flatMap((l): ExternalPackage[] => {
       const cleanLine = l.split(';')[0].trim()
       const nameMatch = cleanLine.match(/^([A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?)/)
       const versionMatch = cleanLine.match(/[><=~!][^,\s]+(?:,[><=~!][^,\s]+)*/)
-      if (!nameMatch) return null
-      return {
-        name: nameMatch[1],
-        version: versionMatch?.[0],
-        ecosystem: 'pip' as const,
-      }
+      if (!nameMatch) return []
+      return [{ name: nameMatch[1], version: versionMatch?.[0], ecosystem: 'pip' }]
     })
-    .filter((p): p is ExternalPackage => p !== null)
 }
 
 // Cargo.toml → Rust crates
