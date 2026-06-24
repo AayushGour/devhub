@@ -9,7 +9,7 @@ import App from './App.tsx'
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Tooltip.Provider delayDuration={30}>
-      <BrowserRouter basename="/devhub">
+      <BrowserRouter basename={import.meta.env.VITE_BASE_PATH?.replace(/\/$/, '') ?? '/devhub'}>
         <App />
       </BrowserRouter>
     </Tooltip.Provider>

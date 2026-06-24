@@ -10,7 +10,7 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
-  base: '/devhub/',
+  base: process.env.VITE_BASE_PATH ?? '/devhub/',
   optimizeDeps: {
     // Do NOT exclude @xenova/transformers: excluding it while onnxruntime-web
     // still gets pre-bundled splits them into two module instances, leaving
