@@ -2,7 +2,15 @@ import { useEffect, useState } from 'react'
 import { hasModelInCache } from '@mlc-ai/web-llm'
 import { useSettingsStore } from '@/store/settingsStore'
 import { cn } from '@/lib/utils'
-import { CURATED_MODELS, MODEL_FAMILIES, formatVram } from '@/features/rag-studio/utils/models'
+import {
+  CURATED_MODELS,
+  CPU_MODELS,
+  CPU_MODEL_FAMILIES,
+  MODEL_FAMILIES,
+  getModelsForEnvironment,
+  formatVram,
+} from '@/features/rag-studio/utils/models'
+import { isWebGpuAvailable } from '@/features/rag-studio/utils/webgpu'
 import type { Theme } from '@/types'
 
 const themes: { value: Theme; label: string; surface: string; accent: string }[] = [
@@ -20,9 +28,15 @@ export default function SettingsPage() {
     ragLlmModel, setRagLlmModel,
   } = useSettingsStore()
 
+  const [gpuAvailable, setGpuAvailable] = useState<boolean | null>(null)
   const [cachedIds, setCachedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
+    isWebGpuAvailable().then(setGpuAvailable)
+  }, [])
+
+  useEffect(() => {
+    if (gpuAvailable !== true) return
     let cancelled = false
     Promise.all(
       CURATED_MODELS.map(async (m) => {
@@ -34,7 +48,11 @@ export default function SettingsPage() {
       setCachedIds(new Set(results.filter(Boolean) as string[]))
     })
     return () => { cancelled = true }
-  }, [])
+  }, [gpuAvailable])
+
+  const models = gpuAvailable === null ? [] : getModelsForEnvironment(gpuAvailable)
+  const families = gpuAvailable ? MODEL_FAMILIES : CPU_MODEL_FAMILIES
+  const isCpu = gpuAvailable === false
 
   return (
     <div className="max-w-[42.5rem] mx-auto py-8 px-10">
@@ -88,55 +106,75 @@ export default function SettingsPage() {
 
         {/* Model picker */}
         <div>
-          <p className="text-sm font-medium text-on-surface mb-1">Language model</p>
+          <div className="flex items-center gap-2 mb-1">
+            <p className="text-sm font-medium text-on-surface">Language model</p>
+            {gpuAvailable !== null && (
+              <span className={cn(
+                'text-[0.62rem] font-semibold uppercase tracking-[0.06em] px-1.5 py-0.5 rounded-md',
+                isCpu
+                  ? 'bg-amber-500/15 text-amber-400'
+                  : 'bg-accent/15 text-accent',
+              )}>
+                {isCpu ? 'CPU' : 'GPU'}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-on-surface-muted mb-4">
-            Downloaded to your browser on first use. Changing model resets the loaded engine. Sizes shown are VRAM required, not download size.
+            {isCpu
+              ? 'No GPU detected — using CPU/WASM models. Downloaded to your browser on first use. Responses will be slower than on a GPU machine.'
+              : 'Downloaded to your browser on first use. Changing model resets the loaded engine. Sizes shown are VRAM required, not download size.'}
           </p>
 
-          <div className="flex flex-col gap-4">
-            {MODEL_FAMILIES.map((family) => {
-              const familyModels = CURATED_MODELS.filter((m) => m.family === family)
-              return (
-                <div key={family}>
-                  <p className="text-[0.69rem] font-semibold uppercase tracking-[0.06em] text-on-surface-muted mb-2">
-                    {family}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {familyModels.map((model) => {
-                      const active = ragLlmModel === model.id
-                      return (
-                        <button
-                          key={model.id}
-                          onClick={() => setRagLlmModel(model.id)}
-                          className={cn(
-                            'flex flex-col items-start gap-1 px-3 py-2.5 rounded-[0.62rem] border-2 bg-transparent cursor-pointer transition-colors duration-150 font-[inherit] text-left',
-                            active
-                              ? 'border-accent bg-accent/5'
-                              : 'border-border hover:border-on-surface-muted',
-                          )}
-                        >
-                          <div className="flex items-center gap-1.5">
-                            <span className={cn(
-                              'text-[0.81rem] leading-none tracking-[-0.01rem]',
-                              active ? 'font-semibold text-on-surface' : 'font-medium text-on-surface',
-                            )}>
-                              {model.label}
-                            </span>
-                            {cachedIds.has(model.id) && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" title="Cached" />
+          {gpuAvailable === null ? (
+            <p className="text-xs text-on-surface-muted">Detecting environment…</p>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {families.map((family) => {
+                const familyModels = models.filter((m) => m.family === family)
+                return (
+                  <div key={family}>
+                    <p className="text-[0.69rem] font-semibold uppercase tracking-[0.06em] text-on-surface-muted mb-2">
+                      {family}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {familyModels.map((model) => {
+                        const active = ragLlmModel === model.id
+                        return (
+                          <button
+                            key={model.id}
+                            onClick={() => setRagLlmModel(model.id)}
+                            className={cn(
+                              'flex flex-col items-start gap-1 px-3 py-2.5 rounded-[0.62rem] border-2 bg-transparent cursor-pointer transition-colors duration-150 font-[inherit] text-left',
+                              active
+                                ? 'border-accent bg-accent/5'
+                                : 'border-border hover:border-on-surface-muted',
                             )}
-                          </div>
-                          <span className="text-[0.69rem] text-on-surface-muted leading-none">
-                            {formatVram(model.vramMB)} VRAM
-                          </span>
-                        </button>
-                      )
-                    })}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span className={cn(
+                                'text-[0.81rem] leading-none tracking-[-0.01rem]',
+                                active ? 'font-semibold text-on-surface' : 'font-medium text-on-surface',
+                              )}>
+                                {model.label}
+                              </span>
+                              {cachedIds.has(model.id) && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" title="Cached" />
+                              )}
+                            </div>
+                            {!isCpu && (
+                              <span className="text-[0.69rem] text-on-surface-muted leading-none">
+                                {formatVram(model.vramMB)} VRAM
+                              </span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       </section>
 
