@@ -1,92 +1,100 @@
 // src/features/rag-studio/utils/llmCpu.ts
-import { pipeline, TextStreamer, env } from '@huggingface/transformers'
+//
+// Main-thread proxy for CPU text-generation. The actual transformers.js inference
+// runs in `llmCpu.worker.ts` so it never blocks the UI (a CPU-only decode is a
+// long synchronous WASM call — running it here froze the whole tab). This module
+// keeps the same surface as `llmGpu.ts`, so the `llm.ts` dispatcher is agnostic.
 import { createLogger } from '@/lib/logger'
 import type { LLMProgressCallback, ChatMessage } from './llmGpu'
 
 export type { LLMProgressCallback, ChatMessage }
 
-// Match the threading config already set by the embedder
-if (env.backends.onnx.wasm) env.backends.onnx.wasm.numThreads = 1
-
 const log = createLogger('rag:llm:cpu')
 
-// @xenova/transformers has incomplete TypeScript types; use `any` for the pipeline instance
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type TextGenPipeline = any
+// Messages posted back by the worker.
+type OutMsg =
+  | { type: 'progress'; id: number; pct: number; file: string }
+  | { type: 'ready'; id: number }
+  | { type: 'token'; id: number; text: string }
+  | { type: 'done'; id: number; text?: string }
+  | { type: 'error'; id: number; message: string }
 
-let _pipe: TextGenPipeline | null = null
-let _loadingPromise: Promise<TextGenPipeline> | null = null
-let _loadedModelId: string | null = null
-let _stopFlag = false
+interface Pending {
+  onProgress?: LLMProgressCallback
+  onToken?: (text: string) => void
+  resolve: (text: string) => void
+  reject: (err: Error) => void
+}
+
+let _worker: Worker | null = null
+let _nextId = 1
+const _pending = new Map<number, Pending>()
+
+function getWorker(): Worker {
+  if (_worker) return _worker
+  const w = new Worker(new URL('./llmCpu.worker.ts', import.meta.url), { type: 'module' })
+  w.onmessage = (e: MessageEvent<OutMsg>) => {
+    const msg = e.data
+    const p = _pending.get(msg.id)
+    if (!p) return
+    switch (msg.type) {
+      case 'progress':
+        p.onProgress?.(msg.pct, msg.file)
+        break
+      case 'token':
+        p.onToken?.(msg.text)
+        break
+      case 'ready':
+        _pending.delete(msg.id)
+        p.resolve('')
+        break
+      case 'done':
+        _pending.delete(msg.id)
+        p.resolve(msg.text ?? '')
+        break
+      case 'error':
+        _pending.delete(msg.id)
+        p.reject(new Error(msg.message))
+        break
+    }
+  }
+  w.onerror = (e) => {
+    log.error('CPU worker crashed', e.message)
+    const err = new Error(`CPU LLM worker error: ${e.message}`)
+    for (const [, p] of _pending) p.reject(err)
+    _pending.clear()
+  }
+  _worker = w
+  return w
+}
 
 export function resetEngine(): void {
-  _pipe = null
-  _loadingPromise = null
-  _loadedModelId = null
+  if (_worker) {
+    _worker.terminate()
+    _worker = null
+  }
+  _pending.clear()
 }
 
 export function interruptGenerate(): void {
   log.log('interruptGenerate (CPU)')
-  _stopFlag = true
+  _worker?.postMessage({ type: 'interrupt' })
 }
 
-export async function getEngine(modelId: string, onProgress?: LLMProgressCallback): Promise<TextGenPipeline> {
-  if (_pipe && _loadedModelId === modelId) return _pipe
-  if (_loadingPromise && _loadedModelId === modelId) return _loadingPromise
-
-  if (_loadedModelId !== modelId) {
-    _pipe = null
-    _loadingPromise = null
-  }
-
-  log.log(`getEngine: loading CPU model "${modelId}"`)
-  _loadedModelId = modelId
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _loadingPromise = (pipeline as any)('text-generation', modelId, {
-    quantized: true,
-    progress_callback: (p: { status: string; progress?: number; file?: string; name?: string }) => {
-      if (p.progress !== undefined) {
-        onProgress?.(Math.round(p.progress), p.file ?? p.name ?? '')
-      }
-    },
+// Preload the model (drives the progress UI). Resolves once the pipeline is ready.
+// Returns void — callers only await readiness; generation goes through the worker.
+export function getEngine(modelId: string, onProgress?: LLMProgressCallback): Promise<void> {
+  const w = getWorker()
+  const id = _nextId++
+  return new Promise<void>((resolve, reject) => {
+    _pending.set(id, { onProgress, resolve: () => resolve(), reject })
+    w.postMessage({ type: 'load', id, modelId })
   })
-    .then((pipe: TextGenPipeline) => {
-      _pipe = pipe
-      _loadingPromise = null
-      log.log(`✅ CPU model ready: "${modelId}"`)
-      return pipe
-    })
-    .catch((err: unknown) => {
-      _loadingPromise = null
-      _loadedModelId = null
-      throw err
-    })
-
-  return _loadingPromise
 }
 
-// Apply the model's chat template. Falls back to a plain concatenation if the
-// tokenizer does not expose apply_chat_template (older ONNX exports).
-function applyTemplate(pipe: TextGenPipeline, messages: ChatMessage[]): string {
-  try {
-    const tokenizer = pipe.tokenizer
-    if (typeof tokenizer?.apply_chat_template === 'function') {
-      return tokenizer.apply_chat_template(messages, {
-        tokenize: false,
-        add_generation_prompt: true,
-      }) as string
-    }
-  } catch (e) {
-    log.warn('apply_chat_template failed, using fallback', e)
-  }
-  // Simple fallback for models without a chat template
-  return (
-    messages.map((m) => `<|${m.role}|>\n${m.content}`).join('\n') +
-    '\n<|assistant|>\n'
-  )
-}
-
+// A single pipeline can't run two generations at once. Serialize on the main side
+// so the worker only ever handles one decode — keeps interrupt/streaming bookkeeping
+// unambiguous (it tracks a single in-flight stopper).
 let _genLock: Promise<void> = Promise.resolve()
 
 function acquireGenLock(): Promise<() => void> {
@@ -104,15 +112,12 @@ export async function complete(
 ): Promise<string> {
   const release = await acquireGenLock()
   try {
-    const pipe = await getEngine(modelId)
-    const prompt = applyTemplate(pipe, messages)
-    const result = await pipe(prompt, {
-      max_new_tokens: opts.max_tokens ?? 512,
-      temperature: opts.temperature ?? 0.1,
-      do_sample: (opts.temperature ?? 0.1) > 0,
-      return_full_text: false,
+    const w = getWorker()
+    const id = _nextId++
+    return await new Promise<string>((resolve, reject) => {
+      _pending.set(id, { resolve, reject })
+      w.postMessage({ type: 'generate', id, modelId, messages, opts, stream: false })
     })
-    return (result as Array<{ generated_text: string }>)[0]?.generated_text ?? ''
   } finally {
     release()
   }
@@ -124,83 +129,41 @@ export async function* streamComplete(
   opts: { max_tokens?: number } = {},
 ): AsyncGenerator<string> {
   const release = await acquireGenLock()
-  _stopFlag = false
   try {
-    const pipe = await getEngine(modelId)
-    const prompt = applyTemplate(pipe, messages)
-
-    const tokens: string[] = []
-    let generationDone = false
-    let wakeup: (() => void) | null = null
-
-    let streamer: unknown
-    try {
-      streamer = new TextStreamer(pipe.tokenizer, {
-        skip_prompt: true,
-        skip_special_tokens: true,
-        callback_function: (text: string) => {
-          tokens.push(text)
-          const r = wakeup
-          wakeup = null
-          r?.()
-        },
-      })
-    } catch {
-      // TextStreamer unavailable — fall back to non-streaming (yields full result at end).
-      // Call pipe directly here rather than complete() to avoid re-acquiring _genLock.
-      log.warn('TextStreamer unavailable, falling back to non-streaming')
-      const pipe = await getEngine(modelId)
-      const prompt = applyTemplate(pipe, messages)
-      const result = await pipe(prompt, {
-        max_new_tokens: opts.max_tokens ?? 512,
-        temperature: 0.1,
-        do_sample: true,
-        return_full_text: false,
-      })
-      yield (result as Array<{ generated_text: string }>)[0]?.generated_text ?? ''
-      return
+    const w = getWorker()
+    const id = _nextId++
+    const queue: string[] = []
+    let done = false
+    let err: Error | null = null
+    let wake: (() => void) | null = null
+    const ping = () => {
+      const r = wake
+      wake = null
+      r?.()
     }
 
-    let genError: unknown = null
-    const genPromise = pipe(prompt, {
-      max_new_tokens: opts.max_tokens ?? 512,
-      temperature: 0.1,
-      do_sample: true,
-      return_full_text: false,
-      streamer,
+    _pending.set(id, {
+      onToken: (text) => {
+        queue.push(text)
+        ping()
+      },
+      resolve: () => {
+        done = true
+        ping()
+      },
+      reject: (e) => {
+        err = e
+        done = true
+        ping()
+      },
     })
-      .then(() => {
-        generationDone = true
-        const r = wakeup
-        wakeup = null
-        r?.()
-      })
-      .catch((err: unknown) => {
-        log.error('CPU generation error', err)
-        genError = err
-        generationDone = true
-        const r = wakeup
-        wakeup = null
-        r?.()
-      })
+    w.postMessage({ type: 'generate', id, modelId, messages, opts, stream: true })
 
-    while (!generationDone || tokens.length > 0) {
-      while (tokens.length > 0) {
-        if (_stopFlag) {
-          generationDone = true
-          break
-        }
-        yield tokens.shift()!
-      }
-      if (!generationDone && !_stopFlag) {
-        await new Promise<void>((r) => {
-          wakeup = r
-        })
-      }
+    while (!done || queue.length > 0) {
+      while (queue.length > 0) yield queue.shift()!
+      if (!done) await new Promise<void>((r) => (wake = r))
     }
-
-    await genPromise
-    if (genError) throw genError
+    if (err) throw err
   } finally {
     release()
   }
