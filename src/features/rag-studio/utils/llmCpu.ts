@@ -145,10 +145,18 @@ export async function* streamComplete(
         },
       })
     } catch {
-      // TextStreamer unavailable — fall back to non-streaming (yields full result at end)
+      // TextStreamer unavailable — fall back to non-streaming (yields full result at end).
+      // Call pipe directly here rather than complete() to avoid re-acquiring _genLock.
       log.warn('TextStreamer unavailable, falling back to non-streaming')
-      const result = await complete(modelId, messages, { max_tokens: opts.max_tokens })
-      yield result
+      const pipe = await getEngine(modelId)
+      const prompt = applyTemplate(pipe, messages)
+      const result = await pipe(prompt, {
+        max_new_tokens: opts.max_tokens ?? 512,
+        temperature: 0.1,
+        do_sample: true,
+        return_full_text: false,
+      })
+      yield (result as Array<{ generated_text: string }>)[0]?.generated_text ?? ''
       return
     }
 
