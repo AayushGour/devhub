@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef } from 'react'
 import { getEmbedder } from '../utils/embed'
 import { getEngine, streamComplete, interruptGenerate } from '../utils/llm'
-import { getModelById, formatVram, DEFAULT_MODEL_ID } from '../utils/models'
+import { getModelById, formatVram, DEFAULT_MODEL_ID, DEFAULT_CPU_MODEL_ID, getModelsForEnvironment } from '../utils/models'
+import { isWebGpuAvailable } from '../utils/webgpu'
 import { ingestFile } from '../utils/ingest'
 import { retrieveMulti, retrieve } from '../utils/retrieve'
 import { routeQuery, expandQuery, expandQueryWithContext } from '../utils/queryExpansion'
@@ -42,11 +43,13 @@ export type RetrievalStage = 'idle' | 'expanding' | 'retrieving' | 'generating'
 export function useRagEngine() {
   const contextAwareExpansion = useSettingsStore((s) => s.contextAwareExpansion)
   const ragLlmModel = useSettingsStore((s) => s.ragLlmModel) ?? DEFAULT_MODEL_ID
+  const setRagLlmModel = useSettingsStore((s) => s.setRagLlmModel)
 
   const [docs, setDocs] = useState<DocEntry[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [chatDisabled, setChatDisabled] = useState(false)
   const [retrievalStage, setRetrievalStage] = useState<RetrievalStage>('idle')
+  const [gpuAvailable, setGpuAvailable] = useState<boolean | null>(null)
   const embeddingReadyRef = useRef(false)
   const stopRef = useRef(false)
 
@@ -68,6 +71,15 @@ export function useRagEngine() {
 
   const bootEmbedder = useCallback(async () => {
     if (embeddingReadyRef.current) return
+
+    // Detect GPU once and correct the stored model if it's wrong for this environment
+    const gpu = await isWebGpuAvailable()
+    setGpuAvailable(gpu)
+    const validModels = getModelsForEnvironment(gpu)
+    if (!validModels.some((m) => m.id === ragLlmModel)) {
+      setRagLlmModel(gpu ? DEFAULT_MODEL_ID : DEFAULT_CPU_MODEL_ID)
+    }
+
     indexingStart('Loading embedding model', () => { })
     try {
       await getEmbedder((pct, _file) => indexingSetProgress(pct, 100))
@@ -78,7 +90,7 @@ export function useRagEngine() {
       return
     }
     indexingFinish()
-  }, [indexingStart, indexingSetProgress, indexingSetError, indexingFinish])
+  }, [indexingStart, indexingSetProgress, indexingSetError, indexingFinish, ragLlmModel, setRagLlmModel])
 
   const upsertDoc = useCallback((name: string, status: DocEntry['status'], statusText: string) => {
     setDocs((prev) => {
@@ -308,6 +320,7 @@ export function useRagEngine() {
     messages,
     chatDisabled,
     retrievalStage,
+    gpuAvailable,
     bootEmbedder,
     loadPersistedDocs,
     processFiles,
