@@ -160,6 +160,7 @@ export async function* streamComplete(
       return
     }
 
+    let genError: unknown = null
     const genPromise = pipe(prompt, {
       max_new_tokens: opts.max_tokens ?? 512,
       temperature: 0.1,
@@ -175,6 +176,7 @@ export async function* streamComplete(
       })
       .catch((err: unknown) => {
         log.error('CPU generation error', err)
+        genError = err
         generationDone = true
         const r = wakeup
         wakeup = null
@@ -197,6 +199,7 @@ export async function* streamComplete(
     }
 
     await genPromise
+    if (genError) throw genError
   } finally {
     release()
   }

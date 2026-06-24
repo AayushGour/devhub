@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { getEmbedder } from '../utils/embed'
 import { getEngine, streamComplete, interruptGenerate } from '../utils/llm'
 import { getModelById, formatVram, DEFAULT_MODEL_ID, DEFAULT_CPU_MODEL_ID, getModelsForEnvironment } from '../utils/models'
@@ -52,6 +52,7 @@ export function useRagEngine() {
   const [gpuAvailable, setGpuAvailable] = useState<boolean | null>(null)
   const embeddingReadyRef = useRef(false)
   const stopRef = useRef(false)
+  const gpuDetectedRef = useRef(false)
 
   // Select actions individually (stable refs) — never subscribe to the whole
   // store, or every progress tick would re-render this hook's consumers.
@@ -72,14 +73,6 @@ export function useRagEngine() {
   const bootEmbedder = useCallback(async () => {
     if (embeddingReadyRef.current) return
 
-    // Detect GPU once and correct the stored model if it's wrong for this environment
-    const gpu = await isWebGpuAvailable()
-    setGpuAvailable(gpu)
-    const validModels = getModelsForEnvironment(gpu)
-    if (!validModels.some((m) => m.id === ragLlmModel)) {
-      setRagLlmModel(gpu ? DEFAULT_MODEL_ID : DEFAULT_CPU_MODEL_ID)
-    }
-
     indexingStart('Loading embedding model', () => { })
     try {
       await getEmbedder((pct, _file) => indexingSetProgress(pct, 100))
@@ -90,7 +83,19 @@ export function useRagEngine() {
       return
     }
     indexingFinish()
-  }, [indexingStart, indexingSetProgress, indexingSetError, indexingFinish, ragLlmModel, setRagLlmModel])
+  }, [indexingStart, indexingSetProgress, indexingSetError, indexingFinish])
+
+  useEffect(() => {
+    if (gpuDetectedRef.current) return
+    gpuDetectedRef.current = true
+    isWebGpuAvailable().then((gpu) => {
+      setGpuAvailable(gpu)
+      const validModels = getModelsForEnvironment(gpu)
+      if (!validModels.some((m) => m.id === ragLlmModel)) {
+        setRagLlmModel(gpu ? DEFAULT_MODEL_ID : DEFAULT_CPU_MODEL_ID)
+      }
+    })
+  }, []) // empty deps — runs once, ref guards StrictMode double-invoke
 
   const upsertDoc = useCallback((name: string, status: DocEntry['status'], statusText: string) => {
     setDocs((prev) => {
