@@ -1,5 +1,5 @@
 // src/features/rag-studio/utils/llmCpu.ts
-import { pipeline, TextStreamer, env } from '@xenova/transformers'
+import { pipeline, TextStreamer, env } from '@huggingface/transformers'
 import { createLogger } from '@/lib/logger'
 import type { LLMProgressCallback, ChatMessage } from './llmGpu'
 

@@ -1,4 +1,4 @@
-import { pipeline, env } from '@xenova/transformers'
+import { pipeline, env } from '@huggingface/transformers'
 import { createLogger } from '@/lib/logger'
 
 env.allowLocalModels = false
