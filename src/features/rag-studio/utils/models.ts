@@ -58,3 +58,18 @@ export const MODEL_FAMILIES = [...new Set(CURATED_MODELS.map((m) => m.family))]
 export function getModelById(id: string): ModelEntry | undefined {
   return CURATED_MODELS.find((m) => m.id === id)
 }
+
+export const DEFAULT_CPU_MODEL_ID = 'Xenova/Llama-3.2-1B-Instruct'
+
+export const CPU_MODELS: ModelEntry[] = [
+  { id: 'Xenova/Llama-3.2-1B-Instruct',   label: 'Llama 3.2 1B',   family: 'Llama',    sizeLabel: '1B',    vramMB: 0 },
+  { id: 'Xenova/Qwen2.5-0.5B-Instruct',   label: 'Qwen2.5 0.5B',   family: 'Qwen2.5',  sizeLabel: '0.5B',  vramMB: 0 },
+  { id: 'Xenova/Qwen2.5-1.5B-Instruct',   label: 'Qwen2.5 1.5B',   family: 'Qwen2.5',  sizeLabel: '1.5B',  vramMB: 0 },
+  { id: 'HuggingFaceTB/SmolLM2-1.7B-Instruct', label: 'SmolLM2 1.7B', family: 'SmolLM2', sizeLabel: '1.7B', vramMB: 0 },
+]
+
+export const CPU_MODEL_FAMILIES = [...new Set(CPU_MODELS.map((m) => m.family))]
+
+export function getModelsForEnvironment(gpuAvailable: boolean): ModelEntry[] {
+  return gpuAvailable ? CURATED_MODELS : CPU_MODELS
+}
