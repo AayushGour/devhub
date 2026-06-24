@@ -4,7 +4,7 @@ import { createLogger } from '@/lib/logger'
 env.allowLocalModels = false
 // Disable multi-threading to prevent onnxruntime-web from creating blob workers,
 // which break in production builds due to minified variable scoping.
-env.backends.onnx.wasm.numThreads = 1
+if (env.backends.onnx.wasm) env.backends.onnx.wasm.numThreads = 1
 
 const log = createLogger('rag:embed')
 const MODEL = 'Xenova/bge-base-en-v1.5'
@@ -20,8 +20,9 @@ export async function getEmbedder(onProgress?: EmbedProgressCallback): Promise<F
   log.log(`loading embedding model "${MODEL}"`)
   const done = log.time('embedder loaded')
   _pipe = await pipeline('feature-extraction', MODEL, {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     progress_callback: onProgress
-      ? (p: { progress?: number; file?: string }) => {
+      ? (p: any) => {
           const pct = p.progress != null ? Math.round(p.progress) : 0
           onProgress(pct, p.file ?? '')
         }

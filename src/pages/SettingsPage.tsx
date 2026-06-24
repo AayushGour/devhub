@@ -4,7 +4,6 @@ import { useSettingsStore } from '@/store/settingsStore'
 import { cn } from '@/lib/utils'
 import {
   CURATED_MODELS,
-  CPU_MODELS,
   CPU_MODEL_FAMILIES,
   MODEL_FAMILIES,
   getModelsForEnvironment,

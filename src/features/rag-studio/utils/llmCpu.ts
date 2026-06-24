@@ -6,7 +6,7 @@ import type { LLMProgressCallback, ChatMessage } from './llmGpu'
 export type { LLMProgressCallback, ChatMessage }
 
 // Match the threading config already set by the embedder
-env.backends.onnx.wasm.numThreads = 1
+if (env.backends.onnx.wasm) env.backends.onnx.wasm.numThreads = 1
 
 const log = createLogger('rag:llm:cpu')
 
@@ -42,7 +42,8 @@ export async function getEngine(modelId: string, onProgress?: LLMProgressCallbac
   log.log(`getEngine: loading CPU model "${modelId}"`)
   _loadedModelId = modelId
 
-  _loadingPromise = pipeline('text-generation', modelId, {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  _loadingPromise = (pipeline as any)('text-generation', modelId, {
     quantized: true,
     progress_callback: (p: { status: string; progress?: number; file?: string; name?: string }) => {
       if (p.progress !== undefined) {
