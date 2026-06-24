@@ -51,13 +51,13 @@ export async function getEngine(modelId: string, onProgress?: LLMProgressCallbac
       }
     },
   })
-    .then((pipe) => {
+    .then((pipe: TextGenPipeline) => {
       _pipe = pipe
       _loadingPromise = null
       log.log(`✅ CPU model ready: "${modelId}"`)
       return pipe
     })
-    .catch((err) => {
+    .catch((err: unknown) => {
       _loadingPromise = null
       _loadedModelId = null
       throw err
