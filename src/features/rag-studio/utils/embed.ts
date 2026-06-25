@@ -20,6 +20,10 @@ export async function getEmbedder(onProgress?: EmbedProgressCallback): Promise<F
   log.log(`loading embedding model "${MODEL}"`)
   const done = log.time('embedder loaded')
   _pipe = await pipeline('feature-extraction', MODEL, {
+    // Pin to the WASM backend. Letting transformers.js auto-select can make it
+    // probe WebGPU and log "Failed to create WebGPU Context Provider" on machines
+    // with a half-present GPU stack — pure noise here, the embedder runs on CPU.
+    device: 'wasm',
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     progress_callback: onProgress
       ? (p: any) => {

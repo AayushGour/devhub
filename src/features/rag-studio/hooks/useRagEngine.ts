@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { getEmbedder } from '../utils/embed'
-import { getEngine, streamComplete, interruptGenerate } from '../utils/llm'
+import { getEngine, streamComplete, interruptGenerate, isGpuBackend } from '../utils/llm'
 import { getModelById, formatVram, DEFAULT_MODEL_ID, DEFAULT_CPU_MODEL_ID, getModelsForEnvironment } from '../utils/models'
 import { isWebGpuAvailable } from '../utils/webgpu'
 import { ingestFile } from '../utils/ingest'
@@ -117,17 +117,22 @@ export function useRagEngine() {
         return
       }
 
-      const modelEntry = getModelById(ragLlmModel)
-      const sizeHint = modelEntry ? ` (~${formatVram(modelEntry.vramMB)})` : ''
-      indexingStart(`Loading ${modelEntry?.label ?? 'LLM'}${sizeHint}`, () => { })
-      try {
-        await getEngine(ragLlmModel, (pct, _text) => indexingSetProgress(pct, 100))
-      } catch (err) {
-        log.error('LLM load failed', err)
-        indexingSetError('Failed to load LLM. Check network & refresh.')
-        return
+      // The LLM is only needed at ingest time for chunk summarisation, which the
+      // CPU path skips. So only preload (and block indexing on) the LLM under GPU;
+      // on CPU it loads lazily on the first question instead, so docs index fast.
+      if (await isGpuBackend()) {
+        const modelEntry = getModelById(ragLlmModel)
+        const sizeHint = modelEntry ? ` (~${formatVram(modelEntry.vramMB)})` : ''
+        indexingStart(`Loading ${modelEntry?.label ?? 'LLM'}${sizeHint}`, () => { })
+        try {
+          await getEngine(ragLlmModel, (pct, _text) => indexingSetProgress(pct, 100))
+        } catch (err) {
+          log.error('LLM load failed', err)
+          indexingSetError('Failed to load LLM. Check network & refresh.')
+          return
+        }
+        indexingFinish()
       }
-      indexingFinish()
 
       indexingStart('Indexing documents', () => { })
       for (const file of files) {
@@ -170,9 +175,31 @@ export function useRagEngine() {
 
       let genStart = 0
 
+      // On CPU every LLM generation costs minutes, so we spend exactly one — the
+      // answer. The router and query-expansion (each an extra LLM call) are skipped:
+      // direct-vs-rag is decided by whether anything is indexed, and we widen
+      // retrieval to make up for the missing expansion.
+      const useGpu = await isGpuBackend()
+
       try {
+        // The model may not be loaded yet — on CPU it's skipped at indexing time, so
+        // the first question triggers a large download. Load it here with a visible
+        // progress footer instead of sitting silently on "Generating answer…".
+        indexingStart('Loading model', () => {})
+        try {
+          await getEngine(ragLlmModel, (pct) => indexingSetProgress(pct, 100))
+          indexingFinish()
+        } catch (err) {
+          log.error('LLM load failed', err)
+          indexingSetError('Failed to load the model. Check network & refresh.')
+          throw err
+        }
+        if (stopRef.current) return
+
         setRetrievalStage('expanding')
-        const route = await routeQuery(ragLlmModel, question).catch(() => 'rag' as const)
+        const route = useGpu
+          ? await routeQuery(ragLlmModel, question).catch(() => 'rag' as const)
+          : ((await countNodes()) > 0 ? ('rag' as const) : ('direct' as const))
         if (stopRef.current) return
 
         if (route === 'direct') {
@@ -207,24 +234,27 @@ export function useRagEngine() {
         }
 
         let expansions: string[] = []
-        if (contextAwareExpansion) {
-          const seedNodes = await retrieve(question, 5)
-          const contextSnippet = seedNodes.map((n) => n.text).join('\n\n').slice(0, 1500)
-          expansions = await expandQueryWithContext(ragLlmModel, question, contextSnippet).catch(() => [])
-        } else {
-          expansions = await expandQuery(ragLlmModel, question).catch(() => [])
+        if (useGpu) {
+          if (contextAwareExpansion) {
+            const seedNodes = await retrieve(question, 5)
+            const contextSnippet = seedNodes.map((n) => n.text).join('\n\n').slice(0, 1500)
+            expansions = await expandQueryWithContext(ragLlmModel, question, contextSnippet).catch(() => [])
+          } else {
+            expansions = await expandQuery(ragLlmModel, question).catch(() => [])
+          }
         }
         if (stopRef.current) return
         log.log('expansions:', expansions)
 
         setRetrievalStage('retrieving')
         const allQueries = [question, ...expansions]
-        const nodes = await retrieveMulti(allQueries, 5)
+        // No expansion on CPU → pull more neighbours per query to keep recall up.
+        const nodes = await retrieveMulti(allQueries, useGpu ? 5 : 10)
         if (stopRef.current) return
         log.log('retrieved nodes after expansion:', nodes.length)
 
         let contextBlock = ''
-        let charBudget = 3500
+        let charBudget = useGpu ? 3500 : 4500
         for (const node of nodes) {
           const snippet = `[${node.sourceFile}]\n${node.rawChunk ?? node.text}`
           // Truncate individual snippets that are too long rather than skipping them
@@ -254,7 +284,9 @@ export function useRagEngine() {
               { role: 'system', content: systemPrompt },
               { role: 'user', content: question },
             ],
-            { max_tokens: 1536 },
+            // Cap answer length on CPU — fewer tokens = proportionally less WASM time,
+            // and a focused RAG answer rarely needs more.
+            { max_tokens: useGpu ? 1536 : 768 },
           )) {
             if (stopRef.current) break
             setMessages((prev) =>

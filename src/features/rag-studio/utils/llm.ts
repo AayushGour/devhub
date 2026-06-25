@@ -12,6 +12,13 @@ async function detectBackend(): Promise<boolean> {
   return _gpuAvailable
 }
 
+// Public, cached backend check. The RAG pipeline uses this to trim work on CPU:
+// transformers.js WASM generation costs ~minutes per call, so the CPU path makes
+// far fewer LLM calls (no router, no query expansion, no chunk summarisation).
+export function isGpuBackend(): Promise<boolean> {
+  return detectBackend()
+}
+
 function resolveModelId(modelId: string, gpuAvailable: boolean): string {
   const models = getModelsForEnvironment(gpuAvailable)
   if (models.some((m) => m.id === modelId)) return modelId

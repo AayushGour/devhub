@@ -1,4 +1,4 @@
-import { complete } from './llm'
+import { complete, isGpuBackend } from './llm'
 import { embedBatch } from './embed'
 import { putNode } from './vectorDb'
 import { extractText } from './extractText'
@@ -97,16 +97,25 @@ export async function ingestFile(
   const segments: Segment[] = []
   const STRIDE = CHUNK_SIZE - CHUNK_OVERLAP
 
+  // Chunk summarisation is an LLM call per chunk. On CPU (WASM) that is minutes
+  // each and makes indexing unusable, so we skip it and embed the raw chunk only.
+  // BGE retrieval on raw text is plenty — the summary is just an extra recall aid.
+  const summarise = await isGpuBackend()
+
   for (let i = 0; i < chunks.length; i++) {
-    onStatus(`summarising chunk ${i + 1}/${chunks.length}`)
-    const summary = await summariseChunk(modelId, chunks[i], i)
     const tags = getTagsForPosition(i * STRIDE, headings)
     const tagPrefix = tags.length > 0
       ? `[source: ${file.name} | section: ${tags.join(' > ')}]\n`
       : `[source: ${file.name}]\n`
 
-    segments.push({ text: summary, embedText: tagPrefix + summary, raw: chunks[i], tags })
-    if (summary !== chunks[i]) {
+    if (summarise) {
+      onStatus(`summarising chunk ${i + 1}/${chunks.length}`)
+      const summary = await summariseChunk(modelId, chunks[i], i)
+      segments.push({ text: summary, embedText: tagPrefix + summary, raw: chunks[i], tags })
+      if (summary !== chunks[i]) {
+        segments.push({ text: chunks[i], embedText: tagPrefix + chunks[i], raw: chunks[i], tags })
+      }
+    } else {
       segments.push({ text: chunks[i], embedText: tagPrefix + chunks[i], raw: chunks[i], tags })
     }
   }

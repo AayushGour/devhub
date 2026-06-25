@@ -65,6 +65,9 @@ async function getEngine(modelId: string, id: number): Promise<TextGenPipeline> 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _loadingPromise = (pipeline as any)('text-generation', modelId, {
     quantized: true,
+    // Force WASM — this worker only runs when no usable WebGPU device exists, so
+    // never let transformers.js probe WebGPU (avoids the context-provider warning).
+    device: 'wasm',
     progress_callback: (p: { status?: string; progress?: number; file?: string; name?: string }) => {
       if (p.progress !== undefined) {
         post({ type: 'progress', id, pct: Math.round(p.progress), file: p.file ?? p.name ?? '' })
