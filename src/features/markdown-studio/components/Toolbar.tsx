@@ -8,24 +8,32 @@ interface ToolbarProps {
   onExportPDF: () => void
   onExportHTML: () => void
   onExportMarkdown: () => void
-  onUpload: (content: string, filename: string) => void
+  onUploadFiles: (files: { name: string; content: string }[]) => void
   stylesOpen: boolean
   onToggleStyles: () => void
 }
 
+function readFile(file: File): Promise<{ name: string; content: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = ev => resolve({ name: file.name, content: ev.target?.result as string })
+    reader.onerror = () => reject(reader.error)
+    reader.readAsText(file)
+  })
+}
+
 export default function Toolbar({
   title, onTitleChange,
-  onExportPDF, onExportHTML, onExportMarkdown, onUpload,
+  onExportPDF, onExportHTML, onExportMarkdown, onUploadFiles,
   stylesOpen, onToggleStyles,
 }: ToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = ev => onUpload(ev.target?.result as string, file.name)
-    reader.readAsText(file)
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const fileList = e.target.files
+    if (!fileList || fileList.length === 0) return
+    const results = await Promise.all(Array.from(fileList).map(readFile))
+    onUploadFiles(results)
     e.target.value = ''
   }
 
@@ -40,19 +48,23 @@ export default function Toolbar({
 
       <div className="flex-1" />
 
-      <button
-        onClick={onToggleStyles}
-        title="Toggle style panel"
-        className={cn(
-          'flex items-center gap-[0.31rem] px-[0.62rem] py-[0.31rem] rounded-[0.44rem] border text-xs cursor-pointer font-[inherit] transition-all duration-150',
-          stylesOpen
-            ? 'border-accent bg-accent text-accent-text'
-            : 'border-border bg-transparent text-on-surface-muted'
-        )}
-      >
-        <Sliders size={13} />
-        Styles
-      </button>
+      <div className="relative group">
+        <button
+          onClick={onToggleStyles}
+          className={cn(
+            'flex items-center gap-[0.31rem] px-[0.62rem] py-[0.31rem] rounded-[0.44rem] border text-xs cursor-pointer font-[inherit] transition-all duration-150',
+            stylesOpen
+              ? 'border-accent bg-accent text-accent-text'
+              : 'border-border bg-transparent text-on-surface-muted'
+          )}
+        >
+          <Sliders size={13} />
+          More
+        </button>
+        <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 whitespace-nowrap rounded-md border border-border bg-surface-raised px-2 py-1 text-[0.69rem] text-on-surface shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10">
+          Files, Presets &amp; More
+        </span>
+      </div>
 
       <div className="w-px h-5 bg-border" />
 
@@ -82,6 +94,7 @@ export default function Toolbar({
         ref={fileInputRef}
         type="file"
         accept=".md,text/markdown"
+        multiple
         className="hidden"
         onChange={handleFileChange}
       />
