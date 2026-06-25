@@ -1,54 +1,83 @@
 import { useState } from 'react'
-import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, ChevronRight, Folder, FileText, Pencil, Check } from 'lucide-react'
 import { THEMES, THEME_ACCENT } from '../utils/themes'
 import {
   COMMON_SELECTORS, FONT_OPTIONS, BORDER_STYLE_OPTIONS,
   type StyleSettings, type ElementRule,
 } from '../utils/styleBuilder'
+import type { MdFile } from '../hooks/useMarkdownEditor'
 import { cn } from '@/lib/utils'
 
 const PANEL_SELECT_CLS = 'w-full bg-surface-raised border border-border rounded-md px-2 py-[0.31rem] text-[0.69rem] text-on-surface outline-none font-[inherit] cursor-pointer'
+const DASHED_BTN_CLS = 'flex items-center justify-center gap-[0.38rem] py-[0.44rem] px-3 rounded-lg border border-dashed border-border bg-transparent text-on-surface-muted text-xs cursor-pointer font-[inherit] w-full hover:border-accent hover:text-accent transition-colors duration-150'
+
+type Section = 'files' | 'preset' | 'document' | 'elements'
+
+const SECTION_LABELS: Record<Section, string> = {
+  files: 'Files',
+  preset: 'Preset',
+  document: 'Doc',
+  elements: 'Elements',
+}
 
 interface StylePanelProps {
   themeId: string
   styleSettings: StyleSettings
+  files: MdFile[]
+  activeId: string
   onThemeChange: (id: string) => void
   onDocChange: (key: string, val: string) => void
   onRuleChange: (i: number, patch: Partial<ElementRule>) => void
   onAddRule: () => void
   onRemoveRule: (i: number) => void
   onResetStyles: () => void
+  onSelectFile: (id: string) => void
+  onRenameFile: (id: string, name: string) => void
+  onRemoveFile: (id: string) => void
+  onNewFile: () => void
 }
 
 export default function StylePanel({
-  themeId, styleSettings,
+  themeId, styleSettings, files, activeId,
   onThemeChange, onDocChange,
   onRuleChange, onAddRule, onRemoveRule, onResetStyles,
+  onSelectFile, onRenameFile, onRemoveFile, onNewFile,
 }: StylePanelProps) {
-  const [section, setSection] = useState<'preset' | 'document' | 'elements'>('preset')
+  const [section, setSection] = useState<Section>('files')
 
   return (
     <aside className="w-[17.5rem] shrink-0 flex flex-col border-l border-border bg-surface overflow-hidden">
       {/* Section tabs */}
       <div className="flex border-b border-border shrink-0">
-        {(['preset', 'document', 'elements'] as const).map(s => (
+        {(['files', 'preset', 'document', 'elements'] as const).map(s => (
           <button
             key={s}
             onClick={() => setSection(s)}
             className={cn(
-              'flex-1 py-[0.56rem] px-1 border-none bg-transparent cursor-pointer font-[inherit] text-[0.69rem] uppercase tracking-[0.02em] transition-colors duration-150 -mb-px border-b-2',
+              'flex-1 flex items-center justify-center gap-1 py-[0.56rem] px-1 border-none bg-transparent cursor-pointer font-[inherit] text-[0.69rem] uppercase tracking-[0.02em] transition-colors duration-150 -mb-px border-b-2',
               section === s
                 ? 'text-accent border-b-accent font-semibold'
                 : 'text-on-surface-muted border-b-transparent font-normal'
             )}
           >
-            {s === 'preset' ? 'Preset' : s === 'document' ? 'Doc' : 'Elements'}
+            {s === 'files' && <Folder size={12} />}
+            {SECTION_LABELS[s]}
           </button>
         ))}
       </div>
 
       {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto p-[0.88rem]">
+        {section === 'files' && (
+          <FilesSection
+            files={files}
+            activeId={activeId}
+            onSelectFile={onSelectFile}
+            onRenameFile={onRenameFile}
+            onRemoveFile={onRemoveFile}
+            onNewFile={onNewFile}
+          />
+        )}
         {section === 'preset' && (
           <PresetSection themeId={themeId} onThemeChange={onThemeChange} />
         )}
@@ -65,6 +94,111 @@ export default function StylePanel({
         )}
       </div>
     </aside>
+  )
+}
+
+// ── Files ────────────────────────────────────────────
+
+function FilesSection({ files, activeId, onSelectFile, onRenameFile, onRemoveFile, onNewFile }: {
+  files: MdFile[]
+  activeId: string
+  onSelectFile: (id: string) => void
+  onRenameFile: (id: string, name: string) => void
+  onRemoveFile: (id: string) => void
+  onNewFile: () => void
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <button onClick={onNewFile} className={DASHED_BTN_CLS}>
+        <Plus size={13} /> New File
+      </button>
+
+      {files.map(file => (
+        <FileRow
+          key={file.id}
+          file={file}
+          active={file.id === activeId}
+          canRemove={files.length > 1}
+          onSelect={onSelectFile}
+          onRename={onRenameFile}
+          onRemove={onRemoveFile}
+        />
+      ))}
+    </div>
+  )
+}
+
+function FileRow({ file, active, canRemove, onSelect, onRename, onRemove }: {
+  file: MdFile
+  active: boolean
+  canRemove: boolean
+  onSelect: (id: string) => void
+  onRename: (id: string, name: string) => void
+  onRemove: (id: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(file.name)
+
+  const startEdit = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setDraft(file.name)
+    setEditing(true)
+  }
+
+  const commit = () => {
+    onRename(file.id, draft.trim() || 'Untitled')
+    setEditing(false)
+  }
+
+  return (
+    <div
+      onClick={() => !editing && onSelect(file.id)}
+      className={cn(
+        'flex items-center gap-2 px-[0.62rem] py-2 rounded-[0.62rem] border transition-[border-color,background-color] duration-150',
+        editing ? 'cursor-default' : 'cursor-pointer',
+        active ? 'border-accent bg-surface-raised' : 'border-border bg-transparent'
+      )}
+    >
+      <FileText size={14} className={cn('shrink-0', active ? 'text-accent' : 'text-on-surface-muted')} />
+
+      {editing ? (
+        <input
+          autoFocus
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onClick={e => e.stopPropagation()}
+          onBlur={commit}
+          onKeyDown={e => {
+            if (e.key === 'Enter') commit()
+            else if (e.key === 'Escape') { setDraft(file.name); setEditing(false) }
+          }}
+          placeholder="Untitled"
+          className="flex-1 min-w-0 bg-surface border border-border rounded px-1.5 py-0.5 text-xs text-on-surface outline-none font-[inherit] tracking-[-0.01rem] focus:border-accent transition-colors duration-150"
+        />
+      ) : (
+        <span className="flex-1 min-w-0 truncate text-xs text-on-surface tracking-[-0.01rem]">
+          {file.name || 'Untitled'}
+        </span>
+      )}
+
+      <button
+        onClick={editing ? e => { e.stopPropagation(); commit() } : startEdit}
+        title={editing ? 'Save name' : 'Rename file'}
+        className="text-on-surface-muted bg-transparent border-none cursor-pointer flex p-0.5 shrink-0 hover:text-accent transition-colors duration-150"
+      >
+        {editing ? <Check size={13} /> : <Pencil size={12} />}
+      </button>
+
+      {canRemove && !editing && (
+        <button
+          onClick={e => { e.stopPropagation(); onRemove(file.id) }}
+          title="Remove file"
+          className="text-on-surface-muted bg-transparent border-none cursor-pointer flex p-0.5 shrink-0 hover:text-on-surface transition-colors duration-150"
+        >
+          <Trash2 size={12} />
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -171,10 +305,7 @@ function ElementsSection({ rules, onRuleChange, onAddRule, onRemoveRule }: {
 }) {
   return (
     <div className="flex flex-col gap-[0.62rem]">
-      <button
-        onClick={onAddRule}
-        className="flex items-center justify-center gap-[0.38rem] py-[0.44rem] px-3 rounded-lg border border-dashed border-border bg-transparent text-on-surface-muted text-xs cursor-pointer font-[inherit] w-full hover:border-accent hover:text-accent transition-colors duration-150"
-      >
+      <button onClick={onAddRule} className={DASHED_BTN_CLS}>
         <Plus size={13} /> Add Element Rule
       </button>
 

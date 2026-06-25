@@ -8,7 +8,12 @@ import { exportToPDF, exportToHTML, exportToMarkdown, defaultExportConfig } from
 import { createDefaultSettings, createDefaultRule, type StyleSettings, type ElementRule } from './utils/styleBuilder'
 
 export default function MarkdownStudioPage() {
-  const { content, title, setTitle, updateContent, loadFile, handleEditorMount } = useMarkdownEditor()
+  const {
+    content, title, files, activeId,
+    setTitle, updateContent, loadFiles,
+    selectFile, newFile, removeFile, renameFile,
+    handleEditorMount,
+  } = useMarkdownEditor()
   const previewRef = useRef<HTMLDivElement>(null)
 
   const [themeId, setThemeId] = useState('classic')
@@ -31,6 +36,13 @@ export default function MarkdownStudioPage() {
 
   const resetStyles = useCallback(() => setStyleSettings(createDefaultSettings()), [])
 
+  // Reveal the Files panel on upload so the user sees their files. The panel
+  // remounts on open and defaults to the Files tab.
+  const handleUploadFiles = useCallback((uploaded: { name: string; content: string }[]) => {
+    loadFiles(uploaded)
+    setStylesOpen(true)
+  }, [loadFiles])
+
   const buildConfig = () => ({
     ...defaultExportConfig(title),
     themeId,
@@ -47,7 +59,7 @@ export default function MarkdownStudioPage() {
         onExportPDF={() => previewRef.current && exportToPDF(previewRef.current, buildConfig())}
         onExportHTML={() => previewRef.current && exportToHTML(previewRef.current, buildConfig())}
         onExportMarkdown={() => exportToMarkdown(content, title)}
-        onUpload={loadFile}
+        onUploadFiles={handleUploadFiles}
       />
 
       <div className="flex flex-1 min-h-0">
@@ -62,12 +74,18 @@ export default function MarkdownStudioPage() {
           <StylePanel
             themeId={themeId}
             styleSettings={styleSettings}
+            files={files}
+            activeId={activeId}
             onThemeChange={setThemeId}
             onDocChange={setDoc}
             onRuleChange={setRule}
             onAddRule={addRule}
             onRemoveRule={removeRule}
             onResetStyles={resetStyles}
+            onSelectFile={selectFile}
+            onRenameFile={renameFile}
+            onRemoveFile={removeFile}
+            onNewFile={newFile}
           />
         )}
       </div>
