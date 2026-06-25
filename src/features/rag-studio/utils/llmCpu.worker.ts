@@ -7,9 +7,17 @@
 // postMessage. The proxy in `llmCpu.ts` speaks this protocol.
 import { pipeline, TextStreamer, InterruptableStoppingCriteria, env } from '@huggingface/transformers'
 
-// Match the threading config used by the embedder — multi-threading spawns blob
-// workers that break in minified production builds.
-if (env.backends.onnx.wasm) env.backends.onnx.wasm.numThreads = 1
+// WASM multi-threading needs SharedArrayBuffer, which only exists when the page is
+// cross-origin isolated (COOP/COEP — set via the coi-serviceworker + dev headers).
+// When isolated we use up to 4 threads (ORT's own default heuristic); otherwise the
+// runtime requires single-threading. Threads cut token latency several-fold since
+// CPU decode is the bottleneck.
+const _isolated = typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated
+if (env.backends.onnx.wasm) {
+  env.backends.onnx.wasm.numThreads = _isolated
+    ? Math.min(4, Math.max(1, Math.ceil((navigator.hardwareConcurrency || 4) / 2)))
+    : 1
+}
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -64,7 +72,10 @@ async function getEngine(modelId: string, id: number): Promise<TextGenPipeline> 
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _loadingPromise = (pipeline as any)('text-generation', modelId, {
-    quantized: true,
+    // 4-bit weights — fastest dtype on WASM (decode is memory-bandwidth bound, so
+    // halving weight size vs the q8 default roughly doubles token throughput). The
+    // old `quantized: true` flag is a no-op in transformers v4; `dtype` replaced it.
+    dtype: 'q4',
     // Force WASM — this worker only runs when no usable WebGPU device exists, so
     // never let transformers.js probe WebGPU (avoids the context-provider warning).
     device: 'wasm',

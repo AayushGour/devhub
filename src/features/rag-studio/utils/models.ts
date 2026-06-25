@@ -59,7 +59,10 @@ export function getModelById(id: string): ModelEntry | undefined {
   return CURATED_MODELS.find((m) => m.id === id)
 }
 
-export const DEFAULT_CPU_MODEL_ID = 'HuggingFaceTB/SmolLM2-1.7B-Instruct'
+// 0.5B is ~5x faster than 1.7B on WASM (decode is memory-bound, so smaller weights
+// dominate); grounded by RAG it still answers accurately. Best speed/quality balance
+// for CPU. Larger CPU models remain selectable for users who prefer quality.
+export const DEFAULT_CPU_MODEL_ID = 'onnx-community/Qwen2.5-0.5B-Instruct'
 
 export const CPU_MODELS: ModelEntry[] = [
   { id: 'HuggingFaceTB/SmolLM2-135M-Instruct',    label: 'SmolLM2 135M',  family: 'SmolLM2', sizeLabel: '135M', vramMB: 0 },

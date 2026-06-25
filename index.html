@@ -6,6 +6,9 @@
   <link rel="icon" type="image/x-icon" href="/logo.ico" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Devhub | One place for all your developer tools</title>
+  <!-- Provides cross-origin isolation (SharedArrayBuffer → multi-threaded WASM)
+       on static hosts like GitHub Pages. Must load before the app. -->
+  <script src="coi-serviceworker.js"></script>
   <script>
     (function() {
       var p = window.location.search.slice(1).split('&').filter(function(s) { return s.startsWith('p='); })[0];
