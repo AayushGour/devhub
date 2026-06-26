@@ -1,9 +1,10 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { CheckCircle, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useJsonStudio } from './hooks/useJsonStudio'
 import JsonToolbar from './components/JsonToolbar'
 import JsonEditor from './components/JsonEditor'
+import FilePanel from './components/FilePanel'
 import TreeMode from './components/modes/TreeMode'
 import GraphMode from './components/modes/GraphMode'
 import DiffMode from './components/modes/DiffMode'
@@ -29,8 +30,15 @@ const SHARED_EDITOR_WIDTH = '45%'
 
 export default function JsonStudioPage() {
   const state = useJsonStudio()
+  const [filesOpen, setFilesOpen] = useState(false)
 
   const isDiff = state.mode === 'diff'
+
+  // Reveal the Files panel on upload so the user sees their files.
+  const handleUploadFiles = useCallback((uploaded: { name: string; content: string }[]) => {
+    state.loadFiles(uploaded)
+    setFilesOpen(true)
+  }, [state])
 
   const footerStats = useMemo(() => {
     const trimmed = state.input.trim()
@@ -59,6 +67,9 @@ export default function JsonStudioPage() {
         setTitle={state.setTitle}
         mode={state.mode}
         setMode={state.setMode}
+        filesOpen={filesOpen}
+        onToggleFiles={() => setFilesOpen(o => !o)}
+        onUploadFiles={handleUploadFiles}
       />
 
       <div className="flex flex-1 min-h-0">
@@ -106,6 +117,17 @@ export default function JsonStudioPage() {
             setTypeLang={state.setTypeLang}
             rootName={state.rootName}
             setRootName={state.setRootName}
+          />
+        )}
+
+        {filesOpen && (
+          <FilePanel
+            files={state.files}
+            activeId={state.activeId}
+            onSelectFile={state.selectFile}
+            onRenameFile={state.renameFile}
+            onRemoveFile={state.removeFile}
+            onNewFile={state.newFile}
           />
         )}
       </div>

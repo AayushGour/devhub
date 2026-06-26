@@ -34,7 +34,7 @@ export default function JsonPathMode({ input, jsonPathQuery, setJsonPathQuery }:
   }, [results])
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0 min-w-0">
       {/* Query input */}
       <div className="border-b border-border p-3 shrink-0">
         <label className="block text-[0.69rem] font-semibold uppercase tracking-[0.06em] text-on-surface-muted mb-2">
