@@ -10,6 +10,7 @@ interface PreviewPaneProps {
   themeId: string
   styleSettings: StyleSettings
   previewRef: React.RefObject<HTMLDivElement | null>
+  scrollRef?: (node: HTMLDivElement | null) => void
 }
 
 const FONT_LINK_ID = 'devhub-google-fonts'
@@ -53,7 +54,7 @@ function injectThemeCss(themeId: string, settings: StyleSettings) {
   ].join('\n')
 }
 
-export default function PreviewPane({ content, themeId, styleSettings, previewRef }: PreviewPaneProps) {
+export default function PreviewPane({ content, themeId, styleSettings, previewRef, scrollRef }: PreviewPaneProps) {
   const { theme: appTheme } = useSettingsStore()
   const innerRef = useRef<HTMLDivElement>(null)
 
@@ -76,7 +77,7 @@ export default function PreviewPane({ content, themeId, styleSettings, previewRe
   }, [themeId, styleSettings])
 
   return (
-    <div className="flex-1 min-w-0 overflow-auto border-l border-border bg-surface">
+    <div ref={scrollRef} className="flex-1 min-w-0 overflow-auto border-l border-border bg-surface">
       {/* previewRef = inner content div — export reads innerHTML directly into .md-content wrapper */}
       <div
         ref={(el) => { innerRef.current = el; (previewRef as React.MutableRefObject<HTMLDivElement | null>).current = el }}

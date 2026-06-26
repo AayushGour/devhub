@@ -4,6 +4,7 @@ import EditorPane from './components/EditorPane'
 import PreviewPane from './components/PreviewPane'
 import StylePanel from './components/StylePanel'
 import { useMarkdownEditor, DEFAULT_CONTENT } from './hooks/useMarkdownEditor'
+import { useScrollSync } from './hooks/useScrollSync'
 import { exportToPDF, exportToHTML, exportToMarkdown, defaultExportConfig } from './utils/pdfExport'
 import { createDefaultSettings, createDefaultRule, type StyleSettings, type ElementRule } from './utils/styleBuilder'
 
@@ -14,7 +15,13 @@ export default function MarkdownStudioPage() {
     selectFile, newFile, removeFile, renameFile,
     handleEditorMount,
   } = useMarkdownEditor()
+  const { registerEditor, previewScrollRef } = useScrollSync()
   const previewRef = useRef<HTMLDivElement>(null)
+
+  const onEditorMount = useCallback<typeof handleEditorMount>((editor, monaco) => {
+    handleEditorMount(editor, monaco)
+    registerEditor(editor)
+  }, [handleEditorMount, registerEditor])
 
   const [themeId, setThemeId] = useState('classic')
   const [styleSettings, setStyleSettings] = useState<StyleSettings>(createDefaultSettings)
@@ -63,12 +70,13 @@ export default function MarkdownStudioPage() {
       />
 
       <div className="flex flex-1 min-h-0">
-        <EditorPane defaultValue={DEFAULT_CONTENT} onChange={updateContent} onMount={handleEditorMount} />
+        <EditorPane defaultValue={DEFAULT_CONTENT} onChange={updateContent} onMount={onEditorMount} />
         <PreviewPane
           content={content}
           themeId={themeId}
           styleSettings={styleSettings}
           previewRef={previewRef}
+          scrollRef={previewScrollRef}
         />
         {stylesOpen && (
           <StylePanel

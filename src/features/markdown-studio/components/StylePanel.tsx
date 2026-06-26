@@ -107,18 +107,19 @@ function FilesSection({ files, activeId, onSelectFile, onRenameFile, onRemoveFil
   onRemoveFile: (id: string) => void
   onNewFile: () => void
 }) {
+  const list = files ?? []
   return (
     <div className="flex flex-col gap-2">
       <button onClick={onNewFile} className={DASHED_BTN_CLS}>
         <Plus size={13} /> New File
       </button>
 
-      {files.map(file => (
+      {list.map(file => (
         <FileRow
           key={file.id}
           file={file}
           active={file.id === activeId}
-          canRemove={files.length > 1}
+          canRemove={list.length > 1}
           onSelect={onSelectFile}
           onRename={onRenameFile}
           onRemove={onRemoveFile}
