@@ -190,7 +190,7 @@ export default function GraphMode({ input }: Props) {
   }, [isDragging])
 
   return (
-    <div className="flex-1 relative flex flex-col min-h-0 bg-surface">
+    <div className="flex-1 relative flex flex-col min-h-0 min-w-0 bg-surface">
       {/* Viewport */}
       <div
         className="flex-1 overflow-hidden select-none"

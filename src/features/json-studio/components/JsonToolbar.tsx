@@ -1,3 +1,5 @@
+import { useRef } from 'react'
+import { Files, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { JsonMode, JsonStudioState } from '../hooks/useJsonStudio'
 
@@ -10,9 +12,34 @@ const MODES: { id: JsonMode; label: string }[] = [
   { id: 'diff', label: 'Diff' },
 ]
 
-type Props = Pick<JsonStudioState, 'title' | 'setTitle' | 'mode' | 'setMode'>
+type Props = Pick<JsonStudioState, 'title' | 'setTitle' | 'mode' | 'setMode'> & {
+  filesOpen: boolean
+  onToggleFiles: () => void
+  onUploadFiles: (files: { name: string; content: string }[]) => void
+}
 
-export default function JsonToolbar({ title, setTitle, mode, setMode }: Props) {
+function readFile(file: File): Promise<{ name: string; content: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = ev => resolve({ name: file.name, content: ev.target?.result as string })
+    reader.onerror = () => reject(reader.error)
+    reader.readAsText(file)
+  })
+}
+
+export default function JsonToolbar({
+  title, setTitle, mode, setMode, filesOpen, onToggleFiles, onUploadFiles,
+}: Props) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const fileList = e.target.files
+    if (!fileList || fileList.length === 0) return
+    const results = await Promise.all(Array.from(fileList).map(readFile))
+    onUploadFiles(results)
+    e.target.value = ''
+  }
+
   return (
     <div className="h-11 flex items-center px-4 gap-[0.62rem] shrink-0 border-b border-border bg-surface">
       <input
@@ -40,6 +67,38 @@ export default function JsonToolbar({ title, setTitle, mode, setMode }: Props) {
           </button>
         ))}
       </div>
+
+      <div className="flex-1" />
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json,application/json"
+        multiple
+        className="hidden"
+        onChange={handleFileChange}
+      />
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        title="Upload .json file"
+        className="flex items-center justify-center w-[1.88rem] h-[1.88rem] rounded-[0.44rem] border border-border bg-transparent text-on-surface-muted cursor-pointer hover:text-on-surface transition-colors duration-150"
+      >
+        <Upload size={13} />
+      </button>
+
+      <button
+        onClick={onToggleFiles}
+        title="Files"
+        className={cn(
+          'flex items-center gap-[0.31rem] px-[0.62rem] py-[0.31rem] rounded-[0.44rem] border text-xs cursor-pointer font-[inherit] transition-all duration-150',
+          filesOpen
+            ? 'border-accent bg-accent text-accent-text'
+            : 'border-border bg-transparent text-on-surface-muted hover:text-on-surface'
+        )}
+      >
+        <Files size={13} />
+        Files
+      </button>
     </div>
   )
 }
