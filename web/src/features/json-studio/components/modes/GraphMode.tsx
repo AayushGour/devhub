@@ -83,6 +83,7 @@ function NodeCard({ node }: { node: GNode }) {
         ? node.rows.map((row, i) => (
             <div
               key={i}
+              data-tooltip={row.rawValue.length > 24 ? row.rawValue : undefined}
               className="flex items-center px-3 gap-2 border-b border-border last:border-0"
               style={{ height: 24 }}
             >
@@ -97,6 +98,7 @@ function NodeCard({ node }: { node: GNode }) {
         : node.rows.map((row, i) => (
             <div
               key={i}
+              data-tooltip={row.rawValue.length > 24 ? row.rawValue : undefined}
               className="flex items-center px-3 border-b border-border last:border-0"
               style={{ height: 24 }}
             >

@@ -6,6 +6,8 @@ import DiagramView from './views/DiagramView'
 import JsonView from './views/JsonView'
 import SvgView from './views/SvgView'
 import TokenView from './views/TokenView'
+import YamlView from './views/YamlView'
+import XmlView from './views/XmlView'
 
 interface UpdateMessage {
   type: 'update'
@@ -67,6 +69,10 @@ function renderTool(
       return <SvgView text={text} />
     case 'token':
       return <TokenView text={text} />
+    case 'yaml':
+      return <YamlView text={text} />
+    case 'xml':
+      return <XmlView text={text} />
     default:
       return <div className="p-4 text-sm text-on-surface-muted">Unsupported preview: {tool}</div>
   }
