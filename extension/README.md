@@ -20,8 +20,9 @@ fully offline.
 
 ### Open Preview to Side
 
-Run **DevHub: Open Preview to Side** (`Cmd/Ctrl+Shift+P`) or click the preview icon
-in the editor title bar. The tool is picked automatically from the file:
+Press **`Cmd/Ctrl+Shift+V`** (or run **DevHub: Open Preview to Side** from the
+Command Palette, or click the preview icon in the editor title bar). The tool is
+picked automatically from the file:
 
 | File | Preview |
 |------|---------|
@@ -58,12 +59,16 @@ Open in their own panel (no file needed):
 
 ## Commands
 
-| Command | What it does |
-|---------|--------------|
-| `DevHub: Open Preview to Side` | Preview the active file (auto-detected type) |
-| `DevHub: Token Count (Side)` | Tokenize the active editor |
-| `DevHub: Crypto Studio` | Open the crypto tools panel |
-| `DevHub: Image Studio` | Open the image tools panel |
+| Command | Shortcut | What it does |
+|---------|----------|--------------|
+| `DevHub: Open Preview to Side` | `Cmd/Ctrl+Shift+V` | Preview the active file (auto-detected type) |
+| `DevHub: Token Count (Side)` | — | Tokenize the active editor |
+| `DevHub: Crypto Studio` | — | Open the crypto tools panel |
+| `DevHub: Image Studio` | — | Open the image tools panel |
+
+`Cmd/Ctrl+Shift+V` is active for the supported file types (`.md`, `.mdc`, `.mmd`,
+`.json`, `.jsonl`, `.svg`, `.html`) and overrides VS Code's built-in Markdown
+preview on that key.
 
 ## Notes
 
@@ -71,6 +76,25 @@ Open in their own panel (no file needed):
   iframe isolated from the editor.
 - **YAML frontmatter** (the leading `--- … ---` block in `.md`/`.mdc`) is rendered
   as a property/value table.
+
+## Development
+
+Part of the [DevHub](https://github.com/AayushGour/devhub) npm-workspaces monorepo;
+the extension reuses the web app's preview components. From the repo root:
+
+```bash
+npm install
+npm run build:ext     # webview -> extension/media, host -> extension/dist
+```
+
+Press **F5** ("Run DevHub Extension") to launch an Extension Development Host.
+
+Publish:
+
+```bash
+OVSX_PAT=<token> npm run publish:openvsx   # Open VSX
+VSCE_PAT=<token> npm run publish:vsce       # VS Code Marketplace
+```
 
 ## License
 

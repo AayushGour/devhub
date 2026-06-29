@@ -68,7 +68,15 @@ Fully client-side retrieval-augmented generation. All models run in-browser via 
 | OLMo 2 | 1B · 7B |
 | Hermes 3 | 3B · 8B |
 
-Default: **Qwen3 4B** (~3.4 GB VRAM)
+Default (GPU): **Qwen3 4B** (~3.4 GB VRAM)
+
+**GPU / CPU fallback (automatic):** DevHub probes for a real, hardware-backed
+WebGPU device (rejecting software/fallback adapters). With a usable GPU it runs the
+WebLLM models above. Without one it falls back to lighter **CPU/WASM** models (ONNX
+via `@huggingface/transformers`) — default **Qwen2.5 0.5B Instruct**
+(`onnx-community`). Inference runs in a dedicated **Web Worker** (`llmCpu.worker` /
+`llmGpu.worker`) so heavy compute stays off the main thread. Settings shows a
+**GPU/CPU badge** and only lists the models your hardware can run.
 
 **Embedding model:** `Xenova/bge-base-en-v1.5` (768-dim, via `@xenova/transformers`) — downloaded once, ~220 MB
 
@@ -183,6 +191,16 @@ Fetch any public GitHub repo and explore it without cloning.
 
 ---
 
+## VS Code Extension
+
+DevHub also ships as a VS Code extension (in [`extension/`](extension/), published
+as **DevHub** on Open VSX). It reuses these studios' preview components to render
+live side-previews from the native editor — Markdown (`.md`/`.mdc`), Mermaid,
+JSON/JSONL, SVG and HTML — plus standalone Token, Crypto and Image tools. RAG and
+Repo Explorer are web-only. See [extension/README.md](extension/README.md).
+
+---
+
 ## Tech Stack
 
 | Layer | Library | Version |
@@ -200,7 +218,8 @@ Fetch any public GitHub repo and explore it without cloning.
 | PDF extraction | pdfjs-dist | 4 |
 | DOCX extraction | mammoth | 1.12 |
 | Embeddings | @xenova/transformers | 2.17 |
-| LLM inference | @mlc-ai/web-llm | 0.2 |
+| GPU LLM inference | @mlc-ai/web-llm (WebGPU) | 0.2 |
+| CPU LLM inference | @huggingface/transformers (ONNX/WASM) | 4 |
 | Vector store | IndexedDB via idb | 8 |
 | Tokenization | tiktoken (WASM) | 1.0 |
 | SVG tracing | potrace-js + imagetracerjs | — |
@@ -212,15 +231,17 @@ Fetch any public GitHub repo and explore it without cloning.
 
 ## Getting Started
 
+This is an npm-workspaces monorepo: **`web/`** (this app) and **`extension/`** (the
+VS Code extension). Run commands from the repo root:
+
 ```bash
-npm install
-npm run dev        # dev server at http://localhost:5173
+npm install            # installs both workspaces
+npm run dev:web        # dev server at http://localhost:5173
 ```
 
 ```bash
-npm run build      # production build
-npm run preview    # preview production build locally
-npm run lint       # ESLint
+npm run build:web      # production build (web/dist)
+npm run lint:web       # ESLint
 ```
 
 ---
@@ -237,6 +258,7 @@ Theme is persisted to `localStorage` via Zustand's `persist` middleware.
 
 - **No backend** — everything runs in the browser; zero server calls except GitHub API and model CDN downloads
 - **IndexedDB** (`idb`) is the persistence layer for RAG vector store, repo cache, embeddings, and wiki pages
-- **WASM** workloads (tiktoken, transformers.js, WebLLM) run on the main thread; embedding loops yield via `setTimeout(0)` every few iterations to keep the UI responsive
+- **GPU/CPU LLM** — WebGPU is probed at runtime (`utils/webgpu.ts`); GPU machines use WebLLM, others fall back to ONNX/WASM models. LLM inference runs in dedicated Web Workers (`llmGpu.worker`, `llmCpu.worker`) to keep compute off the main thread
+- **WASM** workloads (tiktoken, transformers.js) yield via `setTimeout(0)` in tight loops to keep the UI responsive
 - **Settings** persist to `localStorage` via Zustand; the `ragLlmModel` setting is shared between RAG Studio and Repo Explorer
 - Each studio follows the `studio-root` layout convention — `display: flex; flex-direction: column; height: 100%` — so it fills the full viewport without scroll
