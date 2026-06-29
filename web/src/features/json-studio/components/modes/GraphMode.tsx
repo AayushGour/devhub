@@ -153,6 +153,10 @@ export default function GraphMode({ input }: Props) {
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const dragStart = useRef({ mouseX: 0, mouseY: 0, panX: 0, panY: 0 })
+  const viewportRef = useRef<HTMLDivElement>(null)
+  // Keep pan in a ref so the wheel handler always sees current value without re-registering
+  const panRef = useRef({ x: 0, y: 0 })
+  const zoomRef = useRef(1)
 
   const { layout, error } = useMemo(() => {
     if (!input.trim()) return { layout: null, error: null }
@@ -167,6 +171,46 @@ export default function GraphMode({ input }: Props) {
   const zoomIn = () => setZoom(z => Math.min(ZOOM_MAX, z * ZOOM_STEP))
   const zoomOut = () => setZoom(z => Math.max(ZOOM_MIN, z / ZOOM_STEP))
   const zoomReset = () => { setZoom(1); setPan({ x: 0, y: 0 }) }
+
+  // Keep refs in sync so wheel handler reads latest without re-binding
+  useEffect(() => { zoomRef.current = zoom }, [zoom])
+  useEffect(() => { panRef.current = pan }, [pan])
+
+  // Wheel/trackpad: passive:false required to call preventDefault
+  useEffect(() => {
+    const el = viewportRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      if (e.ctrlKey) {
+        // Pinch-to-zoom (trackpad) or ctrl+scroll
+        const rect = el.getBoundingClientRect()
+        const cx = e.clientX - rect.left
+        const cy = e.clientY - rect.top
+        const factor = Math.pow(0.995, e.deltaY)
+        const curZoom = zoomRef.current
+        const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, curZoom * factor))
+        const ratio = newZoom / curZoom
+        const curPan = panRef.current
+        const newPan = {
+          x: cx - (cx - curPan.x) * ratio,
+          y: cy - (cy - curPan.y) * ratio,
+        }
+        zoomRef.current = newZoom
+        panRef.current = newPan
+        setZoom(newZoom)
+        setPan(newPan)
+      } else {
+        // Two-finger scroll → pan
+        const curPan = panRef.current
+        const newPan = { x: curPan.x - e.deltaX, y: curPan.y - e.deltaY }
+        panRef.current = newPan
+        setPan(newPan)
+      }
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -195,6 +239,7 @@ export default function GraphMode({ input }: Props) {
     <div className="flex-1 relative flex flex-col min-h-0 min-w-0 bg-surface">
       {/* Viewport */}
       <div
+        ref={viewportRef}
         className="flex-1 overflow-hidden select-none"
         onMouseDown={onMouseDown}
         style={{

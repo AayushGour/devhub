@@ -2,7 +2,7 @@
   "name": "devhub-toolkit",
   "displayName": "DevHub",
   "description": "Markdown, Mermaid, JSON, SVG & token previews plus crypto and image tools — powered by DevHub.",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "publisher": "dev-hub",
   "license": "MIT",
   "type": "module",
