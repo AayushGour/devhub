@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import { FileText, FileCode, Printer } from 'lucide-react'
 import PreviewPane from '@/features/markdown-studio/components/PreviewPane'
 import { createDefaultSettings } from '@/features/markdown-studio/utils/styleBuilder'
 import { THEMES } from '@/features/markdown-studio/utils/themes'
+import { exportToHTML, exportToMarkdown, defaultExportConfig, getExportHTML } from '@/features/markdown-studio/utils/pdfExport'
+import { exportPDFViaHost } from '../utils/print'
 
 const DEFAULT_STYLE = createDefaultSettings()
 const SELECT_CLS =
@@ -82,7 +85,6 @@ const MATCH_VSCODE = 'vscode'
 
 export default function MarkdownView({ text }: { text: string; colorTheme: 'light' | 'dark' }) {
   const previewRef = useRef<HTMLDivElement>(null)
-  // Default to following the VS Code theme.
   const [themeId, setThemeId] = useState<string>(MATCH_VSCODE)
 
   // Toggle the VS Code colour override stylesheet based on the selection.
@@ -104,9 +106,15 @@ export default function MarkdownView({ text }: { text: string; colorTheme: 'ligh
   // but keep Emerald's fonts/structure.
   const renderThemeId = themeId === MATCH_VSCODE ? 'emerald' : themeId
 
+  const buildExportConfig = () => ({
+    ...defaultExportConfig('document'),
+    themeId: renderThemeId,
+    styleSettings: DEFAULT_STYLE,
+  })
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="shrink-0 flex items-center gap-2 px-3 h-9 border-b border-border bg-surface-raised">
+      <div className="preview-toolbar shrink-0 flex items-center gap-2 px-3 h-9 border-b border-border bg-surface-raised">
         <span className="text-[0.69rem] font-semibold text-on-surface-muted uppercase tracking-[0.06em]">
           Theme
         </span>
@@ -118,6 +126,29 @@ export default function MarkdownView({ text }: { text: string; colorTheme: 'ligh
             </option>
           ))}
         </select>
+        <div className="ml-auto flex items-center gap-0.5">
+          <button
+            data-tooltip="Export Markdown (.md)"
+            onClick={() => exportToMarkdown(text, 'document')}
+            className="p-1.5 rounded-md text-on-surface-muted hover:bg-surface-hover hover:text-on-surface transition-colors duration-150"
+          >
+            <FileText size={14} />
+          </button>
+          <button
+            data-tooltip="Export HTML"
+            onClick={() => previewRef.current && exportToHTML(previewRef.current, buildExportConfig())}
+            className="p-1.5 rounded-md text-on-surface-muted hover:bg-surface-hover hover:text-on-surface transition-colors duration-150"
+          >
+            <FileCode size={14} />
+          </button>
+          <button
+            data-tooltip="Export PDF"
+            onClick={() => previewRef.current && exportPDFViaHost(getExportHTML(previewRef.current, buildExportConfig()), 'document')}
+            className="p-1.5 rounded-md text-on-surface-muted hover:bg-surface-hover hover:text-on-surface transition-colors duration-150"
+          >
+            <Printer size={14} />
+          </button>
+        </div>
       </div>
       <div className="flex flex-1 min-h-0">
         <PreviewPane

@@ -161,6 +161,10 @@ function buildPrintDoc(html: string, config: ExportConfig): string {
 </html>`
 }
 
+export function getExportHTML(previewEl: HTMLElement, config: ExportConfig): string {
+  return buildPrintDoc(previewEl.innerHTML, config)
+}
+
 export function exportToPDF(previewEl: HTMLElement, config: ExportConfig) {
   const win = window.open('', '_blank')
   if (!win) { alert('Allow popups to export PDF.'); return }
