@@ -22,8 +22,19 @@ function toolForDocument(doc: vscode.TextDocument): Tool | undefined {
   if (lang === 'html' || name.endsWith('.html') || name.endsWith('.htm')) return 'html'
   if (lang === 'mermaid' || name.endsWith('.mmd') || name.endsWith('.mermaid')) return 'diagram'
   if (lang === 'json' || lang === 'jsonc') return 'json'
+  // JSON Lines / NDJSON — each line is its own JSON value.
+  if (lang === 'jsonl' || name.endsWith('.jsonl') || name.endsWith('.ndjson')) return 'json'
   if (lang === 'svg') return 'svg'
   if (lang === 'xml' && name.endsWith('.svg')) return 'svg'
+  return undefined
+}
+
+/** Extra format hint passed to the webview so it can adapt parsing (e.g. JSONL). */
+function previewFormat(doc: vscode.TextDocument): 'jsonl' | undefined {
+  const name = doc.fileName.toLowerCase()
+  if (doc.languageId === 'jsonl' || name.endsWith('.jsonl') || name.endsWith('.ndjson')) {
+    return 'jsonl'
+  }
   return undefined
 }
 
@@ -45,6 +56,7 @@ export class PreviewManager {
     }
     const doc = editor.document
     const tool = force ?? toolForDocument(doc)
+    const format = previewFormat(doc)
     if (!tool) {
       vscode.window.showInformationMessage(
         'DevHub: no preview for this file type (supported: Markdown, Mermaid, JSON, SVG).',
@@ -84,6 +96,7 @@ export class PreviewManager {
       panel.webview.postMessage({
         type: 'update',
         tool,
+        format,
         text: d?.getText() ?? '',
         languageId: d?.languageId ?? '',
         colorTheme: colorThemeName(),

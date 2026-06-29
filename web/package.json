@@ -12,6 +12,7 @@
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/merge": "^6.12.2",
+    "@huggingface/transformers": "^4.2.0",
     "@mlc-ai/web-llm": "^0.2.84",
     "@monaco-editor/react": "^4.7.0",
     "@radix-ui/react-dialog": "^1.1.16",

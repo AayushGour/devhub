@@ -12,6 +12,7 @@ interface UpdateMessage {
   tool: string
   text: string
   languageId: string
+  format?: 'jsonl'
   colorTheme?: 'light' | 'dark'
 }
 
@@ -21,6 +22,7 @@ interface UpdateMessage {
  */
 export default function PreviewHost({ tool }: { tool: string }) {
   const [text, setText] = useState('')
+  const [format, setFormat] = useState<'jsonl' | undefined>(undefined)
   const [colorTheme, setColorTheme] = useState<'light' | 'dark'>(
     window.__DEVHUB__?.colorTheme ?? 'dark',
   )
@@ -31,6 +33,7 @@ export default function PreviewHost({ tool }: { tool: string }) {
       const msg = e.data as UpdateMessage | undefined
       if (msg?.type !== 'update') return
       setText(msg.text ?? '')
+      setFormat(msg.format)
       if (msg.colorTheme) {
         setColorTheme(msg.colorTheme)
         document.documentElement.setAttribute('data-theme', msg.colorTheme)
@@ -42,10 +45,15 @@ export default function PreviewHost({ tool }: { tool: string }) {
     return () => window.removeEventListener('message', onMessage)
   }, [])
 
-  return <div className="studio-root">{renderTool(tool, text, colorTheme)}</div>
+  return <div className="studio-root">{renderTool(tool, text, colorTheme, format)}</div>
 }
 
-function renderTool(tool: string, text: string, colorTheme: 'light' | 'dark') {
+function renderTool(
+  tool: string,
+  text: string,
+  colorTheme: 'light' | 'dark',
+  format?: 'jsonl',
+) {
   switch (tool) {
     case 'markdown':
       return <MarkdownView text={text} colorTheme={colorTheme} />
@@ -54,7 +62,7 @@ function renderTool(tool: string, text: string, colorTheme: 'light' | 'dark') {
     case 'diagram':
       return <DiagramView text={text} colorTheme={colorTheme} />
     case 'json':
-      return <JsonView text={text} />
+      return <JsonView text={text} format={format} />
     case 'svg':
       return <SvgView text={text} />
     case 'token':

@@ -11,6 +11,7 @@ export default function RagStudioPage() {
     messages,
     chatDisabled,
     retrievalStage,
+    gpuAvailable,
     bootEmbedder,
     loadPersistedDocs,
     processFiles,
@@ -28,6 +29,13 @@ export default function RagStudioPage() {
   return (
     <div className="studio-root">
       <RagToolbar onClearAll={clearDocs} />
+
+      {gpuAvailable === false && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 text-xs text-amber-400">
+          <span className="font-semibold shrink-0">CPU mode</span>
+          <span className="text-amber-400/80">No GPU detected — running on CPU via WASM. Responses will be slower than usual.</span>
+        </div>
+      )}
 
       <div className="flex flex-1 min-h-0">
         <aside className="w-64 shrink-0 flex flex-col gap-4 p-4 border-r border-border bg-surface overflow-y-auto">

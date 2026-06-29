@@ -58,3 +58,22 @@ export const MODEL_FAMILIES = [...new Set(CURATED_MODELS.map((m) => m.family))]
 export function getModelById(id: string): ModelEntry | undefined {
   return CURATED_MODELS.find((m) => m.id === id)
 }
+
+// 0.5B is ~5x faster than 1.7B on WASM (decode is memory-bound, so smaller weights
+// dominate); grounded by RAG it still answers accurately. Best speed/quality balance
+// for CPU. Larger CPU models remain selectable for users who prefer quality.
+export const DEFAULT_CPU_MODEL_ID = 'onnx-community/Qwen2.5-0.5B-Instruct'
+
+export const CPU_MODELS: ModelEntry[] = [
+  { id: 'HuggingFaceTB/SmolLM2-135M-Instruct',    label: 'SmolLM2 135M',  family: 'SmolLM2', sizeLabel: '135M', vramMB: 0 },
+  { id: 'HuggingFaceTB/SmolLM2-360M-Instruct',    label: 'SmolLM2 360M',  family: 'SmolLM2', sizeLabel: '360M', vramMB: 0 },
+  { id: 'HuggingFaceTB/SmolLM2-1.7B-Instruct',    label: 'SmolLM2 1.7B',  family: 'SmolLM2', sizeLabel: '1.7B', vramMB: 0 },
+  { id: 'onnx-community/Qwen2.5-0.5B-Instruct',   label: 'Qwen2.5 0.5B',  family: 'Qwen2.5', sizeLabel: '0.5B', vramMB: 0 },
+  { id: 'onnx-community/Qwen2.5-1.5B-Instruct',   label: 'Qwen2.5 1.5B',  family: 'Qwen2.5', sizeLabel: '1.5B', vramMB: 0 },
+]
+
+export const CPU_MODEL_FAMILIES = [...new Set(CPU_MODELS.map((m) => m.family))]
+
+export function getModelsForEnvironment(gpuAvailable: boolean): ModelEntry[] {
+  return gpuAvailable ? CURATED_MODELS : CPU_MODELS
+}

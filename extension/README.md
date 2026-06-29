@@ -27,7 +27,7 @@ in the editor title bar. The tool is picked automatically from the file:
 |------|---------|
 | `.md`, `.mdc` | Rendered Markdown, with inline Mermaid diagrams |
 | `.mmd`, `.mermaid` | Rendered Mermaid diagram (theme picker, zoom/pan) |
-| `.json`, `.jsonc` | Tree / graph / schema views |
+| `.json`, `.jsonc`, `.jsonl`/`.ndjson` | Tree / graph / schema views (JSONL rendered as an array) |
 | `.svg` | Rendered SVG with zoom & pan |
 | `.html`, `.htm` | The page rendered in a sandboxed iframe |
 

@@ -80,14 +80,14 @@
         "command": "devhub.openPreviewToSide",
         "key": "ctrl+shift+v",
         "mac": "cmd+shift+v",
-        "when": "editorTextFocus && (editorLangId == markdown || editorLangId == html || editorLangId == mermaid || editorLangId == json || editorLangId == jsonc || editorLangId == svg || resourceExtname == .svg || resourceExtname == .mdc || resourceExtname == .html || resourceExtname == .htm)"
+        "when": "editorTextFocus && (editorLangId == markdown || editorLangId == html || editorLangId == mermaid || editorLangId == json || editorLangId == jsonc || editorLangId == svg || resourceExtname == .svg || resourceExtname == .mdc || resourceExtname == .htm || editorLangId == jsonl || resourceExtname == .jsonl || resourceExtname == .ndjsonl || resourceExtname == .htm || editorLangId == jsonl || resourceExtname == .jsonl || resourceExtname == .ndjson)"
       }
     ],
     "menus": {
       "editor/title": [
         {
           "command": "devhub.openPreviewToSide",
-          "when": "editorLangId == markdown || editorLangId == html || editorLangId == mermaid || editorLangId == json || editorLangId == jsonc || editorLangId == svg || resourceExtname == .svg || resourceExtname == .mdc || resourceExtname == .html || resourceExtname == .htm",
+          "when": "editorLangId == markdown || editorLangId == html || editorLangId == mermaid || editorLangId == json || editorLangId == jsonc || editorLangId == svg || resourceExtname == .svg || resourceExtname == .mdc || resourceExtname == .htm || editorLangId == jsonl || resourceExtname == .jsonl || resourceExtname == .ndjsonl || resourceExtname == .htm || editorLangId == jsonl || resourceExtname == .jsonl || resourceExtname == .ndjson",
           "group": "navigation"
         }
       ],
