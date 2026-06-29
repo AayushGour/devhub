@@ -4,7 +4,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { getWebviewHtml, colorThemeName } from './html'
 
-type Tool = 'markdown' | 'html' | 'diagram' | 'json' | 'svg' | 'token'
+type Tool = 'markdown' | 'html' | 'diagram' | 'json' | 'svg' | 'token' | 'yaml' | 'xml'
 
 interface Preview {
   panel: vscode.WebviewPanel
@@ -29,6 +29,8 @@ function toolForDocument(doc: vscode.TextDocument): Tool | undefined {
   if (lang === 'jsonl' || name.endsWith('.jsonl') || name.endsWith('.ndjson')) return 'json'
   if (lang === 'svg') return 'svg'
   if (lang === 'xml' && name.endsWith('.svg')) return 'svg'
+  if (lang === 'yaml' || name.endsWith('.yaml') || name.endsWith('.yml')) return 'yaml'
+  if (lang === 'xml' || name.endsWith('.xml')) return 'xml'
   return undefined
 }
 
