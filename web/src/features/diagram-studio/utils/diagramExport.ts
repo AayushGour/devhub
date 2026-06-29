@@ -40,6 +40,25 @@ export async function exportPNG(svgEl: SVGSVGElement, title: string) {
   }, 'image/png')
 }
 
+export function getDiagramHTML(svgEl: SVGSVGElement, title: string): string {
+  const clone = svgEl.cloneNode(true) as SVGSVGElement
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+  const svgStr = new XMLSerializer().serializeToString(clone)
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <title>${title || 'Diagram'}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { display: flex; justify-content: center; align-items: flex-start; padding: 20mm; }
+    @page { margin: 20mm; }
+    svg { max-width: 100%; height: auto; }
+  </style>
+</head>
+<body>${svgStr}</body>
+</html>`
+}
+
 export function exportPDF(svgEl: SVGSVGElement, title: string) {
   const clone = svgEl.cloneNode(true) as SVGSVGElement
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')

@@ -24,3 +24,29 @@ body,
 .markdown-preview {
   max-width: none;
 }
+
+/* Instant tooltip — no OS delay. Usage: data-tooltip="Label" on any element. */
+[data-tooltip] {
+  position: relative;
+}
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface-raised);
+  color: var(--on-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 100;
+}
+[data-tooltip]:hover::after {
+  opacity: 1;
+}

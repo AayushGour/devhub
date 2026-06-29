@@ -1,4 +1,7 @@
 import * as vscode from 'vscode'
+import * as fs from 'node:fs'
+import * as os from 'node:os'
+import * as path from 'node:path'
 import { getWebviewHtml, colorThemeName } from './html'
 
 type Tool = 'markdown' | 'html' | 'diagram' | 'json' | 'svg' | 'token'
@@ -107,6 +110,33 @@ export class PreviewManager {
     preview.disposables.push(
       panel.webview.onDidReceiveMessage((msg) => {
         if (msg?.type === 'ready') post()
+        if (msg?.type === 'exportPDF') {
+          const html = msg.html as string
+          const filename = (msg.filename as string | undefined) ?? 'document'
+          const tmpPath = path.join(os.tmpdir(), `devhub-${filename}-${Date.now()}.html`)
+          // Inject auto-print + auto-close so the browser shows the print
+          // dialog immediately on load, then closes the tab when done.
+          const printableHtml = html.replace(
+            '</body>',
+            `<script>
+window.addEventListener('load', function () {
+  document.fonts.ready.then(function () {
+    setTimeout(window.print, 300);
+  });
+});
+window.addEventListener('afterprint', function () {
+  window.close();
+});
+</script>
+</body>`,
+          )
+          try {
+            fs.writeFileSync(tmpPath, printableHtml, 'utf8')
+            vscode.env.openExternal(vscode.Uri.file(tmpPath))
+          } catch (err) {
+            vscode.window.showErrorMessage(`DevHub: export failed — ${err}`)
+          }
+        }
       }),
     )
 
