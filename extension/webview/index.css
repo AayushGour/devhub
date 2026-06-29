@@ -1,0 +1,26 @@
+/* Pull in DevHub's full stylesheet (Tailwind entry + theme tokens + studio styles).
+   @source points Tailwind at the shared web sources so utility classes used by the
+   imported preview components are not purged when building from the extension. */
+@import "../../web/src/index.css";
+@source "../../web/src";
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+/* The web app's #root is `display:flex` to host its sidebar + main column. In the
+   extension webview the top-level view is the only child, so make it grow to fill
+   the full tab width (otherwise it shrinks to content — the "half width" bug). */
+#root > * {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The web app caps the markdown paper at 780px (readable measure) because it sits
+   in a split pane. In the full-width preview tab, let it fill the page. */
+.markdown-preview {
+  max-width: none;
+}
