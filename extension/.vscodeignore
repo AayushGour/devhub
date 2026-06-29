@@ -1,0 +1,10 @@
+src/**
+webview/**
+node_modules/**
+esbuild.mjs
+vite.config.ts
+tsconfig.json
+.gitignore
+**/*.map
+**/tsconfig.json
+**/*.ts
