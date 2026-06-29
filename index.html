@@ -6,9 +6,17 @@
   <link rel="icon" type="image/x-icon" href="/logo.ico" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Devhub | One place for all your developer tools</title>
-  <!-- Provides cross-origin isolation (SharedArrayBuffer → multi-threaded WASM)
-       on static hosts like GitHub Pages. Must load before the app. -->
-  <script src="coi-serviceworker.js"></script>
+  <script>
+    // Clean up the coi-serviceworker shipped by an earlier build. It forced
+    // cross-origin isolation (multi-threaded WASM), which made large CPU models
+    // fail with std::bad_alloc. A registered service worker outlives its source
+    // file, so unregister it explicitly. The app uses no other service workers.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (rs) {
+        rs.forEach(function (r) { r.unregister(); });
+      });
+    }
+  </script>
   <script>
     (function() {
       var p = window.location.search.slice(1).split('&').filter(function(s) { return s.startsWith('p='); })[0];

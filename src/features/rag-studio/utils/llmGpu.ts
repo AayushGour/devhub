@@ -5,11 +5,30 @@ const log = createLogger('rag:llm')
 
 export type LLMProgressCallback = (pct: number, text: string) => void
 
-let _engine: webllm.MLCEngine | null = null
-let _loadingPromise: Promise<webllm.MLCEngine> | null = null
+// web-llm runs in a dedicated worker (see llmGpu.worker.ts). This module is a
+// thin main-thread proxy: `WebWorkerMLCEngine` exposes the exact same interface
+// as `MLCEngine` (chat.completions.create, interruptGenerate, …) but forwards
+// every call to the engine living in the worker — so the UI never janks during
+// model load or token generation.
+let _worker: Worker | null = null
+let _engine: webllm.WebWorkerMLCEngine | null = null
+let _loadingPromise: Promise<webllm.WebWorkerMLCEngine> | null = null
 let _loadedModelId: string | null = null
 
+function getWorker(): Worker {
+  if (_worker) return _worker
+  const w = new Worker(new URL('./llmGpu.worker.ts', import.meta.url), { type: 'module' })
+  w.onerror = (e) => log.error('GPU LLM worker error', e.message)
+  _worker = w
+  return w
+}
+
 export function resetEngine(): void {
+  // Terminate the worker too — it holds the GPU device + model weights in VRAM.
+  if (_worker) {
+    _worker.terminate()
+    _worker = null
+  }
   _engine = null
   _loadingPromise = null
   _loadedModelId = null
@@ -58,35 +77,8 @@ async function logStorage(when: string): Promise<void> {
   }
 }
 
-// Wrap window.fetch once to surface every model-related request + its HTTP
-// status: a 429 here = rate limited by the host; a QuotaExceededError without
-// any failed fetch = browser storage, not the network.
-let _fetchPatched = false
-function installFetchLogger(): void {
-  if (_fetchPatched || typeof window === 'undefined') return
-  _fetchPatched = true
-  const orig = window.fetch.bind(window)
-  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-    const relevant =
-      /huggingface|hf\.co|raw\.|mlc-ai|cdn|\.wasm|\.bin|params_shard|ndarray-cache|tokenizer/i.test(url)
-    if (!relevant) return orig(input, init)
-    const t0 = performance.now()
-    try {
-      const res = await orig(input, init)
-      const ms = Math.round(performance.now() - t0)
-      log.log(`fetch ${res.ok ? 'ok ' : 'NON-OK'} ${res.status} ${res.statusText} ${ms}ms ${url}`)
-      if (!res.ok) {
-        log.warn('  ↳ response headers:', Object.fromEntries(res.headers.entries()))
-        if (res.status === 429) log.warn('  ↳ ⚠️ HTTP 429 — RATE LIMITED by host')
-      }
-      return res
-    } catch (e) {
-      log.error(`fetch FAILED (network error) ${url}`, e)
-      throw e
-    }
-  }
-}
+// NOTE: the per-request HTTP fetch logger now lives in llmGpu.worker.ts, because
+// model shards are fetched inside the worker where web-llm runs.
 
 // ---------------------------------------------------------------------------
 // Model loading with retry
@@ -125,14 +117,17 @@ function describeLoadError(err: unknown): Error {
   return err instanceof Error ? err : new Error(String(err))
 }
 
-async function loadEngineWithRetry(modelId: string, onProgress?: LLMProgressCallback): Promise<webllm.MLCEngine> {
+async function loadEngineWithRetry(modelId: string, onProgress?: LLMProgressCallback): Promise<webllm.WebWorkerMLCEngine> {
   let lastErr: unknown
   for (let attempt = 1; attempt <= MAX_LOAD_ATTEMPTS; attempt++) {
     const startedAt = performance.now()
     let lastPct = -1
     try {
       log.log(`load attempt ${attempt}/${MAX_LOAD_ATTEMPTS} for "${modelId}"`)
-      const engine = await webllm.CreateMLCEngine(modelId, {
+      // Builds the WebWorkerMLCEngine client and reloads `modelId` inside the
+      // worker. Reused worker across retries — a transient CDN error leaves the
+      // worker alive, and web-llm resumes from shards already cached.
+      const engine = await webllm.CreateWebWorkerMLCEngine(getWorker(), modelId, {
         initProgressCallback: (p: webllm.InitProgressReport) => {
           const pct = Math.round(p.progress * 100)
           if (pct !== lastPct) {
@@ -164,7 +159,7 @@ async function loadEngineWithRetry(modelId: string, onProgress?: LLMProgressCall
   throw describeLoadError(lastErr)
 }
 
-export async function getEngine(modelId: string, onProgress?: LLMProgressCallback): Promise<webllm.MLCEngine> {
+export async function getEngine(modelId: string, onProgress?: LLMProgressCallback): Promise<webllm.WebWorkerMLCEngine> {
   if (!modelId) throw new Error('getEngine called with empty modelId — check settingsStore ragLlmModel')
   if (_engine && _loadedModelId === modelId) return _engine
   if (_loadingPromise && _loadedModelId === modelId) return _loadingPromise
@@ -175,7 +170,6 @@ export async function getEngine(modelId: string, onProgress?: LLMProgressCallbac
     _loadingPromise = null
   }
 
-  installFetchLogger()
   log.log(`getEngine: loading "${modelId}"`)
   log.log(
     `env: crossOriginIsolated=${typeof crossOriginIsolated !== 'undefined' ? crossOriginIsolated : 'n/a'}, ` +

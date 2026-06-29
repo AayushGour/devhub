@@ -7,17 +7,13 @@
 // postMessage. The proxy in `llmCpu.ts` speaks this protocol.
 import { pipeline, TextStreamer, InterruptableStoppingCriteria, env } from '@huggingface/transformers'
 
-// WASM multi-threading needs SharedArrayBuffer, which only exists when the page is
-// cross-origin isolated (COOP/COEP — set via the coi-serviceworker + dev headers).
-// When isolated we use up to 4 threads (ORT's own default heuristic); otherwise the
-// runtime requires single-threading. Threads cut token latency several-fold since
-// CPU decode is the bottleneck.
-const _isolated = typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated
-if (env.backends.onnx.wasm) {
-  env.backends.onnx.wasm.numThreads = _isolated
-    ? Math.min(4, Math.max(1, Math.ceil((navigator.hardwareConcurrency || 4) / 2)))
-    : 1
-}
+// Single-threaded WASM. Multi-threading (SharedArrayBuffer) was tried and dropped:
+// it gave no measurable decode speedup (single-token decode is memory-bandwidth
+// bound, not compute bound) and the threaded runtime's SharedArrayBuffer heap has a
+// lower memory ceiling than the single-threaded growable heap — large models failed
+// session creation in production with "std::bad_alloc". Speed comes from a small
+// model + q4 weights instead.
+if (env.backends.onnx.wasm) env.backends.onnx.wasm.numThreads = 1
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
