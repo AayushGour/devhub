@@ -1,0 +1,120 @@
+{
+  "name": "devhub-toolkit",
+  "displayName": "DevHub",
+  "description": "Markdown, Mermaid, JSON, SVG & token previews plus crypto and image tools — powered by DevHub.",
+  "version": "0.0.4",
+  "publisher": "dev-hub",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AayushGour/devhub.git",
+    "directory": "extension"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "markdown",
+    "mermaid",
+    "json",
+    "svg",
+    "tokens",
+    "preview"
+  ],
+  "icon": "icon.png",
+  "main": "./dist/extension.cjs",
+  "scripts": {
+    "build:webview": "vite build",
+    "build:host": "node esbuild.mjs",
+    "watch:host": "node esbuild.mjs --watch",
+    "build": "npm run build:webview && npm run build:host",
+    "package": "npm run build && vsce package --no-dependencies",
+    "publish:openvsx": "npm run build && ovsx publish --no-dependencies",
+    "publish:vsce": "npm run build && vsce publish --no-dependencies",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p webview/tsconfig.json"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "mermaid",
+        "aliases": [
+          "Mermaid",
+          "mermaid"
+        ],
+        "extensions": [
+          ".mmd",
+          ".mermaid"
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "devhub.openPreviewToSide",
+        "title": "Open Preview to Side",
+        "category": "DevHub",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "devhub.openTokenCount",
+        "title": "Token Count (Side)",
+        "category": "DevHub"
+      },
+      {
+        "command": "devhub.openCrypto",
+        "title": "Crypto Studio",
+        "category": "DevHub"
+      },
+      {
+        "command": "devhub.openImage",
+        "title": "Image Studio",
+        "category": "DevHub"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "devhub.openPreviewToSide",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v",
+        "when": "editorTextFocus && (editorLangId == markdown || editorLangId == html || editorLangId == mermaid || editorLangId == json || editorLangId == jsonc || editorLangId == svg || resourceExtname == .svg || resourceExtname == .mdc || resourceExtname == .html || resourceExtname == .htm)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "devhub.openPreviewToSide",
+          "when": "editorLangId == markdown || editorLangId == html || editorLangId == mermaid || editorLangId == json || editorLangId == jsonc || editorLangId == svg || resourceExtname == .svg || resourceExtname == .mdc || resourceExtname == .html || resourceExtname == .htm",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "devhub.openPreviewToSide",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "devhub.openTokenCount",
+          "when": "editorIsOpen"
+        }
+      ]
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/vscode": "^1.90.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@tailwindcss/vite": "^4.3.1",
+    "@vscode/vsce": "^3.2.1",
+    "esbuild": "^0.24.0",
+    "ovsx": "^0.10.1",
+    "tailwindcss": "^4.3.1",
+    "typescript": "~6.0.2",
+    "vite": "^7.3.5"
+  }
+}

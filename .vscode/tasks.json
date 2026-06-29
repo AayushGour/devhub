@@ -1,0 +1,32 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "devhub: build extension",
+      "type": "shell",
+      "command": "npm run build:ext",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:HOME}/.nvs/default/bin:/opt/homebrew/bin:/usr/local/bin:${env:PATH}"
+        }
+      },
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "devhub: watch host",
+      "type": "shell",
+      "command": "npm run watch:host -w devhub-toolkit",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "${env:HOME}/.nvs/default/bin:/opt/homebrew/bin:/usr/local/bin:${env:PATH}"
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": "build"
+    }
+  ]
+}

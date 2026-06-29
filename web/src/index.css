@@ -349,6 +349,16 @@ main.devhub-main {
 .markdown-preview tr:nth-child(even) td {
   background: rgba(0, 0, 0, 0.035);
 }
+/* YAML frontmatter rendered as a property/value table */
+.markdown-preview .frontmatter-table {
+  margin: 0 0 1.5em;
+  font-size: 0.85em;
+}
+.markdown-preview .frontmatter-table td:first-child {
+  font-weight: 600;
+  white-space: nowrap;
+  width: 1%;
+}
 .markdown-preview img {
   max-width: 100%;
   border-radius: 8px;
