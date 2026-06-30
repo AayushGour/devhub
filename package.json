@@ -16,6 +16,7 @@
     "package:ext": "npm run package -w devhub-toolkit",
     "publish:openvsx": "npm run publish:openvsx -w devhub-toolkit",
     "publish:vsce": "npm run publish:vsce -w devhub-toolkit",
+    "publish:all": "npm run publish:openvsx && npm run publish:vsce",
     "prepare": "husky"
   },
   "devDependencies": {
