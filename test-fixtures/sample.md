@@ -174,6 +174,45 @@ Another claim with a longer footnote.[^longnote]
     Second paragraph of the footnote.
 
 ---
+## Mermaid
+```mermaid
+flowchart TD
+    subgraph VSCode["VSCode Extension Host"]
+        EXT["extension.ts\n(activate / commands)"]
+        PM["PreviewManager\n(panel lifecycle)"]
+        PNL["PanelManager\n(studios)"]
+        EXT --> PM
+        EXT --> PNL
+    end
+
+    subgraph Webview["Webview (React + Vite)"]
+        direction TB
+        PH["PreviewHost.tsx\n(tool router)"]
+        MDV["MarkdownView"]
+        JV["JsonView"]
+        DV["DiagramView"]
+        YV["YamlView"]
+        XV["XmlView"]
+        TV["TomlView"]
+        SV["SvgView"]
+        HV["HtmlView"]
+        TKV["TokenView"]
+        PH --> MDV & JV & DV & YV & XV & TV & SV & HV & TKV
+    end
+
+    subgraph Libs["Shared Libs (web/src/lib)"]
+        YAML["yaml.ts"]
+        TOML["toml.ts"]
+        UTILS["utils.ts"]
+    end
+
+    PM -- "postMessage(update)" --> PH
+    PH -- "postMessage(ready)" --> PM
+    YV --> YAML
+    TV --> TOML
+```
+
+---
 
 ## Unicode & Emoji
 
