@@ -2,7 +2,7 @@
   "name": "devhub-toolkit",
   "displayName": "DevHub",
   "description": "Markdown, Mermaid, JSON, SVG & token previews plus crypto and image tools — powered by DevHub.",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "publisher": "dev-hub",
   "license": "MIT",
   "type": "module",
@@ -24,6 +24,7 @@
     "json",
     "svg",
     "tokens",
+    "toml",
     "preview"
   ],
   "icon": "icon.png",
@@ -80,14 +81,14 @@
         "command": "devhub.openPreviewToSide",
         "key": "ctrl+shift+v",
         "mac": "cmd+shift+v",
-        "when": "editorTextFocus && (editorLangId == markdown || editorLangId == html || editorLangId == mermaid || editorLangId == json || editorLangId == jsonc || editorLangId == svg || resourceExtname == .svg || resourceExtname == .mdc || resourceExtname == .htm || editorLangId == jsonl || resourceExtname == .jsonl || resourceExtname == .ndjson || editorLangId == yaml || resourceExtname == .yaml || resourceExtname == .yml || editorLangId == xml || resourceExtname == .xml)"
+        "when": "editorTextFocus && (editorLangId == markdown || editorLangId == html || editorLangId == mermaid || editorLangId == json || editorLangId == jsonc || editorLangId == svg || resourceExtname == .svg || resourceExtname == .mdc || resourceExtname == .htm || editorLangId == jsonl || resourceExtname == .jsonl || resourceExtname == .ndjson || editorLangId == yaml || resourceExtname == .yaml || resourceExtname == .yml || editorLangId == xml || resourceExtname == .xml || editorLangId == toml || resourceExtname == .toml)"
       }
     ],
     "menus": {
       "editor/title": [
         {
           "command": "devhub.openPreviewToSide",
-          "when": "editorLangId == markdown || editorLangId == html || editorLangId == mermaid || editorLangId == json || editorLangId == jsonc || editorLangId == svg || resourceExtname == .svg || resourceExtname == .mdc || resourceExtname == .htm || editorLangId == jsonl || resourceExtname == .jsonl || resourceExtname == .ndjson || editorLangId == yaml || resourceExtname == .yaml || resourceExtname == .yml || editorLangId == xml || resourceExtname == .xml",
+          "when": "editorLangId == markdown || editorLangId == html || editorLangId == mermaid || editorLangId == json || editorLangId == jsonc || editorLangId == svg || resourceExtname == .svg || resourceExtname == .mdc || resourceExtname == .htm || editorLangId == jsonl || resourceExtname == .jsonl || resourceExtname == .ndjson || editorLangId == yaml || resourceExtname == .yaml || resourceExtname == .yml || editorLangId == xml || resourceExtname == .xml || editorLangId == toml || resourceExtname == .toml",
           "group": "navigation"
         }
       ],

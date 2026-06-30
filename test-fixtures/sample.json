@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "metadata": {
+    "version": "0.0.8",
+    "generated": "2026-06-29T12:00:00Z",
+    "tags": ["devhub", "extension", "preview", "vscode"],
+    "nullable_field": null,
+    "empty_object": {},
+    "empty_array": []
+  },
+  "features": [
+    {
+      "id": "preview.markdown",
+      "enabled": true,
+      "extensions": [".md", ".mdc"],
+      "shortcut": { "mac": "cmd+shift+v", "win": "ctrl+shift+v" },
+      "options": { "sanitize": true, "highlight": true, "mermaid": true }
+    },
+    {
+      "id": "preview.json",
+      "enabled": true,
+      "extensions": [".json", ".jsonc", ".jsonl", ".ndjson"],
+      "shortcut": { "mac": "cmd+shift+v", "win": "ctrl+shift+v" },
+      "options": { "tree": true, "format": ["json", "jsonl"] }
+    },
+    {
+      "id": "preview.diagram",
+      "enabled": true,
+      "extensions": [".mmd", ".mermaid"],
+      "shortcut": { "mac": "cmd+shift+v", "win": "ctrl+shift+v" },
+      "options": { "theme": "dark", "zoom": true, "pan": true }
+    },
+    {
+      "id": "preview.toml",
+      "enabled": true,
+      "extensions": [".toml"],
+      "shortcut": { "mac": "cmd+shift+v", "win": "ctrl+shift+v" },
+      "options": {}
+    }
+  ],
+  "studios": {
+    "crypto": {
+      "command": "devhub.openCrypto",
+      "algorithms": {
+        "hashing": ["MD5", "SHA-1", "SHA-256", "SHA-512", "SHA-3"],
+        "encoding": ["Base64", "Base64URL", "Hex", "URL"],
+        "hmac": ["HMAC-SHA256", "HMAC-SHA512"]
+      }
+    },
+    "image": {
+      "command": "devhub.openImage",
+      "supported_formats": ["PNG", "JPEG", "WEBP", "GIF", "BMP", "TIFF", "ICO"],
+      "operations": ["resize", "crop", "rotate", "flip", "convert", "compress"]
+    }
+  },
+  "deeply": {
+    "nested": {
+      "structure": {
+        "level_4": {
+          "level_5": {
+            "value": 42,
+            "array_of_objects": [
+              { "key": "alpha", "score": 9.81, "active": true },
+              { "key": "beta",  "score": 2.71, "active": false },
+              { "key": "gamma", "score": 1.41, "active": true }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "unicode": {
+    "japanese": "日本語テスト",
+    "arabic": "اختبار عربي",
+    "emoji": "🚀🦀🐍💎🔥",
+    "math_symbols": "∑∫√∞≠≈∈⊂",
+    "escaped_newline": "line1\nline2\nline3",
+    "escaped_tab": "col1\tcol2\tcol3",
+    "url": "https://example.com/path?q=hello%20world&lang=en#section"
+  },
+  "numbers": {
+    "integer": 2147483647,
+    "negative": -9007199254740991,
+    "float": 3.141592653589793,
+    "scientific": 6.022e23,
+    "negative_scientific": -1.6e-19,
+    "zero": 0,
+    "negative_zero": -0
+  },
+  "booleans": { "yes": true, "no": false },
+  "large_array": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                  21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40]
+}

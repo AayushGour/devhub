@@ -4,7 +4,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { getWebviewHtml, colorThemeName } from './html'
 
-type Tool = 'markdown' | 'html' | 'diagram' | 'json' | 'svg' | 'token' | 'yaml' | 'xml'
+type Tool = 'markdown' | 'html' | 'diagram' | 'json' | 'svg' | 'token' | 'yaml' | 'xml' | 'toml'
 
 interface Preview {
   panel: vscode.WebviewPanel
@@ -31,6 +31,7 @@ function toolForDocument(doc: vscode.TextDocument): Tool | undefined {
   if (lang === 'xml' && name.endsWith('.svg')) return 'svg'
   if (lang === 'yaml' || name.endsWith('.yaml') || name.endsWith('.yml')) return 'yaml'
   if (lang === 'xml' || name.endsWith('.xml')) return 'xml'
+  if (lang === 'toml' || name.endsWith('.toml')) return 'toml'
   return undefined
 }
 
@@ -137,6 +138,17 @@ window.addEventListener('afterprint', function () {
             vscode.env.openExternal(vscode.Uri.file(tmpPath))
           } catch (err) {
             vscode.window.showErrorMessage(`DevHub: export failed — ${err}`)
+          }
+        }
+        if (msg?.type === 'exportHTML') {
+          const html = msg.html as string
+          const filename = (msg.filename as string | undefined) ?? 'document'
+          const tmpPath = path.join(os.tmpdir(), `devhub-${filename}-${Date.now()}.html`)
+          try {
+            fs.writeFileSync(tmpPath, html, 'utf8')
+            vscode.env.openExternal(vscode.Uri.file(tmpPath))
+          } catch (err) {
+            vscode.window.showErrorMessage(`DevHub: HTML export failed — ${err}`)
           }
         }
       }),

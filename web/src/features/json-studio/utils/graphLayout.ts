@@ -19,13 +19,16 @@ export interface GraphLayout {
   totalHeight: number
 }
 
-const NODE_WIDTH = 220
+export const NODE_WIDTH = 220
 const NODE_HEADER_H = 34
 const NODE_ROW_H = 24
 const NODE_ROW_PADDING = 8
-const SPACING_X = 80
+export const SPACING_X = 80
 const SPACING_Y = 20
-const CANVAS_PAD = 32
+export const CANVAS_PAD = 32
+
+// Max export node width; content wraps within this so rows auto-adjust height
+export const EXPORT_NODE_WIDTH = 300
 
 let _seq = 0
 

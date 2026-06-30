@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, useCallback, useEffect, forwardRef, useImper
 import { ZoomIn, ZoomOut, Maximize2, FileImage, Printer, FileCode } from 'lucide-react'
 import { toPng, toSvg } from 'html-to-image'
 import { cn } from '@/lib/utils'
-import { buildGraph } from '../../utils/graphLayout'
+import { buildGraph, EXPORT_NODE_WIDTH, NODE_WIDTH, SPACING_X, CANVAS_PAD } from '../../utils/graphLayout'
 import type { GNode, GraphLayout } from '../../utils/graphLayout'
 import type { JsonStudioState } from '../../hooks/useJsonStudio'
 
@@ -93,6 +93,7 @@ function NodeCard({ node }: { node: GNode }) {
 
   return (
     <div
+      data-node-id={node.id}
       className={cn(
         'absolute bg-surface rounded-[0.62rem] overflow-hidden border',
         isArr ? 'border-accent/40' : 'border-border',
@@ -145,6 +146,7 @@ function NodeCard({ node }: { node: GNode }) {
               </span>
               <span
                 data-tooltip={row.rawValue}
+                data-export-value={row.valueType === 'string' ? `"${row.rawValue}"` : row.rawValue}
                 className={cn('text-[0.69rem] font-mono truncate', VALUE_CLASS[row.valueType])}
               >
                 {row.value}
@@ -162,6 +164,7 @@ function NodeCard({ node }: { node: GNode }) {
               </span>
               <span
                 data-tooltip={row.rawValue}
+                data-export-value={row.valueType === 'string' ? `"${row.rawValue}"` : row.rawValue}
                 className={cn('text-[0.69rem] font-mono ml-auto truncate max-w-25', VALUE_CLASS[row.valueType])}
               >
                 {row.value}
@@ -208,6 +211,109 @@ Graph.displayName = 'Graph'
 const ZOOM_STEP = 1.25
 const ZOOM_MIN = 0.01
 const ZOOM_MAX = 4.0
+
+function buildExportClone(
+  sourceEl: HTMLDivElement,
+  layout?: GraphLayout | null,
+  exportNodeWidth = NODE_WIDTH,
+): { clone: HTMLDivElement; cleanup: () => void } {
+  const clone = sourceEl.cloneNode(true) as HTMLDivElement
+
+  // Replace truncated display values with full formatted values
+  // Also fix flex layout so values wrap instead of overflowing
+  clone.querySelectorAll<HTMLElement>('[data-export-value]').forEach(el => {
+    el.textContent = el.getAttribute('data-export-value')!
+    el.style.flex = '1'
+    el.style.minWidth = '0'
+    el.style.wordBreak = 'break-all'
+    el.style.overflowWrap = 'break-word'
+    el.style.marginLeft = '0'
+  })
+
+  // Strip CSS truncation / max-width / ml-auto so full text is visible and wraps
+  clone.querySelectorAll<Element>('*').forEach(el => {
+    const cls = el.getAttribute('class')
+    if (cls) {
+      el.setAttribute('class', cls
+        .replace(/\btruncate\b/g, '')
+        .replace(/\bmax-w-\S+/g, '')
+        .replace(/\bml-auto\b/g, '')
+        .trim()
+      )
+    }
+  })
+
+  // Remove overflow-hidden from cards so expanded rows aren't clipped
+  clone.querySelectorAll<HTMLElement>('.overflow-hidden').forEach(el => {
+    const cls = el.getAttribute('class') || ''
+    el.setAttribute('class', cls.replace(/\boverflow-hidden\b/g, '').trim())
+  })
+
+  // Make fixed-height rows auto so wrapped text is fully visible
+  clone.querySelectorAll<HTMLElement>('[style]').forEach(el => {
+    if (el.style.height === '24px') {
+      el.style.height = 'auto'
+      el.style.minHeight = '24px'
+    }
+  })
+
+  // Expand node boxes and recompute positions so values up to 350 chars fit on one line
+  if (layout && exportNodeWidth > NODE_WIDTH) {
+    // Compute new x for each node based on its column level
+    const nodeNewX = new Map<string, number>()
+    for (const [id, node] of layout.nodes) {
+      const level = Math.round((node.x - CANVAS_PAD) / (NODE_WIDTH + SPACING_X))
+      nodeNewX.set(id, CANVAS_PAD + level * (exportNodeWidth + SPACING_X))
+    }
+
+    // Patch each node card's left + width
+    clone.querySelectorAll<HTMLElement>('[data-node-id]').forEach(el => {
+      const id = el.getAttribute('data-node-id')!
+      const newX = nodeNewX.get(id)
+      if (newX !== undefined) {
+        el.style.left = `${newX}px`
+        el.style.width = `${exportNodeWidth}px`
+      }
+    })
+
+    // Compute new canvas width
+    let maxX = 0
+    for (const [id] of layout.nodes) {
+      maxX = Math.max(maxX, (nodeNewX.get(id) ?? 0) + exportNodeWidth)
+    }
+    const newTotalWidth = maxX + CANVAS_PAD
+    clone.style.width = `${newTotalWidth}px`
+
+    // Regenerate SVG paths with updated coordinates
+    const svgEl = clone.querySelector('svg')
+    if (svgEl) {
+      svgEl.setAttribute('width', String(newTotalWidth))
+      svgEl.querySelectorAll('path').forEach(p => p.remove())
+      for (const node of layout.nodes.values()) {
+        for (const edge of node.childEdges) {
+          const dst = layout.nodes.get(edge.childId)!
+          const x1 = (nodeNewX.get(node.id) ?? 0) + exportNodeWidth
+          const y1 = node.y + node.height / 2
+          const x2 = nodeNewX.get(dst.id) ?? 0
+          const y2 = dst.y + dst.height / 2
+          const mid = (x1 + x2) / 2
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+          path.setAttribute('d', `M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}`)
+          path.setAttribute('fill', 'none')
+          path.setAttribute('stroke', 'var(--border)')
+          path.setAttribute('stroke-width', '1.5')
+          svgEl.appendChild(path)
+        }
+      }
+    }
+  }
+
+  const host = document.createElement('div')
+  host.style.cssText = 'position:fixed;top:-99999px;left:-99999px;pointer-events:none'
+  host.appendChild(clone)
+  document.body.appendChild(host)
+  return { clone, cleanup: () => document.body.removeChild(host) }
+}
 
 const GraphMode = forwardRef<GraphModeHandle, Props>(function GraphMode({ input, onExportPdf, onExportHtml }, ref) {
   const [zoom, setZoom] = useState(1)
@@ -275,31 +381,31 @@ const GraphMode = forwardRef<GraphModeHandle, Props>(function GraphMode({ input,
     return Math.min(2, MAX / el.offsetWidth, MAX / el.offsetHeight)
   }, [])
 
-  // PNG export — captures graph at natural (unscaled) size
+  // PNG export — full-fidelity: removes CSS truncation + expands 24-char value limit before capture
   const exportPng = useCallback(async () => {
     if (!graphRef.current || isExporting) return
     setIsExporting(true)
+    const { clone, cleanup } = buildExportClone(graphRef.current, layout, EXPORT_NODE_WIDTH)
     try {
-      const dataUrl = await toPng(graphRef.current, { pixelRatio: captureRatio(graphRef.current) })
-      // Convert to blob so download works in both browser and VSCode webview
+      const dataUrl = await toPng(clone, { pixelRatio: captureRatio(clone) })
       const blob = await fetch(dataUrl).then(r => r.blob())
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      a.href = url
-      a.download = 'graph.png'
-      a.click()
+      a.href = url; a.download = 'graph.png'; a.click()
       URL.revokeObjectURL(url)
     } finally {
+      cleanup()
       setIsExporting(false)
     }
-  }, [isExporting, captureRatio])
+  }, [isExporting, captureRatio, layout])
 
-  // PDF export — embeds the PNG in a minimal HTML page and opens a print dialog
+  // PDF export — same full-fidelity clone, embedded as PNG in a print-ready HTML page
   const exportPdf = useCallback(async () => {
     if (!graphRef.current || isExporting) return
     setIsExporting(true)
+    const { clone, cleanup } = buildExportClone(graphRef.current, layout, EXPORT_NODE_WIDTH)
     try {
-      const dataUrl = await toPng(graphRef.current, { pixelRatio: captureRatio(graphRef.current) })
+      const dataUrl = await toPng(clone, { pixelRatio: captureRatio(clone) })
       const html =
         `<!DOCTYPE html><html><head><title>Graph</title><style>` +
         `*{margin:0;padding:0;box-sizing:border-box;}` +
@@ -318,17 +424,19 @@ const GraphMode = forwardRef<GraphModeHandle, Props>(function GraphMode({ input,
         setTimeout(() => win.print(), 250)
       }
     } finally {
+      cleanup()
       setIsExporting(false)
     }
-  }, [isExporting, onExportPdf, captureRatio])
+  }, [isExporting, onExportPdf, captureRatio, layout])
 
-  // HTML export — uses SVG (vector, infinite resolution) wrapped in a standalone HTML page
+  // HTML export — vector SVG via expanded clone; no pixel limits, infinitely zoomable
   const exportHtml = useCallback(async () => {
     if (!graphRef.current || isExporting) return
     setIsExporting(true)
+    const { clone, cleanup } = buildExportClone(graphRef.current, layout, EXPORT_NODE_WIDTH)
     try {
       const bg = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()
-      const svgDataUrl = await toSvg(graphRef.current, { backgroundColor: bg || 'transparent' })
+      const svgDataUrl = await toSvg(clone, { backgroundColor: bg || 'transparent' })
       const svgStr = decodeURIComponent(svgDataUrl.split(',').slice(1).join(','))
       const html =
         `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Graph</title><style>` +
@@ -346,9 +454,10 @@ const GraphMode = forwardRef<GraphModeHandle, Props>(function GraphMode({ input,
         URL.revokeObjectURL(url)
       }
     } finally {
+      cleanup()
       setIsExporting(false)
     }
-  }, [isExporting, onExportHtml])
+  }, [isExporting, onExportHtml, layout])
 
   // Tooltip: event delegation on viewport
   useEffect(() => {
@@ -458,7 +567,7 @@ const GraphMode = forwardRef<GraphModeHandle, Props>(function GraphMode({ input,
 
         {error && (
           <div className="p-6">
-            <p className="text-[0.75rem] text-red-500 font-mono bg-red-50 border border-red-200 rounded-[0.5rem] p-3">
+            <p className="text-[0.75rem] text-red-500 font-mono bg-red-50 border border-red-200 rounded-lg p-3">
               {error}
             </p>
           </div>

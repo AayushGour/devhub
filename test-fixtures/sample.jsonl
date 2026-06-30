@@ -1,0 +1,10 @@
+{"ts":"2026-06-29T00:00:01.123Z","level":"INFO","service":"api","msg":"Server started","pid":1234,"host":"prod-1","version":"2.14.1"}
+{"ts":"2026-06-29T00:00:02.456Z","level":"INFO","service":"api","msg":"Database connected","latency_ms":42,"pool_size":20,"host":"prod-1"}
+{"ts":"2026-06-29T00:01:15.789Z","level":"DEBUG","service":"auth","msg":"Token validated","user_id":"u_abc123","scopes":["read","write"],"exp":1782000000}
+{"ts":"2026-06-29T00:02:30.001Z","level":"WARN","service":"api","msg":"Slow query detected","query":"SELECT * FROM events WHERE ...","duration_ms":512,"threshold_ms":200}
+{"ts":"2026-06-29T00:03:00.042Z","level":"ERROR","service":"worker","msg":"Job failed","job_id":"j_xyz789","error":"Connection timeout","retries":3,"next_retry_at":"2026-06-29T00:08:00Z","payload":{"type":"send_email","to":"user@example.com"}}
+{"ts":"2026-06-29T00:04:00.000Z","level":"INFO","service":"api","msg":"Request completed","method":"POST","path":"/api/deploy","status":201,"duration_ms":89,"user_id":"u_abc123","request_id":"req_00001"}
+{"ts":"2026-06-29T00:05:11.333Z","level":"INFO","service":"api","msg":"Request completed","method":"GET","path":"/api/health","status":200,"duration_ms":2,"user_id":null,"request_id":"req_00002"}
+{"ts":"2026-06-29T00:06:44.900Z","level":"WARN","service":"cache","msg":"Cache miss rate high","rate":0.42,"threshold":0.30,"keys_checked":10000}
+{"ts":"2026-06-29T00:07:59.010Z","level":"ERROR","service":"api","msg":"Unhandled exception","error":"TypeError: Cannot read properties of undefined","stack":"at PreviewManager.ts:82\n  at extension.ts:44","request_id":"req_00003"}
+{"ts":"2026-06-29T00:09:00.000Z","level":"INFO","service":"scheduler","msg":"Cron job finished","job":"cleanup_expired_tokens","deleted":1842,"duration_ms":3210}

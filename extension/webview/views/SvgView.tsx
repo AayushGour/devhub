@@ -35,7 +35,7 @@ export default function SvgView({ text }: { text: string }) {
         </div>
       </div>
       <div className="flex flex-1 min-h-0">
-        <SvgPreviewPanel svg={text} />
+        <SvgPreviewPanel svg={text} showHeader={false} />
       </div>
     </div>
   )

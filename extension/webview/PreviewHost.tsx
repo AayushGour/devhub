@@ -8,6 +8,7 @@ import SvgView from './views/SvgView'
 import TokenView from './views/TokenView'
 import YamlView from './views/YamlView'
 import XmlView from './views/XmlView'
+import TomlView from './views/TomlView'
 
 interface UpdateMessage {
   type: 'update'
@@ -73,6 +74,8 @@ function renderTool(
       return <YamlView text={text} />
     case 'xml':
       return <XmlView text={text} />
+    case 'toml':
+      return <TomlView text={text} />
     default:
       return <div className="p-4 text-sm text-on-surface-muted">Unsupported preview: {tool}</div>
   }
