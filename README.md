@@ -93,13 +93,15 @@ Split editor + mode panel layout. Left side is always the Monaco JSON editor; th
 | Mode | What it does |
 |------|-------------|
 | **Tree** | Collapsible node tree, value type badges |
-| **Graph** | Force-directed dependency graph of nested objects |
+| **Graph** | Hierarchical layout graph of nested objects; each node card shows all keys including nested ones (with type-count chips), arrows originate from the specific row representing the child node, zoom/pan, export to PNG/PDF/HTML |
 | **Diff** | Side-by-side comparison of two JSON inputs using `@codemirror/merge` |
 | **JSONPath** | Query the document with JSONPath expressions; results highlighted |
 | **Schema** | Infer a JSON Schema from the input |
 | **Types** | Generate TypeScript, Go, Rust, or Python type definitions |
 
 Footer shows: valid/invalid status · line count · byte size · total key count · nesting depth.
+
+Graph mode uses `useDeferredValue` to keep the editor responsive during large file parsing, and direct DOM style mutation for zero-React-render zoom/pan. Exports are generated directly from layout data (canvas 2D for PNG/PDF, HTML string generation for HTML) without any DOM serialisation.
 
 ---
 
@@ -196,8 +198,9 @@ Fetch any public GitHub repo and explore it without cloning.
 DevHub also ships as a VS Code extension (in [`extension/`](extension/), published
 as **DevHub** on Open VSX). It reuses these studios' preview components to render
 live side-previews from the native editor — Markdown (`.md`/`.mdc`), Mermaid,
-JSON/JSONL, SVG and HTML — plus standalone Token, Crypto and Image tools. RAG and
-Repo Explorer are web-only. See [extension/README.md](extension/README.md).
+JSON/JSONL/JSONC, YAML (`.yaml`/`.yml`), TOML, XML, SVG and HTML — plus standalone
+Token, Crypto and Image tools. RAG and Repo Explorer are web-only.
+See [extension/README.md](extension/README.md).
 
 ---
 

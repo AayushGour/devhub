@@ -1,6 +1,5 @@
-import { useMemo, useRef, useState, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { useMemo, useRef, useState, useCallback, useEffect, forwardRef, useImperativeHandle, useDeferredValue, memo } from 'react'
 import { ZoomIn, ZoomOut, Maximize2, FileImage, Printer, FileCode } from 'lucide-react'
-import { toPng, toSvg } from 'html-to-image'
 import { cn } from '@/lib/utils'
 import { buildGraph, EXPORT_NODE_WIDTH, NODE_WIDTH, SPACING_X, CANVAS_PAD, NODE_HEADER_H, NODE_ROW_H } from '../../utils/graphLayout'
 import type { GNode, GraphLayout } from '../../utils/graphLayout'
@@ -146,6 +145,7 @@ function NodeCard({ node }: { node: GNode }) {
             return (
               <div
                 key={i}
+                data-row-key={row.key}
                 className="flex items-center px-3 gap-2 border-b border-border last:border-0"
                 style={{ height: 24 }}
               >
@@ -167,6 +167,7 @@ function NodeCard({ node }: { node: GNode }) {
             return (
               <div
                 key={i}
+                data-row-key={row.key}
                 className="flex items-center px-3 border-b border-border last:border-0"
                 style={{ height: 24 }}
               >
@@ -187,8 +188,8 @@ function NodeCard({ node }: { node: GNode }) {
   )
 }
 
-// forwardRef so GraphMode can grab the natural-size div for PNG capture
-const Graph = forwardRef<HTMLDivElement, { layout: GraphLayout }>(({ layout }, ref) => {
+// memo: only re-renders when layout changes, never during zoom/pan
+const Graph = memo(forwardRef<HTMLDivElement, { layout: GraphLayout }>(({ layout }, ref) => {
   const edges: { from: string; to: string; edgeLabel: string }[] = []
   for (const node of layout.nodes.values()) {
     for (const edge of node.childEdges) {
@@ -217,142 +218,367 @@ const Graph = forwardRef<HTMLDivElement, { layout: GraphLayout }>(({ layout }, r
       ))}
     </div>
   )
-})
+}))
 Graph.displayName = 'Graph'
+
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+const VAL_CLASS: Record<GNode['rows'][0]['valueType'], string> = {
+  string: 'str', number: 'num', boolean: 'bool', null: 'null', object: 'nested', array: 'nested',
+}
+
+function buildHtmlExport(layout: GraphLayout): string {
+  const rs = getComputedStyle(document.documentElement)
+  const v = (k: string) => rs.getPropertyValue(k).trim()
+  const colors = {
+    surface: v('--surface'), surfaceRaised: v('--surface-raised'), border: v('--border'),
+    accent: v('--accent'), onSurface: v('--on-surface'), onSurfaceMuted: v('--on-surface-muted'),
+    jsonString: v('--json-string'), jsonNumber: v('--json-number'),
+    jsonBool: v('--json-bool'), jsonNull: v('--json-null'),
+  }
+
+  // Expand node x positions to EXPORT_NODE_WIDTH
+  const nodeX = new Map<string, number>()
+  for (const [id, node] of layout.nodes) {
+    const level = Math.round((node.x - CANVAS_PAD) / (NODE_WIDTH + SPACING_X))
+    nodeX.set(id, CANVAS_PAD + level * (EXPORT_NODE_WIDTH + SPACING_X))
+  }
+  let maxX = 0
+  for (const [id] of layout.nodes) maxX = Math.max(maxX, (nodeX.get(id) ?? 0) + EXPORT_NODE_WIDTH)
+  const totalWidth = maxX + CANVAS_PAD
+
+  // Edges SVG paths (row-origin y same as live view)
+  const edgePaths: string[] = []
+  for (const node of layout.nodes.values()) {
+    for (const edge of node.childEdges) {
+      const dst = layout.nodes.get(edge.childId)!
+      const x1 = (nodeX.get(node.id) ?? 0) + EXPORT_NODE_WIDTH
+      const rowIndex = node.rows.findIndex(r => r.key === edge.label)
+      const y1 = rowIndex >= 0
+        ? node.y + NODE_HEADER_H + rowIndex * NODE_ROW_H + NODE_ROW_H / 2
+        : node.y + node.height / 2
+      const x2 = nodeX.get(dst.id) ?? 0
+      const y2 = dst.y + dst.height / 2
+      const mid = (x1 + x2) / 2
+      edgePaths.push(`<path d="M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}" fill="none" stroke="${esc(colors.border)}" stroke-width="1.5"/>`)
+    }
+  }
+
+  // Node cards HTML
+  const nodesHtml: string[] = []
+  for (const node of layout.nodes.values()) {
+    const x = nodeX.get(node.id) ?? 0
+    const isArr = node.nodeType === 'array'
+
+    const rowsHtml = node.rows.map(row => {
+      const isNested = row.valueType === 'object' || row.valueType === 'array'
+      const displayVal = isNested ? row.value : row.valueType === 'string' ? `"${row.rawValue}"` : (row.rawValue || row.value)
+      const cls = VAL_CLASS[row.valueType]
+      if (isArr) {
+        const idx = row.key.replace(/^\[(\d+)\]$/, '$1')
+        return `<div class="row"><span class="row-idx">${esc(idx)}</span><span class="row-val ${cls}">${esc(displayVal)}</span></div>`
+      }
+      return `<div class="row"><span class="row-key">${esc(row.key)}</span><span class="row-val ${cls}">${esc(displayVal)}</span></div>`
+    }).join('')
+
+    const edgeLabelHtml = node.edgeLabel
+      ? `<span class="edge-label">${esc(node.edgeLabel)}</span>`
+      : ''
+
+    nodesHtml.push(
+      `<div class="node${isArr ? ' arr' : ''}" style="left:${x}px;top:${node.y}px;width:${EXPORT_NODE_WIDTH}px;">` +
+      `<div class="header${isArr ? ' arr' : ''}">` +
+      `<span class="type-mark${isArr ? ' arr' : ''}">${isArr ? '[ ]' : '{ }'}</span>` +
+      `<span class="node-title">${esc(node.title)}</span>${edgeLabelHtml}</div>` +
+      `${rowsHtml}</div>`
+    )
+  }
+
+  const css = `
+:root{--surface:${colors.surface};--surface-raised:${colors.surfaceRaised};--border:${colors.border};--accent:${colors.accent};--on-surface:${colors.onSurface};--on-surface-muted:${colors.onSurfaceMuted};--json-string:${colors.jsonString};--json-number:${colors.jsonNumber};--json-bool:${colors.jsonBool};--json-null:${colors.jsonNull};}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--surface);padding:24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+.canvas{position:relative;}
+.node{position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.node.arr{border-color:color-mix(in srgb,var(--accent) 40%,transparent);}
+.header{height:34px;padding:0 12px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border);background:var(--surface-raised);flex-shrink:0;}
+.header.arr{background:color-mix(in srgb,var(--accent) 8%,transparent);border-bottom-color:color-mix(in srgb,var(--accent) 25%,transparent);}
+.type-mark{font-size:10px;font-weight:700;font-family:monospace;flex-shrink:0;color:var(--on-surface-muted);}
+.type-mark.arr{color:var(--accent);}
+.node-title{font-size:11px;font-weight:600;color:var(--on-surface);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.edge-label{font-size:10px;font-family:monospace;font-weight:500;border-radius:999px;padding:1px 7px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px;background:var(--surface);border:1px solid var(--border);color:var(--accent);}
+.row{display:flex;align-items:flex-start;padding:0 12px;border-bottom:1px solid var(--border);min-height:24px;gap:8px;}
+.row:last-child{border-bottom:none;}
+.row-idx{font-size:10px;font-family:monospace;color:var(--accent);opacity:.6;flex-shrink:0;min-width:24px;text-align:right;padding:4px 0;}
+.row-key{font-size:11px;color:var(--on-surface-muted);font-family:monospace;flex-shrink:0;max-width:90px;word-break:break-word;padding:4px 0;}
+.row-val{font-size:11px;font-family:monospace;word-break:break-word;padding:4px 0;margin-left:auto;text-align:right;}
+.row-val.str{color:var(--json-string);}.row-val.num{color:var(--json-number);}.row-val.bool{color:var(--json-bool);}.row-val.null{color:var(--json-null);}.row-val.nested{color:var(--on-surface-muted);font-style:italic;}`
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Graph</title><style>${css}</style></head>` +
+    `<body><div class="canvas" style="width:${totalWidth}px;height:${layout.totalHeight}px;">` +
+    `<svg style="position:absolute;inset:0;pointer-events:none;" width="${totalWidth}" height="${layout.totalHeight}">` +
+    `${edgePaths.join('')}</svg>${nodesHtml.join('')}</div></body></html>`
+}
+
+function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.lineTo(x + w - r, y)
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+  ctx.lineTo(x + w, y + h - r)
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+  ctx.lineTo(x + r, y + h)
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r)
+  ctx.lineTo(x, y + r)
+  ctx.quadraticCurveTo(x, y, x + r, y)
+  ctx.closePath()
+}
+
+function truncateText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (maxWidth <= 0 || !text) return ''
+  if (ctx.measureText(text).width <= maxWidth) return text
+  let lo = 0, hi = text.length - 1
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2)
+    if (ctx.measureText(text.slice(0, mid) + '…').width <= maxWidth) lo = mid
+    else hi = mid - 1
+  }
+  return lo > 0 ? text.slice(0, lo) + '…' : ''
+}
+
+function withAlpha(color: string, alpha: number): string {
+  if (color.startsWith('#') && color.length >= 7) {
+    const r = parseInt(color.slice(1, 3), 16)
+    const g = parseInt(color.slice(3, 5), 16)
+    const b = parseInt(color.slice(5, 7), 16)
+    return `rgba(${r},${g},${b},${alpha})`
+  }
+  const m = color.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/)
+  if (m) return `rgba(${m[1]},${m[2]},${m[3]},${alpha})`
+  return color
+}
+
+function buildCanvasExport(layout: GraphLayout): string {
+  const rs = getComputedStyle(document.documentElement)
+  const v = (k: string) => rs.getPropertyValue(k).trim()
+  const c = {
+    surface: v('--surface'), surfaceRaised: v('--surface-raised'), border: v('--border'),
+    accent: v('--accent'), onSurface: v('--on-surface'), onSurfaceMuted: v('--on-surface-muted'),
+    jsonString: v('--json-string'), jsonNumber: v('--json-number'),
+    jsonBool: v('--json-bool'), jsonNull: v('--json-null'),
+  }
+
+  const nodeX = new Map<string, number>()
+  for (const [id, node] of layout.nodes) {
+    const level = Math.round((node.x - CANVAS_PAD) / (NODE_WIDTH + SPACING_X))
+    nodeX.set(id, CANVAS_PAD + level * (EXPORT_NODE_WIDTH + SPACING_X))
+  }
+  let maxX = 0
+  for (const [id] of layout.nodes) maxX = Math.max(maxX, (nodeX.get(id) ?? 0) + EXPORT_NODE_WIDTH)
+  const totalW = maxX + CANVAS_PAD
+  const totalH = layout.totalHeight + CANVAS_PAD
+
+  const MAX = 8192
+  const ratio = Math.min(2, MAX / totalW, MAX / totalH)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.ceil(totalW * ratio)
+  canvas.height = Math.ceil(totalH * ratio)
+  const ctx = canvas.getContext('2d')!
+  ctx.scale(ratio, ratio)
+
+  // Background
+  ctx.fillStyle = c.surface
+  ctx.fillRect(0, 0, totalW, totalH)
+
+  // Edges (drawn first, under nodes)
+  ctx.strokeStyle = c.border
+  ctx.lineWidth = 1.5
+  for (const node of layout.nodes.values()) {
+    for (const edge of node.childEdges) {
+      const dst = layout.nodes.get(edge.childId)!
+      const x1 = (nodeX.get(node.id) ?? 0) + EXPORT_NODE_WIDTH
+      const ri = node.rows.findIndex(r => r.key === edge.label)
+      const y1 = ri >= 0 ? node.y + NODE_HEADER_H + ri * NODE_ROW_H + NODE_ROW_H / 2 : node.y + node.height / 2
+      const x2 = nodeX.get(dst.id) ?? 0
+      const y2 = dst.y + dst.height / 2
+      const mid = (x1 + x2) / 2
+      ctx.beginPath()
+      ctx.moveTo(x1, y1)
+      ctx.bezierCurveTo(mid, y1, mid, y2, x2, y2)
+      ctx.stroke()
+    }
+  }
+
+  const valColors: Record<string, string> = {
+    string: c.jsonString, number: c.jsonNumber, boolean: c.jsonBool, null: c.jsonNull,
+    object: c.onSurfaceMuted, array: c.accent,
+  }
+  const MONO = 'ui-monospace,Menlo,Monaco,"Cascadia Mono","Segoe UI Mono",monospace'
+  const SANS = '-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif'
+
+  for (const node of layout.nodes.values()) {
+    const nx = nodeX.get(node.id) ?? 0
+    const ny = node.y
+    const w = EXPORT_NODE_WIDTH
+    const h = node.height
+    const isArr = node.nodeType === 'array'
+    const R = 10
+
+    // Card fill + clip
+    roundedRect(ctx, nx, ny, w, h, R)
+    ctx.fillStyle = c.surface
+    ctx.fill()
+
+    ctx.save()
+    roundedRect(ctx, nx, ny, w, h, R)
+    ctx.clip()
+
+    // Header background
+    ctx.fillStyle = isArr ? withAlpha(c.accent, 0.08) : c.surfaceRaised
+    ctx.fillRect(nx, ny, w, NODE_HEADER_H)
+
+    // Header bottom border
+    ctx.strokeStyle = isArr ? withAlpha(c.accent, 0.25) : c.border
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(nx, ny + NODE_HEADER_H)
+    ctx.lineTo(nx + w, ny + NODE_HEADER_H)
+    ctx.stroke()
+
+    // Type marker
+    ctx.font = `bold 10px ${MONO}`
+    ctx.fillStyle = isArr ? c.accent : c.onSurfaceMuted
+    ctx.textBaseline = 'middle'
+    ctx.textAlign = 'left'
+    ctx.fillText(isArr ? '[ ]' : '{ }', nx + 12, ny + NODE_HEADER_H / 2)
+
+    // Title
+    ctx.font = `600 11px ${SANS}`
+    ctx.fillStyle = c.onSurface
+    const titleX = nx + 36
+    const chipReserve = node.edgeLabel ? 76 : 0
+    ctx.fillText(truncateText(ctx, node.title, w - 48 - chipReserve), titleX, ny + NODE_HEADER_H / 2)
+
+    // Edge label chip
+    if (node.edgeLabel) {
+      ctx.font = `500 10px ${MONO}`
+      const chipTxt = truncateText(ctx, node.edgeLabel, 66)
+      const chipTxtW = ctx.measureText(chipTxt).width
+      const chipW = chipTxtW + 14
+      const chipX = nx + w - chipW - 12
+      const chipY = ny + (NODE_HEADER_H - 18) / 2
+      roundedRect(ctx, chipX, chipY, chipW, 18, 9)
+      ctx.fillStyle = c.surface
+      ctx.fill()
+      ctx.strokeStyle = c.border
+      ctx.lineWidth = 1
+      ctx.stroke()
+      ctx.fillStyle = c.accent
+      ctx.textBaseline = 'middle'
+      ctx.fillText(chipTxt, chipX + 7, chipY + 9)
+    }
+
+    // Rows
+    let rowY = ny + NODE_HEADER_H
+    for (const row of node.rows) {
+      const isNested = row.valueType === 'object' || row.valueType === 'array'
+      const displayVal = isNested
+        ? row.value
+        : row.valueType === 'string' ? `"${row.rawValue}"` : (row.rawValue || row.value)
+      const valColor = valColors[row.valueType] || c.onSurface
+
+      // Row divider
+      ctx.strokeStyle = c.border
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(nx, rowY)
+      ctx.lineTo(nx + w, rowY)
+      ctx.stroke()
+
+      const midY = rowY + NODE_ROW_H / 2
+      ctx.textBaseline = 'middle'
+
+      if (isArr) {
+        const idx = row.key.replace(/^\[(\d+)\]$/, '$1')
+        ctx.font = `10px ${MONO}`
+        ctx.fillStyle = withAlpha(c.accent, 0.6)
+        ctx.textAlign = 'right'
+        ctx.fillText(idx, nx + 32, midY)
+
+        ctx.font = `${isNested ? 'italic ' : ''}11px ${MONO}`
+        ctx.fillStyle = valColor
+        ctx.textAlign = 'left'
+        ctx.fillText(truncateText(ctx, displayVal, w - 50), nx + 38, midY)
+      } else {
+        ctx.font = `11px ${MONO}`
+        ctx.fillStyle = c.onSurfaceMuted
+        ctx.textAlign = 'left'
+        const keyTxt = truncateText(ctx, row.key, 90)
+        ctx.fillText(keyTxt, nx + 12, midY)
+        const keyUsed = ctx.measureText(keyTxt).width
+
+        ctx.font = `${isNested ? 'italic ' : ''}11px ${MONO}`
+        ctx.fillStyle = valColor
+        ctx.textAlign = 'right'
+        ctx.fillText(truncateText(ctx, displayVal, w - 28 - keyUsed), nx + w - 12, midY)
+      }
+
+      rowY += NODE_ROW_H
+    }
+
+    ctx.restore()
+
+    // Card border (drawn last, on top of clipped content)
+    roundedRect(ctx, nx, ny, w, h, R)
+    ctx.strokeStyle = isArr ? withAlpha(c.accent, 0.4) : c.border
+    ctx.lineWidth = 1
+    ctx.stroke()
+  }
+
+  return canvas.toDataURL('image/png')
+}
 
 const ZOOM_STEP = 1.25
 const ZOOM_MIN = 0.01
 const ZOOM_MAX = 4.0
 
-function buildExportClone(
-  sourceEl: HTMLDivElement,
-  layout?: GraphLayout | null,
-  exportNodeWidth = NODE_WIDTH,
-): { clone: HTMLDivElement; cleanup: () => void } {
-  const clone = sourceEl.cloneNode(true) as HTMLDivElement
-
-  // Replace truncated display values with full formatted values
-  // Also fix flex layout so values wrap instead of overflowing
-  clone.querySelectorAll<HTMLElement>('[data-export-value]').forEach(el => {
-    el.textContent = el.getAttribute('data-export-value')!
-    el.style.flex = '1'
-    el.style.minWidth = '0'
-    el.style.wordBreak = 'break-all'
-    el.style.overflowWrap = 'break-word'
-    el.style.marginLeft = '0'
-  })
-
-  // Strip CSS truncation / max-width / ml-auto so full text is visible and wraps
-  clone.querySelectorAll<Element>('*').forEach(el => {
-    const cls = el.getAttribute('class')
-    if (cls) {
-      el.setAttribute('class', cls
-        .replace(/\btruncate\b/g, '')
-        .replace(/\bmax-w-\S+/g, '')
-        .replace(/\bml-auto\b/g, '')
-        .trim()
-      )
-    }
-  })
-
-  // Remove overflow-hidden from cards so expanded rows aren't clipped
-  clone.querySelectorAll<HTMLElement>('.overflow-hidden').forEach(el => {
-    const cls = el.getAttribute('class') || ''
-    el.setAttribute('class', cls.replace(/\boverflow-hidden\b/g, '').trim())
-  })
-
-  // Make fixed-height rows auto so wrapped text is fully visible
-  clone.querySelectorAll<HTMLElement>('[style]').forEach(el => {
-    if (el.style.height === '24px') {
-      el.style.height = 'auto'
-      el.style.minHeight = '24px'
-    }
-  })
-
-  // Expand node boxes and recompute positions so values up to 350 chars fit on one line
-  if (layout && exportNodeWidth > NODE_WIDTH) {
-    // Compute new x for each node based on its column level
-    const nodeNewX = new Map<string, number>()
-    for (const [id, node] of layout.nodes) {
-      const level = Math.round((node.x - CANVAS_PAD) / (NODE_WIDTH + SPACING_X))
-      nodeNewX.set(id, CANVAS_PAD + level * (exportNodeWidth + SPACING_X))
-    }
-
-    // Patch each node card's left + width
-    clone.querySelectorAll<HTMLElement>('[data-node-id]').forEach(el => {
-      const id = el.getAttribute('data-node-id')!
-      const newX = nodeNewX.get(id)
-      if (newX !== undefined) {
-        el.style.left = `${newX}px`
-        el.style.width = `${exportNodeWidth}px`
-      }
-    })
-
-    // Compute new canvas width
-    let maxX = 0
-    for (const [id] of layout.nodes) {
-      maxX = Math.max(maxX, (nodeNewX.get(id) ?? 0) + exportNodeWidth)
-    }
-    const newTotalWidth = maxX + CANVAS_PAD
-    clone.style.width = `${newTotalWidth}px`
-
-    // Regenerate SVG paths with updated coordinates
-    const svgEl = clone.querySelector('svg')
-    if (svgEl) {
-      svgEl.setAttribute('width', String(newTotalWidth))
-      svgEl.querySelectorAll('path').forEach(p => p.remove())
-      for (const node of layout.nodes.values()) {
-        for (const edge of node.childEdges) {
-          const dst = layout.nodes.get(edge.childId)!
-          const x1 = (nodeNewX.get(node.id) ?? 0) + exportNodeWidth
-          const rowIndex = node.rows.findIndex(r => r.key === edge.label)
-          const y1 = rowIndex >= 0
-            ? node.y + NODE_HEADER_H + rowIndex * NODE_ROW_H + NODE_ROW_H / 2
-            : node.y + node.height / 2
-          const x2 = nodeNewX.get(dst.id) ?? 0
-          const y2 = dst.y + dst.height / 2
-          const mid = (x1 + x2) / 2
-          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-          path.setAttribute('d', `M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}`)
-          path.setAttribute('fill', 'none')
-          path.setAttribute('stroke', 'var(--border)')
-          path.setAttribute('stroke-width', '1.5')
-          svgEl.appendChild(path)
-        }
-      }
-    }
-  }
-
-  const host = document.createElement('div')
-  host.style.cssText = 'position:fixed;top:-99999px;left:-99999px;pointer-events:none'
-  host.appendChild(clone)
-  document.body.appendChild(host)
-  return { clone, cleanup: () => document.body.removeChild(host) }
-}
-
 const GraphMode = forwardRef<GraphModeHandle, Props>(function GraphMode({ input, onExportPdf, onExportHtml }, ref) {
+  // zoom state is only for the toolbar % display — not used for the actual transform
   const [zoom, setZoom] = useState(1)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
   const [isExporting, setIsExporting] = useState(false)
   const dragStart = useRef({ mouseX: 0, mouseY: 0, panX: 0, panY: 0 })
   const viewportRef = useRef<HTMLDivElement>(null)
-  const graphRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLDivElement>(null)
   const panRef = useRef({ x: 0, y: 0 })
   const zoomRef = useRef(1)
   const fitZoomRef = useRef(1)
   const fitPanRef = useRef({ x: 0, y: 0 })
+  const rafRef = useRef<number | null>(null)
+
+  // Fix 2: defer heavy JSON.parse + buildGraph so typing stays responsive
+  const deferredInput = useDeferredValue(input)
 
   const { layout, error } = useMemo(() => {
-    if (!input.trim()) return { layout: null, error: null }
+    if (!deferredInput.trim()) return { layout: null, error: null }
     try {
-      const value = JSON.parse(input)
+      const value = JSON.parse(deferredInput)
       return { layout: buildGraph(value), error: null }
     } catch (e) {
       return { layout: null, error: (e as Error).message }
     }
-  }, [input])
+  }, [deferredInput])
+
+  // Fix 1: direct DOM mutation — bypasses React render pipeline entirely
+  const applyTransform = useCallback(() => {
+    if (!canvasRef.current) return
+    const { x, y } = panRef.current
+    canvasRef.current.style.transform = `translate(${x}px, ${y}px) scale(${zoomRef.current})`
+  }, [])
 
   // Compute + apply fit zoom whenever layout changes
   useEffect(() => {
@@ -368,59 +594,61 @@ const GraphMode = forwardRef<GraphModeHandle, Props>(function GraphMode({ input,
     const py = (vpH - layout.totalHeight * fit) / 2
     fitZoomRef.current = fit
     fitPanRef.current = { x: px, y: py }
-    setZoom(fit)
-    setPan({ x: px, y: py })
     zoomRef.current = fit
     panRef.current = { x: px, y: py }
-  }, [layout])
+    applyTransform()
+    setZoom(fit)
+  }, [layout, applyTransform])
 
-  const zoomIn = () => setZoom(z => Math.min(ZOOM_MAX, z * ZOOM_STEP))
-  const zoomOut = () => setZoom(z => Math.max(ZOOM_MIN, z / ZOOM_STEP))
-  const zoomReset = () => {
-    const fz = fitZoomRef.current
-    const fp = fitPanRef.current
-    setZoom(fz)
-    setPan(fp)
-    zoomRef.current = fz
-    panRef.current = fp
-  }
+  const zoomIn = useCallback(() => {
+    zoomRef.current = Math.min(ZOOM_MAX, zoomRef.current * ZOOM_STEP)
+    applyTransform()
+    setZoom(zoomRef.current)
+  }, [applyTransform])
 
-  // Keep refs in sync so wheel handler reads latest without re-binding
-  useEffect(() => { zoomRef.current = zoom }, [zoom])
-  useEffect(() => { panRef.current = pan }, [pan])
+  const zoomOut = useCallback(() => {
+    zoomRef.current = Math.max(ZOOM_MIN, zoomRef.current / ZOOM_STEP)
+    applyTransform()
+    setZoom(zoomRef.current)
+  }, [applyTransform])
 
-  // Canvas max texture size — exceeding this causes silent downsampling (blur).
-  // Keep output within 8192px on the longest side; still 2× for small graphs.
-  const captureRatio = useCallback((el: HTMLDivElement) => {
-    const MAX = 8192
-    return Math.min(2, MAX / el.offsetWidth, MAX / el.offsetHeight)
+  const zoomReset = useCallback(() => {
+    zoomRef.current = fitZoomRef.current
+    panRef.current = { ...fitPanRef.current }
+    applyTransform()
+    setZoom(zoomRef.current)
+  }, [applyTransform])
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+    }
   }, [])
 
-  // PNG export — full-fidelity: removes CSS truncation + expands 24-char value limit before capture
+  // PNG export — draws directly to canvas from layout data; no DOM clone, no getComputedStyle per element
   const exportPng = useCallback(async () => {
-    if (!graphRef.current || isExporting) return
+    if (!layout || isExporting) return
     setIsExporting(true)
-    const { clone, cleanup } = buildExportClone(graphRef.current, layout, EXPORT_NODE_WIDTH)
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
     try {
-      const dataUrl = await toPng(clone, { pixelRatio: captureRatio(clone) })
+      const dataUrl = buildCanvasExport(layout)
       const blob = await fetch(dataUrl).then(r => r.blob())
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url; a.download = 'graph.png'; a.click()
       URL.revokeObjectURL(url)
     } finally {
-      cleanup()
       setIsExporting(false)
     }
-  }, [isExporting, captureRatio, layout])
+  }, [isExporting, layout])
 
-  // PDF export — same full-fidelity clone, embedded as PNG in a print-ready HTML page
+  // PDF export — same canvas render, embedded as PNG in a print-ready HTML page
   const exportPdf = useCallback(async () => {
-    if (!graphRef.current || isExporting) return
+    if (!layout || isExporting) return
     setIsExporting(true)
-    const { clone, cleanup } = buildExportClone(graphRef.current, layout, EXPORT_NODE_WIDTH)
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
     try {
-      const dataUrl = await toPng(clone, { pixelRatio: captureRatio(clone) })
+      const dataUrl = buildCanvasExport(layout)
       const html =
         `<!DOCTYPE html><html><head><title>Graph</title><style>` +
         `*{margin:0;padding:0;box-sizing:border-box;}` +
@@ -439,26 +667,17 @@ const GraphMode = forwardRef<GraphModeHandle, Props>(function GraphMode({ input,
         setTimeout(() => win.print(), 250)
       }
     } finally {
-      cleanup()
       setIsExporting(false)
     }
-  }, [isExporting, onExportPdf, captureRatio, layout])
+  }, [isExporting, onExportPdf, layout])
 
-  // HTML export — vector SVG via expanded clone; no pixel limits, infinitely zoomable
+  // HTML export — generates HTML directly from layout data; no DOM cloning, no per-element style computation
   const exportHtml = useCallback(async () => {
-    if (!graphRef.current || isExporting) return
+    if (!layout || isExporting) return
     setIsExporting(true)
-    const { clone, cleanup } = buildExportClone(graphRef.current, layout, EXPORT_NODE_WIDTH)
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
     try {
-      const bg = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()
-      const svgDataUrl = await toSvg(clone, { backgroundColor: bg || 'transparent' })
-      const svgStr = decodeURIComponent(svgDataUrl.split(',').slice(1).join(','))
-      const html =
-        `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Graph</title><style>` +
-        `*{margin:0;padding:0;box-sizing:border-box;}` +
-        `body{background:${bg || '#fff'};display:flex;justify-content:center;padding:24px;min-height:100vh;}` +
-        `svg{max-width:100%;height:auto;}` +
-        `</style></head><body>${svgStr}</body></html>`
+      const html = buildHtmlExport(layout)
       if (onExportHtml) {
         onExportHtml(html, 'graph')
       } else {
@@ -469,7 +688,6 @@ const GraphMode = forwardRef<GraphModeHandle, Props>(function GraphMode({ input,
         URL.revokeObjectURL(url)
       }
     } finally {
-      cleanup()
       setIsExporting(false)
     }
   }, [isExporting, onExportHtml, layout])
@@ -500,7 +718,7 @@ const GraphMode = forwardRef<GraphModeHandle, Props>(function GraphMode({ input,
     }
   }, [])
 
-  // Wheel/trackpad
+  // Wheel/trackpad — direct style mutation, no React state during scroll
   useEffect(() => {
     const el = viewportRef.current
     if (!el) return
@@ -516,39 +734,45 @@ const GraphMode = forwardRef<GraphModeHandle, Props>(function GraphMode({ input,
         const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, curZoom * factor))
         const ratio = newZoom / curZoom
         const curPan = panRef.current
-        const newPan = {
+        zoomRef.current = newZoom
+        panRef.current = {
           x: cx - (cx - curPan.x) * ratio,
           y: cy - (cy - curPan.y) * ratio,
         }
-        zoomRef.current = newZoom
-        panRef.current = newPan
-        setZoom(newZoom)
-        setPan(newPan)
       } else {
         const curPan = panRef.current
-        const newPan = { x: curPan.x - e.deltaX, y: curPan.y - e.deltaY }
-        panRef.current = newPan
-        setPan(newPan)
+        panRef.current = { x: curPan.x - e.deltaX, y: curPan.y - e.deltaY }
+      }
+      applyTransform()
+      // Throttle toolbar % update to one React render per frame
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null
+          setZoom(zoomRef.current)
+        })
       }
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [])
+  }, [applyTransform])
 
+  // Read pan from ref so onMouseDown has no dependency on pan state
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     setTooltip(null)
-    dragStart.current = { mouseX: e.clientX, mouseY: e.clientY, panX: pan.x, panY: pan.y }
+    dragStart.current = { mouseX: e.clientX, mouseY: e.clientY, panX: panRef.current.x, panY: panRef.current.y }
     setIsDragging(true)
-  }, [pan])
+  }, [])
 
+  // Drag — direct style mutation, no React state during move
   useEffect(() => {
     if (!isDragging) return
     const onMove = (e: MouseEvent) => {
-      setPan({
+      panRef.current = {
         x: dragStart.current.panX + (e.clientX - dragStart.current.mouseX),
         y: dragStart.current.panY + (e.clientY - dragStart.current.mouseY),
-      })
+      }
+      applyTransform()
     }
     const onUp = () => setIsDragging(false)
     window.addEventListener('mousemove', onMove)
@@ -557,7 +781,7 @@ const GraphMode = forwardRef<GraphModeHandle, Props>(function GraphMode({ input,
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
-  }, [isDragging])
+  }, [isDragging, applyTransform])
 
   useImperativeHandle(ref, () => ({ exportPng, exportPdf, exportHtml }), [exportPng, exportPdf, exportHtml])
 
@@ -590,15 +814,15 @@ const GraphMode = forwardRef<GraphModeHandle, Props>(function GraphMode({ input,
 
         {layout && (
           <div
+            ref={canvasRef}
             style={{
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
               transformOrigin: 'top left',
               width: layout.totalWidth,
               height: layout.totalHeight,
               willChange: 'transform',
             }}
           >
-            <Graph ref={graphRef} layout={layout} />
+            <Graph layout={layout} />
           </div>
         )}
       </div>
