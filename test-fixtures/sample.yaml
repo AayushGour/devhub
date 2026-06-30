@@ -1,0 +1,172 @@
+# DevHub Extension — YAML fixture
+# Exercises: anchors, aliases, multi-line strings, complex nesting, special scalars
+
+---
+metadata:
+  name: devhub-toolkit
+  version: "0.0.8"
+  description: >
+    Markdown, Mermaid, JSON, SVG, YAML, XML, TOML & token previews
+    plus crypto and image tools — powered by DevHub.
+  authors:
+    - name: Aayush Gour
+      email: ag14906@gmail.com
+      roles: [maintainer, author]
+  license: MIT
+  repository: https://github.com/AayushGour/devhub.git
+  keywords: [markdown, mermaid, json, yaml, xml, toml, svg, preview, vscode]
+  created: 2025-01-01
+  updated: 2026-06-29T12:00:00Z
+  downloads: 14_200     # underscore separators — valid YAML int
+
+# ── Anchors & Aliases ──────────────────────────────────────────────────────────
+defaults: &defaults
+  debounce_ms: 200
+  sanitize_html: true
+  theme: dark
+  zoom_enabled: true
+  pan_enabled: true
+
+# ── Previews ───────────────────────────────────────────────────────────────────
+previews:
+  markdown:
+    <<: *defaults          # merge anchor
+    extensions: [.md, .mdc]
+    renderer: marked
+    plugins: [highlight, mermaid, footnotes]
+    gfm: true              # GitHub Flavored Markdown
+
+  json:
+    <<: *defaults
+    extensions: [.json, .jsonc, .jsonl, .ndjson]
+    formats:
+      - id: json
+        label: "Standard JSON"
+      - id: jsonl
+        label: "JSON Lines / NDJSON"
+        description: |
+          Each line is an independent JSON value.
+          Useful for log files and streaming data.
+
+  diagram:
+    <<: *defaults
+    extensions: [.mmd, .mermaid]
+    renderer: mermaid
+    config:
+      theme: dark
+      look: handDrawn
+      flowchart: { curve: basis, padding: 15 }
+      sequence:  { actorMargin: 80, mirrorActors: false }
+
+  yaml:
+    <<: *defaults
+    extensions: [.yaml, .yml]
+    parser: js-yaml
+
+  xml:
+    <<: *defaults
+    extensions: [.xml]
+    # SVG is XML but handled separately
+    excludes: [.svg]
+
+  toml:
+    <<: *defaults
+    extensions: [.toml]
+    parser: smol-toml
+
+  svg:
+    <<: *defaults
+    extensions: [.svg]
+    renderer: inline-html
+
+  html:
+    <<: *defaults
+    extensions: [.html, .htm]
+    renderer: sandboxed-iframe
+    sandbox: "allow-same-origin allow-scripts"
+
+# ── Studios ────────────────────────────────────────────────────────────────────
+studios:
+  crypto:
+    command: devhub.openCrypto
+    algorithms:
+      hashing: &hash_algos [MD5, SHA-1, SHA-256, SHA-512, SHA-3-256, SHA-3-512]
+      hmac: [HMAC-SHA256, HMAC-SHA512]
+      encoding: [Base64, Base64URL, Hex, "URL Encode", "URL Decode"]
+    default_algo: SHA-256
+
+  image:
+    command: devhub.openImage
+    formats: &image_formats [PNG, JPEG, WEBP, GIF, BMP, TIFF, ICO, SVG]
+    operations:
+      - id: resize
+        params: [width, height, maintain_aspect]
+      - id: crop
+        params: [x, y, width, height]
+      - id: rotate
+        params: [degrees]
+      - id: convert
+        params: [target_format]
+        allowed_formats: *image_formats  # alias reuse
+
+# ── Multi-line scalars ─────────────────────────────────────────────────────────
+messages:
+  welcome: |
+    Welcome to DevHub!
+    Open any supported file and press Cmd+Shift+V (Mac)
+    or Ctrl+Shift+V (Windows/Linux) to launch the preview.
+
+  no_preview: >-
+    DevHub: no preview available for this file type.
+    Supported: Markdown, Mermaid, JSON, YAML, XML, TOML, SVG, HTML.
+
+  changelog: |-
+    v0.0.8 — Zoom & pan in Graph Mode
+    v0.0.7 — YAML and XML support, enhanced node display
+    v0.0.6 — PDF export functionality
+    v0.0.5 — Mermaid diagram live preview
+
+# ── Special scalar types ───────────────────────────────────────────────────────
+scalars:
+  # Booleans
+  yes_bool: true
+  no_bool:  false
+  # Nulls
+  explicit_null: null
+  tilde_null: ~
+  # Integers in various bases
+  decimal: 255
+  hexadecimal: 0xFF
+  octal: 0o377
+  # Floats
+  pi:         3.141592653589793
+  avogadro:   6.022e23
+  planck:     6.626e-34
+  inf:        .inf
+  neg_inf:    -.inf
+  not_a_number: .nan
+
+# ── Sequence of mappings ───────────────────────────────────────────────────────
+contributors:
+  - { name: Aayush Gour,     role: Lead Developer,     since: 2025 }
+  - { name: Claude Sonnet,   role: AI Pair Programmer, since: 2026 }
+
+# ── Nested with optional keys ──────────────────────────────────────────────────
+environments:
+  production:
+    host: prod.devhub.app
+    port: 443
+    ssl: true
+    replicas: 3
+    resources: { cpu: "2", memory: "4Gi" }
+  staging:
+    host: staging.devhub.app
+    port: 443
+    ssl: true
+    replicas: 1
+    resources: { cpu: "500m", memory: "512Mi" }
+  local:
+    host: localhost
+    port: 5173
+    ssl: false
+    # replicas intentionally absent

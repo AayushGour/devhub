@@ -1,0 +1,46 @@
+// DevHub VSCode Extension — settings fixture (JSONC)
+// JSONC allows single-line and block comments.
+{
+  // ─── Editor Behaviour ───────────────────────────────────────────────────────
+  "editor.formatOnSave": true,
+  "editor.tabSize": 2,
+  "editor.rulers": [80, 120],
+
+  /*
+   * TypeScript configuration — applied to all .ts and .tsx files.
+   * These override the workspace tsconfig.json for editor purposes only.
+   */
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit",
+      "source.fixAll.eslint": "explicit"
+    }
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+
+  // ─── DevHub Extension Settings ──────────────────────────────────────────────
+  "devhub.preview.debounceMs": 200,     // milliseconds between keystroke and re-render
+  "devhub.preview.sanitizeHtml": true,  // strip unsafe tags from HTML previews
+  "devhub.diagram.theme": "dark",       // "dark" | "light" | "auto"
+  "devhub.token.model": "gpt-4o",       // default model for token counter
+
+  // ─── Trailing comma test ────────────────────────────────────────────────────
+  // JSONC (and JSON5) allow trailing commas; standard JSON does not.
+  "devhub.studios": [
+    "crypto",
+    "image",
+    // "csv",  // coming soon
+    // "regex", // coming soon
+  ],
+
+  /* Block comment inside array — valid in JSONC */
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.git": true,
+    "**/media": true /* built webview assets */,
+  },
+}

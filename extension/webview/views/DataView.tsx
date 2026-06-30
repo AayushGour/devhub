@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useRef, useState } from 'react'
+import { useMemo, useRef, useCallback, useState } from 'react'
 import { FileImage, Printer, FileCode } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import TreeMode from '@/features/json-studio/components/modes/TreeMode'
@@ -6,84 +6,38 @@ import GraphMode, { type GraphModeHandle } from '@/features/json-studio/componen
 import SchemaMode from '@/features/json-studio/components/modes/SchemaMode'
 import { exportPDFViaHost, exportHTMLViaHost } from '../utils/print'
 
-// Strip // and /* */ comments plus trailing commas so JSONC parses cleanly.
-// Uses a state machine to avoid touching comment-like text inside strings.
-function stripJsonComments(src: string): string {
-  let out = ''
-  let i = 0
-  let inStr = false
-  let escaped = false
-
-  while (i < src.length) {
-    const ch = src[i]
-    const nx = src[i + 1]
-
-    if (escaped) { out += ch; escaped = false; i++; continue }
-
-    if (inStr) {
-      if (ch === '\\') { escaped = true; out += ch; i++; continue }
-      if (ch === '"') inStr = false
-      out += ch; i++; continue
-    }
-
-    if (ch === '"') { inStr = true; out += ch; i++; continue }
-
-    if (ch === '/' && nx === '/') {
-      while (i < src.length && src[i] !== '\n') i++
-      continue
-    }
-    if (ch === '/' && nx === '*') {
-      i += 2
-      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++
-      i += 2; continue
-    }
-
-    out += ch; i++
-  }
-
-  return out.replace(/,(\s*[}\]])/g, '$1')
-}
-
-const MODES = ['tree', 'graph', 'schema'] as const
+const MODES = ['graph', 'tree', 'schema'] as const
 type Mode = (typeof MODES)[number]
 const noop = () => {}
-
-// Convert JSON Lines / NDJSON into a single JSON array so the JSON modes can
-// render it. Unparseable lines are preserved so nothing is silently dropped.
-function jsonlToArray(text: string): string {
-  const items = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((line) => {
-      try {
-        return JSON.parse(line)
-      } catch {
-        return { _unparsed: line }
-      }
-    })
-  return JSON.stringify(items, null, 2)
-}
 
 const ICON_BTN_CLS =
   'p-1.5 rounded-md text-on-surface-muted hover:bg-surface-hover hover:text-on-surface transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed'
 
-export default function JsonView({ text, format }: { text: string; format?: 'jsonl' }) {
-  const [mode, setMode] = useState<Mode>('tree')
+interface Props {
+  /** Pre-serialised JSON string */
+  input: string
+  error?: string
+}
+
+export default function DataView({ input, error }: Props) {
+  const [mode, setMode] = useState<Mode>('graph')
   const graphRef = useRef<GraphModeHandle>(null)
-  const input = useMemo(
-    () => (format === 'jsonl' ? jsonlToArray(text) : stripJsonComments(text)),
-    [text, format],
-  )
+
+  const safeInput = useMemo(() => {
+    if (!input.trim()) return ''
+    try { JSON.parse(input); return input } catch { return '' }
+  }, [input])
+
   const handleExportPdf = useCallback((html: string, filename: string) => {
     exportPDFViaHost(html, filename)
   }, [])
   const handleExportHtml = useCallback((html: string, filename: string) => {
     exportHTMLViaHost(html, filename)
   }, [])
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="shrink-0 flex items-center gap-1 px-2 h-9 border-b border-border bg-surface-raised">
+      <div className="preview-toolbar shrink-0 flex items-center gap-1 px-2 h-9 border-b border-border bg-surface-raised">
         {MODES.map((m) => (
           <button
             key={m}
@@ -113,9 +67,12 @@ export default function JsonView({ text, format }: { text: string; format?: 'jso
         )}
       </div>
       <div className="flex flex-1 min-h-0">
-        {mode === 'tree' && <TreeMode input={input} />}
-        {mode === 'graph' && <GraphMode ref={graphRef} input={input} onExportPdf={handleExportPdf} onExportHtml={handleExportHtml} />}
-        {mode === 'schema' && <SchemaMode input={input} setInput={noop} />}
+        {error && (
+          <div className="p-4 text-xs text-red-500 font-mono">{error}</div>
+        )}
+        {!error && mode === 'graph' && <GraphMode ref={graphRef} input={safeInput} onExportPdf={handleExportPdf} onExportHtml={handleExportHtml} />}
+        {!error && mode === 'tree' && <TreeMode input={safeInput} />}
+        {!error && mode === 'schema' && <SchemaMode input={safeInput} setInput={noop} />}
       </div>
     </div>
   )

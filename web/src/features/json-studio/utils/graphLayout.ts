@@ -4,7 +4,7 @@ export interface GNode {
   edgeLabel: string | null
   title: string
   nodeType: 'object' | 'array' | 'scalar'
-  rows: Array<{ key: string; value: string; valueType: 'string' | 'number' | 'boolean' | 'null' }>
+  rows: Array<{ key: string; value: string; valueType: 'string' | 'number' | 'boolean' | 'null' | 'object' | 'array'; rawValue: string }>
   childEdges: Array<{ childId: string; label: string }>
   x: number
   y: number
@@ -19,25 +19,28 @@ export interface GraphLayout {
   totalHeight: number
 }
 
-const NODE_WIDTH = 220
-const NODE_HEADER_H = 34
-const NODE_ROW_H = 24
+export const NODE_WIDTH = 220
+export const NODE_HEADER_H = 34
+export const NODE_ROW_H = 24
 const NODE_ROW_PADDING = 8
-const SPACING_X = 80
+export const SPACING_X = 80
 const SPACING_Y = 20
-const CANVAS_PAD = 32
+export const CANVAS_PAD = 32
+
+// Max export node width; content wraps within this so rows auto-adjust height
+export const EXPORT_NODE_WIDTH = 300
 
 let _seq = 0
 
-function fmtValue(v: unknown): { str: string; valueType: GNode['rows'][0]['valueType'] } {
-  if (v === null) return { str: 'null', valueType: 'null' }
-  if (typeof v === 'boolean') return { str: String(v), valueType: 'boolean' }
-  if (typeof v === 'number') return { str: String(v), valueType: 'number' }
+function fmtValue(v: unknown): { str: string; valueType: GNode['rows'][0]['valueType']; rawValue: string } {
+  if (v === null) return { str: 'null', valueType: 'null', rawValue: 'null' }
+  if (typeof v === 'boolean') return { str: String(v), valueType: 'boolean', rawValue: String(v) }
+  if (typeof v === 'number') return { str: String(v), valueType: 'number', rawValue: String(v) }
   if (typeof v === 'string') {
     const s = v.length > 24 ? v.slice(0, 24) + '…' : v
-    return { str: `"${s}"`, valueType: 'string' }
+    return { str: `"${s}"`, valueType: 'string', rawValue: v }
   }
-  return { str: '…', valueType: 'null' }
+  return { str: '…', valueType: 'null', rawValue: '' }
 }
 
 function buildNode(
@@ -62,14 +65,20 @@ function buildNode(
       if (v !== null && typeof v === 'object') {
         const childId = buildNode(v, isArr ? `[${k}]` : k, id, nodes)
         childEdges.push({ childId, label: isArr ? `[${k}]` : k })
+        const isChildArr = Array.isArray(v)
+        const childCount = isChildArr ? (v as unknown[]).length : Object.keys(v as object).length
+        const childLabel = isChildArr
+          ? `[ ${childCount} item${childCount !== 1 ? 's' : ''} ]`
+          : `{ ${childCount} key${childCount !== 1 ? 's' : ''} }`
+        rows.push({ key: isArr ? `[${k}]` : k, value: childLabel, valueType: isChildArr ? 'array' : 'object', rawValue: '' })
       } else {
-        const { str, valueType } = fmtValue(v)
-        rows.push({ key: isArr ? `[${k}]` : k, value: str, valueType })
+        const { str, valueType, rawValue } = fmtValue(v)
+        rows.push({ key: isArr ? `[${k}]` : k, value: str, valueType, rawValue })
       }
     }
   } else {
-    const { str, valueType } = fmtValue(value)
-    rows.push({ key: edgeLabel ?? 'value', value: str, valueType })
+    const { str, valueType, rawValue } = fmtValue(value)
+    rows.push({ key: edgeLabel ?? 'value', value: str, valueType, rawValue })
   }
 
   const count = isArr

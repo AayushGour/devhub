@@ -1,0 +1,200 @@
+# DevHub Extension — TOML fixture
+# Exercises: tables, arrays of tables, inline tables, multi-line strings,
+# literal strings, dates, floats, integers in various notations, dotted keys.
+
+[metadata]
+name        = "devhub-toolkit"
+version     = "0.0.8"
+description = """
+Markdown, Mermaid, JSON, SVG & token previews \
+plus crypto and image tools — powered by DevHub.
+"""
+license  = "MIT"
+homepage = "https://github.com/AayushGour/devhub"
+keywords = ["markdown", "mermaid", "json", "yaml", "xml", "toml", "svg", "preview"]
+
+# Dotted keys
+metadata.publisher = "dev-hub"
+metadata.created   = 2025-01-01
+metadata.updated   = 2026-06-29T12:00:00Z
+
+# ── Integers ────────────────────────────────────────────────────────────────
+[numbers]
+decimal     = 2_147_483_647     # underscore grouping
+hexadecimal = 0xDEAD_BEEF
+octal       = 0o755
+binary      = 0b1111_0000
+negative    = -42
+
+# ── Floats ──────────────────────────────────────────────────────────────────
+[floats]
+pi          = 3.141_592_653_589_793
+avogadro    = 6.022e+23
+planck      = 6.626e-34
+inf         = inf
+neg_inf     = -inf
+nan         = nan
+exact       = 1.0
+
+# ── Booleans ────────────────────────────────────────────────────────────────
+[booleans]
+enabled  = true
+disabled = false
+
+# ── Strings ─────────────────────────────────────────────────────────────────
+[strings]
+basic       = "Hello, \"World\"!\nNew line\tTab"
+literal     = 'C:\Users\aayush\AppData\Local\Programs\cursor'  # no escaping
+multi_basic = """
+First line
+Second line
+Third line — trailing backslash joins: \
+still third line.
+"""
+multi_literal = '''
+Raw multi-line literal.
+Backslash is literal here: C:\Windows\System32
+No escaping whatsoever.
+'''
+unicode     = "日本語 • العربية • 🚀🦀🐍"
+
+# ── Inline tables ────────────────────────────────────────────────────────────
+[shortcut]
+mac   = { key = "cmd+shift+v",  when = "editorTextFocus" }
+win   = { key = "ctrl+shift+v", when = "editorTextFocus" }
+linux = { key = "ctrl+shift+v", when = "editorTextFocus" }
+
+# ── Regular tables ───────────────────────────────────────────────────────────
+[server]
+host    = "0.0.0.0"
+port    = 8080
+workers = 4
+tls     = false
+
+[server.timeouts]
+read_ms    = 5_000
+write_ms   = 10_000
+idle_ms    = 60_000
+shutdown_s = 30
+
+[database]
+url       = "postgres://user:pass@localhost:5432/devhub"
+pool_size = 20
+ssl_mode  = "require"
+
+[database.migrations]
+auto_run = true
+table    = "_schema_migrations"
+path     = "./migrations"
+
+[cache]
+driver  = "redis"
+url     = "redis://localhost:6379/0"
+ttl_s   = 3_600
+max_mem = "256mb"
+
+# ── Array of tables ──────────────────────────────────────────────────────────
+[[previews]]
+id         = "markdown"
+enabled    = true
+extensions = [".md", ".mdc"]
+renderer   = "marked"
+plugins    = ["highlight", "mermaid", "footnotes"]
+
+  [previews.options]
+  sanitize = true
+  gfm      = true
+  breaks   = false
+
+[[previews]]
+id         = "json"
+enabled    = true
+extensions = [".json", ".jsonc", ".jsonl", ".ndjson"]
+
+  [previews.options]
+  tree   = true
+
+[[previews]]
+id         = "diagram"
+enabled    = true
+extensions = [".mmd", ".mermaid"]
+renderer   = "mermaid"
+
+  [previews.options]
+  theme = "dark"
+  zoom  = true
+  pan   = true
+
+[[previews]]
+id         = "yaml"
+enabled    = true
+extensions = [".yaml", ".yml"]
+parser     = "js-yaml"
+
+[[previews]]
+id         = "toml"
+enabled    = true
+extensions = [".toml"]
+parser     = "smol-toml"
+
+[[previews]]
+id         = "xml"
+enabled    = true
+extensions = [".xml"]
+
+[[previews]]
+id         = "svg"
+enabled    = true
+extensions = [".svg"]
+
+[[previews]]
+id         = "html"
+enabled    = true
+extensions = [".html", ".htm"]
+sandbox    = "allow-same-origin allow-scripts"
+
+# ── Studios ──────────────────────────────────────────────────────────────────
+[studios.crypto]
+command   = "devhub.openCrypto"
+algorithms.hashing  = ["MD5", "SHA-1", "SHA-256", "SHA-512", "SHA-3-256"]
+algorithms.encoding = ["Base64", "Base64URL", "Hex", "URL"]
+algorithms.hmac     = ["HMAC-SHA256", "HMAC-SHA512"]
+default   = "SHA-256"
+
+[studios.image]
+command  = "devhub.openImage"
+formats  = ["PNG", "JPEG", "WEBP", "GIF", "BMP", "TIFF", "ICO", "SVG"]
+max_size = "50mb"
+
+# ── Feature flags ────────────────────────────────────────────────────────────
+[features]
+markdown_preview = true
+json_tree        = true
+diagram_zoom     = true
+toml_support     = true
+csv_table        = false   # coming soon
+jwt_decoder      = false   # coming soon
+regex_tester     = false   # coming soon
+
+# ── Environment-specific overrides (array of tables) ─────────────────────────
+[[environments]]
+name     = "production"
+host     = "prod.devhub.app"
+port     = 443
+ssl      = true
+replicas = 3
+resources = { cpu = "2", memory = "4Gi" }
+
+[[environments]]
+name     = "staging"
+host     = "staging.devhub.app"
+port     = 443
+ssl      = true
+replicas = 1
+resources = { cpu = "500m", memory = "512Mi" }
+
+[[environments]]
+name = "local"
+host = "localhost"
+port = 5173
+ssl  = false

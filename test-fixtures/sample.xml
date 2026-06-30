@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  DevHub Extension — XML fixture
+  Exercises: namespaces, attributes, CDATA, mixed content, deep nesting, processing instructions
+-->
+<?xml-stylesheet type="text/xsl" href="style.xsl"?>
+
+<devhub:manifest
+  xmlns:devhub="https://devhub.app/schema/manifest"
+  xmlns:ci="https://devhub.app/schema/ci"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="https://devhub.app/schema/manifest manifest.xsd"
+  version="0.0.8"
+  generated="2026-06-29T12:00:00Z">
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!--  Metadata                                                               -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <devhub:metadata>
+    <devhub:name>devhub-toolkit</devhub:name>
+    <devhub:displayName>DevHub</devhub:displayName>
+    <devhub:description><![CDATA[
+      Markdown, Mermaid, JSON, SVG & token previews plus crypto and image tools.
+      Supports <special> XML characters like & and ' without escaping inside CDATA.
+      Also supports <em>any arbitrary text</em> content here.
+    ]]></devhub:description>
+    <devhub:publisher>dev-hub</devhub:publisher>
+    <devhub:license spdx="MIT" url="https://opensource.org/licenses/MIT" />
+    <devhub:authors>
+      <devhub:author primary="true">
+        <devhub:name>Aayush Gour</devhub:name>
+        <devhub:email>ag14906@gmail.com</devhub:email>
+        <devhub:role>maintainer</devhub:role>
+        <devhub:role>author</devhub:role>
+      </devhub:author>
+    </devhub:authors>
+    <devhub:keywords>
+      <devhub:keyword>markdown</devhub:keyword>
+      <devhub:keyword>mermaid</devhub:keyword>
+      <devhub:keyword>json</devhub:keyword>
+      <devhub:keyword>yaml</devhub:keyword>
+      <devhub:keyword>toml</devhub:keyword>
+      <devhub:keyword>svg</devhub:keyword>
+      <devhub:keyword>preview</devhub:keyword>
+    </devhub:keywords>
+  </devhub:metadata>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!--  Features / Preview Modes                                               -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <devhub:features>
+
+    <devhub:preview id="markdown" enabled="true">
+      <devhub:extensions>
+        <devhub:ext>.md</devhub:ext>
+        <devhub:ext>.mdc</devhub:ext>
+      </devhub:extensions>
+      <devhub:shortcut>
+        <devhub:binding os="mac">cmd+shift+v</devhub:binding>
+        <devhub:binding os="win">ctrl+shift+v</devhub:binding>
+        <devhub:binding os="linux">ctrl+shift+v</devhub:binding>
+      </devhub:shortcut>
+      <devhub:options sanitize="true" gfm="true" highlight="true" />
+    </devhub:preview>
+
+    <devhub:preview id="json" enabled="true">
+      <devhub:extensions>
+        <devhub:ext format="json">.json</devhub:ext>
+        <devhub:ext format="json">.jsonc</devhub:ext>
+        <devhub:ext format="jsonl">.jsonl</devhub:ext>
+        <devhub:ext format="jsonl">.ndjson</devhub:ext>
+      </devhub:extensions>
+      <devhub:options tree="true" />
+    </devhub:preview>
+
+    <devhub:preview id="diagram" enabled="true">
+      <devhub:extensions>
+        <devhub:ext>.mmd</devhub:ext>
+        <devhub:ext>.mermaid</devhub:ext>
+      </devhub:extensions>
+      <devhub:options theme="dark" zoom="true" pan="true" />
+    </devhub:preview>
+
+    <devhub:preview id="yaml" enabled="true">
+      <devhub:extensions>
+        <devhub:ext>.yaml</devhub:ext>
+        <devhub:ext>.yml</devhub:ext>
+      </devhub:extensions>
+    </devhub:preview>
+
+    <devhub:preview id="toml" enabled="true">
+      <devhub:extensions>
+        <devhub:ext>.toml</devhub:ext>
+      </devhub:extensions>
+      <devhub:options parser="smol-toml" />
+    </devhub:preview>
+
+    <devhub:preview id="xml" enabled="true">
+      <devhub:extensions>
+        <devhub:ext>.xml</devhub:ext>
+      </devhub:extensions>
+      <devhub:excludes>
+        <devhub:ext reason="handled-as-svg">.svg</devhub:ext>
+      </devhub:excludes>
+    </devhub:preview>
+
+    <devhub:preview id="svg" enabled="true">
+      <devhub:extensions>
+        <devhub:ext>.svg</devhub:ext>
+      </devhub:extensions>
+      <devhub:options renderer="inline-html" />
+    </devhub:preview>
+
+    <devhub:preview id="html" enabled="true">
+      <devhub:extensions>
+        <devhub:ext>.html</devhub:ext>
+        <devhub:ext>.htm</devhub:ext>
+      </devhub:extensions>
+      <devhub:options renderer="sandboxed-iframe" sandbox="allow-same-origin allow-scripts" />
+    </devhub:preview>
+
+  </devhub:features>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!--  CI Pipeline (different namespace)                                      -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <ci:pipeline name="release" trigger="push" branch="main">
+    <ci:stage name="build" timeout="300">
+      <ci:step name="install-web">npm --prefix web install --frozen-lockfile</ci:step>
+      <ci:step name="install-ext">npm --prefix extension install --frozen-lockfile</ci:step>
+      <ci:step name="typecheck">npm --prefix extension run typecheck</ci:step>
+      <ci:step name="build">npm --prefix extension run build</ci:step>
+    </ci:stage>
+    <ci:stage name="package" depends-on="build">
+      <ci:step name="vsce-package">npm --prefix extension run package</ci:step>
+      <ci:artifact path="extension/*.vsix" retain-days="30" />
+    </ci:stage>
+    <ci:stage name="publish" depends-on="package" manual="true">
+      <ci:step name="publish-vsce">npm --prefix extension run publish:vsce</ci:step>
+      <ci:step name="publish-openvsx">npm --prefix extension run publish:openvsx</ci:step>
+    </ci:stage>
+  </ci:pipeline>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!--  Changelog with mixed content                                           -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <devhub:changelog>
+    <devhub:release version="0.0.8" date="2026-06-29">
+      <devhub:change type="feature">Zoom &amp; pan in Graph Mode</devhub:change>
+    </devhub:release>
+    <devhub:release version="0.0.7" date="2026-06-20">
+      <devhub:change type="feature">YAML support via <devhub:code>js-yaml</devhub:code></devhub:change>
+      <devhub:change type="feature">XML support via browser <devhub:code>DOMParser</devhub:code></devhub:change>
+      <devhub:change type="improvement">Enhanced graph node display</devhub:change>
+    </devhub:release>
+    <devhub:release version="0.0.6" date="2026-06-10">
+      <devhub:change type="feature">PDF export via browser print dialog</devhub:change>
+    </devhub:release>
+    <devhub:release version="0.0.5" date="2026-05-28">
+      <devhub:change type="feature">Mermaid diagram live preview with dark/light theme</devhub:change>
+    </devhub:release>
+  </devhub:changelog>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!--  Entities / special characters stress test                              -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <devhub:entities>
+    <devhub:item name="ampersand">AT&amp;T uses &amp; not &amp;amp;</devhub:item>
+    <devhub:item name="less-than">x &lt; y means x is less than y</devhub:item>
+    <devhub:item name="greater-than">y &gt; x means y is greater than x</devhub:item>
+    <devhub:item name="quote">He said &quot;hello&quot;</devhub:item>
+    <devhub:item name="apostrophe">It&apos;s a test</devhub:item>
+    <devhub:item name="codepoint">Greek pi: &#960; — copyright: &#169;</devhub:item>
+  </devhub:entities>
+
+</devhub:manifest>

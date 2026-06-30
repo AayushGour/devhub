@@ -28,7 +28,10 @@ picked automatically from the file:
 |------|---------|
 | `.md`, `.mdc` | Rendered Markdown, with inline Mermaid diagrams |
 | `.mmd`, `.mermaid` | Rendered Mermaid diagram (theme picker, zoom/pan) |
-| `.json`, `.jsonc`, `.jsonl`/`.ndjson` | Tree / graph / schema views (JSONL rendered as an array) |
+| `.json`, `.jsonc`, `.jsonl`/`.ndjson` | Tree / graph / schema / diff / JSONPath / types views (JSONL rendered as an array) |
+| `.yaml`, `.yml` | Tree / graph / schema views (parsed as JSON-equivalent structure) |
+| `.toml` | Tree / graph / schema views (parsed via smol-toml) |
+| `.xml` | Tree / graph / schema views (parsed via browser DOMParser) |
 | `.svg` | Rendered SVG with zoom & pan |
 | `.html`, `.htm` | The page rendered in a sandboxed iframe |
 
@@ -67,8 +70,8 @@ Open in their own panel (no file needed):
 | `DevHub: Image Studio` | — | Open the image tools panel |
 
 `Cmd/Ctrl+Shift+V` is active for the supported file types (`.md`, `.mdc`, `.mmd`,
-`.json`, `.jsonl`, `.svg`, `.html`) and overrides VS Code's built-in Markdown
-preview on that key.
+`.json`, `.jsonc`, `.jsonl`, `.ndjson`, `.yaml`, `.yml`, `.xml`, `.toml`, `.svg`,
+`.html`, `.htm`) and overrides VS Code's built-in Markdown preview on that key.
 
 ## Notes
 
