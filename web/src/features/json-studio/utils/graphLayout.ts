@@ -4,7 +4,7 @@ export interface GNode {
   edgeLabel: string | null
   title: string
   nodeType: 'object' | 'array' | 'scalar'
-  rows: Array<{ key: string; value: string; valueType: 'string' | 'number' | 'boolean' | 'null'; rawValue: string }>
+  rows: Array<{ key: string; value: string; valueType: 'string' | 'number' | 'boolean' | 'null' | 'object' | 'array'; rawValue: string }>
   childEdges: Array<{ childId: string; label: string }>
   x: number
   y: number
@@ -20,8 +20,8 @@ export interface GraphLayout {
 }
 
 export const NODE_WIDTH = 220
-const NODE_HEADER_H = 34
-const NODE_ROW_H = 24
+export const NODE_HEADER_H = 34
+export const NODE_ROW_H = 24
 const NODE_ROW_PADDING = 8
 export const SPACING_X = 80
 const SPACING_Y = 20
@@ -65,6 +65,12 @@ function buildNode(
       if (v !== null && typeof v === 'object') {
         const childId = buildNode(v, isArr ? `[${k}]` : k, id, nodes)
         childEdges.push({ childId, label: isArr ? `[${k}]` : k })
+        const isChildArr = Array.isArray(v)
+        const childCount = isChildArr ? (v as unknown[]).length : Object.keys(v as object).length
+        const childLabel = isChildArr
+          ? `[ ${childCount} item${childCount !== 1 ? 's' : ''} ]`
+          : `{ ${childCount} key${childCount !== 1 ? 's' : ''} }`
+        rows.push({ key: isArr ? `[${k}]` : k, value: childLabel, valueType: isChildArr ? 'array' : 'object', rawValue: '' })
       } else {
         const { str, valueType, rawValue } = fmtValue(v)
         rows.push({ key: isArr ? `[${k}]` : k, value: str, valueType, rawValue })

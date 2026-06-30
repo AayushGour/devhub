@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, useCallback, useEffect, forwardRef, useImper
 import { ZoomIn, ZoomOut, Maximize2, FileImage, Printer, FileCode } from 'lucide-react'
 import { toPng, toSvg } from 'html-to-image'
 import { cn } from '@/lib/utils'
-import { buildGraph, EXPORT_NODE_WIDTH, NODE_WIDTH, SPACING_X, CANVAS_PAD } from '../../utils/graphLayout'
+import { buildGraph, EXPORT_NODE_WIDTH, NODE_WIDTH, SPACING_X, CANVAS_PAD, NODE_HEADER_H, NODE_ROW_H } from '../../utils/graphLayout'
 import type { GNode, GraphLayout } from '../../utils/graphLayout'
 import type { JsonStudioState } from '../../hooks/useJsonStudio'
 
@@ -22,6 +22,8 @@ const VALUE_CLASS: Record<GNode['rows'][0]['valueType'], string> = {
   number: 'text-json-number',
   boolean: 'text-json-bool',
   null: 'text-json-null',
+  object: 'text-on-surface-muted italic',
+  array: 'text-accent/70 italic',
 }
 
 interface TooltipState {
@@ -67,11 +69,14 @@ function GraphTooltip({ text, anchorRect }: TooltipState) {
   )
 }
 
-function EdgePath({ from, to, nodes }: { from: string; to: string; nodes: Map<string, GNode> }) {
+function EdgePath({ from, to, edgeLabel, nodes }: { from: string; to: string; edgeLabel: string | null; nodes: Map<string, GNode> }) {
   const src = nodes.get(from)!
   const dst = nodes.get(to)!
   const x1 = src.x + src.width
-  const y1 = src.y + src.height / 2
+  const rowIndex = edgeLabel != null ? src.rows.findIndex(r => r.key === edgeLabel) : -1
+  const y1 = rowIndex >= 0
+    ? src.y + NODE_HEADER_H + rowIndex * NODE_ROW_H + NODE_ROW_H / 2
+    : src.y + src.height / 2
   const x2 = dst.x
   const y2 = dst.y + dst.height / 2
   const mid = (x1 + x2) / 2
@@ -135,52 +140,59 @@ function NodeCard({ node }: { node: GNode }) {
 
       {/* Rows */}
       {isArr
-        ? node.rows.map((row, i) => (
-            <div
-              key={i}
-              className="flex items-center px-3 gap-2 border-b border-border last:border-0"
-              style={{ height: 24 }}
-            >
-              <span className="text-[0.62rem] font-mono text-accent/60 shrink-0 w-6 text-right">
-                {i}
-              </span>
-              <span
-                data-tooltip={row.rawValue}
-                data-export-value={row.valueType === 'string' ? `"${row.rawValue}"` : row.rawValue}
-                className={cn('text-[0.69rem] font-mono truncate', VALUE_CLASS[row.valueType])}
+        ? node.rows.map((row, i) => {
+            const isNested = row.valueType === 'object' || row.valueType === 'array'
+            const displayIdx = row.key.replace(/^\[(\d+)\]$/, '$1')
+            return (
+              <div
+                key={i}
+                className="flex items-center px-3 gap-2 border-b border-border last:border-0"
+                style={{ height: 24 }}
               >
-                {row.value}
-              </span>
-            </div>
-          ))
-        : node.rows.map((row, i) => (
-            <div
-              key={i}
-              className="flex items-center px-3 border-b border-border last:border-0"
-              style={{ height: 24 }}
-            >
-              <span className="text-[0.69rem] text-on-surface-muted shrink-0 mr-2 font-mono max-w-[5.62rem] truncate">
-                {row.key}
-              </span>
-              <span
-                data-tooltip={row.rawValue}
-                data-export-value={row.valueType === 'string' ? `"${row.rawValue}"` : row.rawValue}
-                className={cn('text-[0.69rem] font-mono ml-auto truncate max-w-25', VALUE_CLASS[row.valueType])}
+                <span className="text-[0.62rem] font-mono text-accent/60 shrink-0 w-6 text-right">
+                  {displayIdx}
+                </span>
+                <span
+                  {...(!isNested && row.rawValue ? { 'data-tooltip': row.rawValue } : {})}
+                  {...(!isNested ? { 'data-export-value': row.valueType === 'string' ? `"${row.rawValue}"` : row.rawValue } : { 'data-export-value': row.value })}
+                  className={cn('text-[0.69rem] font-mono truncate', VALUE_CLASS[row.valueType])}
+                >
+                  {row.value}
+                </span>
+              </div>
+            )
+          })
+        : node.rows.map((row, i) => {
+            const isNested = row.valueType === 'object' || row.valueType === 'array'
+            return (
+              <div
+                key={i}
+                className="flex items-center px-3 border-b border-border last:border-0"
+                style={{ height: 24 }}
               >
-                {row.value}
-              </span>
-            </div>
-          ))}
+                <span className="text-[0.69rem] text-on-surface-muted shrink-0 mr-2 font-mono max-w-[5.62rem] truncate">
+                  {row.key}
+                </span>
+                <span
+                  {...(!isNested && row.rawValue ? { 'data-tooltip': row.rawValue } : {})}
+                  {...(!isNested ? { 'data-export-value': row.valueType === 'string' ? `"${row.rawValue}"` : row.rawValue } : { 'data-export-value': row.value })}
+                  className={cn('text-[0.69rem] font-mono ml-auto truncate max-w-25', VALUE_CLASS[row.valueType])}
+                >
+                  {row.value}
+                </span>
+              </div>
+            )
+          })}
     </div>
   )
 }
 
 // forwardRef so GraphMode can grab the natural-size div for PNG capture
 const Graph = forwardRef<HTMLDivElement, { layout: GraphLayout }>(({ layout }, ref) => {
-  const edges: { from: string; to: string }[] = []
+  const edges: { from: string; to: string; edgeLabel: string }[] = []
   for (const node of layout.nodes.values()) {
     for (const edge of node.childEdges) {
-      edges.push({ from: node.id, to: edge.childId })
+      edges.push({ from: node.id, to: edge.childId, edgeLabel: edge.label })
     }
   }
 
@@ -196,7 +208,7 @@ const Graph = forwardRef<HTMLDivElement, { layout: GraphLayout }>(({ layout }, r
         height={layout.totalHeight}
       >
         {edges.map(e => (
-          <EdgePath key={`${e.from}-${e.to}`} from={e.from} to={e.to} nodes={layout.nodes} />
+          <EdgePath key={`${e.from}-${e.to}`} from={e.from} to={e.to} edgeLabel={e.edgeLabel} nodes={layout.nodes} />
         ))}
       </svg>
 
@@ -293,7 +305,10 @@ function buildExportClone(
         for (const edge of node.childEdges) {
           const dst = layout.nodes.get(edge.childId)!
           const x1 = (nodeNewX.get(node.id) ?? 0) + exportNodeWidth
-          const y1 = node.y + node.height / 2
+          const rowIndex = node.rows.findIndex(r => r.key === edge.label)
+          const y1 = rowIndex >= 0
+            ? node.y + NODE_HEADER_H + rowIndex * NODE_ROW_H + NODE_ROW_H / 2
+            : node.y + node.height / 2
           const x2 = nodeNewX.get(dst.id) ?? 0
           const y2 = dst.y + dst.height / 2
           const mid = (x1 + x2) / 2
