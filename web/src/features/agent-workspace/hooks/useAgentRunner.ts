@@ -79,13 +79,13 @@ export function useAgentRunner(
   const indexSetError = useIndexingStore((s) => s.setError)
 
   async function run(task: string) {
-    // Supersede any in-flight run: bump the token and interrupt the engine so the
-    // previous run's queued generation returns, freeing the shared gen-lock. The
-    // old loop sees its token is stale (via isCurrent) and bails — a new task thus
-    // starts from a clean context instead of queuing behind the old one.
+    // Bump the run token so any in-flight iteration sees isCurrent() = false
+    // and bails. stop() already calls interruptGenerate() synchronously before
+    // run() is invoked, so we must NOT call it here again — an extra interrupt
+    // after resetChat() poisons the engine flag and causes the first generation
+    // to return immediately with empty content (finish_reason: 'length', len: 0).
     const myRunId = ++runIdRef.current
     abortRef.current = false
-    interruptGenerate()
     const isCurrent = () => runIdRef.current === myRunId && !abortRef.current
 
     const enabledTools = allToolSchemas.map((t) => t.function.name)
@@ -205,8 +205,26 @@ export function useAgentRunner(
         return
       }
 
-      // No tool calls → the model gave its final text answer. Done.
+      // No tool calls → final answer. But if content is also empty (tool-call JSON
+      // was truncated by max_tokens, or the interrupt was caught mid-generation),
+      // force a text-only retry so the model can synthesize from what it has.
       if (!resp.tool_calls || resp.tool_calls.length === 0) {
+        if (!resp.content?.trim()) {
+          log('empty response (finish_reason:', resp.finish_reason, ') — retrying as text-only')
+          try {
+            const fallback = await callWithTools(
+              modelId,
+              messages,
+              [],
+              { max_tokens: 512, toolChoice: 'none' },
+            )
+            appendStep(sessionId, makeStep('done', fallback.content?.trim() || 'Unable to generate a response. The prompt may be too long for the selected model. Try disabling some tools or using a shorter task.'))
+          } catch {
+            appendStep(sessionId, makeStep('done', 'Unable to generate a response. The prompt may be too long for the selected model. Try disabling some tools.'))
+          }
+          setStatus(sessionId, 'done')
+          return
+        }
         log('done, final content length:', resp.content?.length ?? 0)
         appendStep(sessionId, makeStep('done', resp.content ?? ''))
         setStatus(sessionId, 'done')
@@ -321,15 +339,24 @@ export function useAgentRunner(
     setStatus(sessionId, 'done')
   }
 
-  async function stop() {
+  // abort() — "New Run": interrupts in-flight generation so the gen lock releases
+  // immediately and the next run can start. Safe because the new run's callWithTools
+  // sends "interruptGenerate" → "resetChat" → "create" in that order; the worker
+  // processes them sequentially, and asyncGenerate resets interruptSignal = false
+  // at its very first line — so the interrupt from abort() is always consumed
+  // before new generation begins. (The old "(no response)" bug was a SECOND
+  // interruptGenerate call inside run() that fired AFTER asyncGenerate started —
+  // that call has been removed.)
+  function abort() {
     abortRef.current = true
-    // Interrupt in-flight inference if engine is available
-    try {
-      const { getEngine } = await import('@/lib/llm/engine')
-      const engine = await getEngine(modelId)
-      engine.interruptGenerate()
-    } catch { /* engine may not be loaded */ }
+    interruptGenerate()
   }
 
-  return { run, stop }
+  // stop() — explicit "Stop" button: same behaviour.
+  function stop() {
+    abortRef.current = true
+    interruptGenerate()
+  }
+
+  return { run, stop, abort }
 }

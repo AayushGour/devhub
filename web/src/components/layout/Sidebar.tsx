@@ -1,13 +1,12 @@
 import { NavLink, useMatch } from 'react-router-dom'
 import * as Tooltip from '@radix-ui/react-tooltip'
-import { Home, FolderOpen, Settings, ChevronLeft, ChevronRight, Bot } from 'lucide-react'
+import { Home, Settings, ChevronLeft, ChevronRight, Bot } from 'lucide-react'
 import { useSettingsStore } from '@/store/settingsStore'
 import { cn } from '@/lib/utils'
 import './Sidebar.css'
 
 const navItems = [
   { to: '/', label: 'Home', icon: Home, end: true },
-  { to: '/workspace', label: 'Workspace', icon: FolderOpen, end: false },
   { to: '/tools/agent-workspace', label: 'Agent Workspace', icon: Bot, end: false },
 ]
 

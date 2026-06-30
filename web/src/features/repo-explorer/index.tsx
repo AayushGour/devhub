@@ -1,5 +1,3 @@
-import { useEffect } from 'react'
-import { unloadModel } from '@/lib/llm/loadModel'
 import { useRepoExplorer } from './hooks/useRepoExplorer'
 import RepoInput from './components/RepoInput'
 import RepoSidebar from './components/RepoSidebar'
@@ -26,7 +24,8 @@ export default function RepoExplorerPage() {
 
   const hasRepo = meta !== null && files.length > 0
 
-  useEffect(() => () => { unloadModel() }, [])
+  // The shared GPU engine self-unloads after an idle period (see lib/llm/engine).
+  // We deliberately do NOT unload on unmount: a wiki-gen job can outlive this page.
 
   return (
     <div className="studio-root">

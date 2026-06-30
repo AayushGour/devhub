@@ -82,8 +82,17 @@ export function useAgentTools() {
     } catch {
       return '[ERROR] Invalid JSON arguments'
     }
-    const tool = allTools.find((t) => t.schema.function.name === name)
-    if (!tool) return `[ERROR] Unknown tool: ${name}`
+    // Hermes-2-Pro occasionally wraps the real tool call in a FunctionCall envelope:
+    //   tool name = "FunctionCall", args = { "name": "run_javascript", "code": "..." }
+    // Unwrap silently so the real tool is invoked without the spurious error step.
+    let resolvedName = name
+    if (name === 'FunctionCall' && typeof args.name === 'string') {
+      resolvedName = args.name
+      const { name: _n, ...rest } = args
+      args = rest
+    }
+    const tool = allTools.find((t) => t.schema.function.name === resolvedName)
+    if (!tool) return `[ERROR] Unknown tool: ${resolvedName}`
     try {
       return await tool.execute(args)
     } catch (err) {

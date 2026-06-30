@@ -64,6 +64,14 @@ function ThinkingBlock({ steps, isDone }: { steps: AgentStep[]; isDone?: boolean
               )
             }
 
+            if (step.type === 'think') {
+              return (
+                <div key={step.id} className="px-3 py-1.5 text-[0.65rem] text-on-surface-muted italic border-b border-border last:border-b-0">
+                  {step.content}
+                </div>
+              )
+            }
+
             if (step.type === 'observe') {
               // A tool that threw still returns a result string prefixed [ERROR].
               // Mark it red so a recovered failure reads as "tool errored, agent

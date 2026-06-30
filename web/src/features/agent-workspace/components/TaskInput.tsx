@@ -1,16 +1,15 @@
-import { useState } from 'react'
 import { Play, Square } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Props {
+  task: string
+  onTaskChange: (v: string) => void
   onRun: (task: string) => void
   onStop: () => void
   isRunning: boolean
 }
 
-export default function TaskInput({ onRun, onStop, isRunning }: Props) {
-  const [task, setTask] = useState('')
-
+export default function TaskInput({ task, onTaskChange, onRun, onStop, isRunning }: Props) {
   function handleRun() {
     const trimmed = task.trim()
     if (!trimmed || isRunning) return
@@ -28,7 +27,7 @@ export default function TaskInput({ onRun, onStop, isRunning }: Props) {
     <div className="p-3 border-t border-border bg-surface">
       <textarea
         value={task}
-        onChange={(e) => setTask(e.target.value)}
+        onChange={(e) => onTaskChange(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Describe a task for the agent…"
         rows={3}

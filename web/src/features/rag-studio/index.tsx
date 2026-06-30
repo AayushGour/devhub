@@ -1,5 +1,4 @@
 import { useEffect } from 'react'
-import { unloadModel } from '@/lib/llm/loadModel'
 import { useRagEngine } from './hooks/useRagEngine'
 import RagToolbar from './components/RagToolbar'
 import DropZone from './components/DropZone'
@@ -27,7 +26,8 @@ export default function RagStudioPage() {
     loadPersistedDocs()
   }, [bootEmbedder, loadPersistedDocs])
 
-  useEffect(() => () => { unloadModel() }, [])
+  // The shared GPU engine self-unloads after an idle period (see lib/llm/engine).
+  // We deliberately do NOT unload on unmount: an indexing job can outlive this page.
 
   return (
     <div className="studio-root">

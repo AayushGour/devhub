@@ -27,6 +27,8 @@ interface AgentStoreState {
   createSession: (task: string, modelId: string, enabledTools: string[]) => string
   appendStep: (sessionId: string, step: AgentStep) => void
   setStatus: (sessionId: string, status: AgentSession['status']) => void
+  setActiveSession: (id: string | null) => void
+  deleteSession: (id: string) => void
   clearHistory: () => void
 }
 
@@ -62,6 +64,16 @@ export const useAgentStore = create<AgentStoreState>()((set) => ({
       sessions: s.sessions.map((sess) =>
         sess.id === sessionId ? { ...sess, status } : sess,
       ),
+    })),
+
+  setActiveSession: (id) => set({ activeSessionId: id }),
+
+  deleteSession: (id) =>
+    set((s) => ({
+      sessions: s.sessions.filter((sess) => sess.id !== id),
+      // Drop the selection if the removed session was the active one, so the
+      // inspector falls back to its empty state rather than a dangling id.
+      activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
     })),
 
   clearHistory: () => set({ sessions: [], activeSessionId: null }),

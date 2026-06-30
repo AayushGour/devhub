@@ -3,13 +3,26 @@ import { Copy, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useMcpStore } from '../mcp/mcpStore'
 
-const KNOWN_SERVERS: Record<string, (port: number) => string> = {
-  playwright:  (p) => `npx @modelcontextprotocol/server-playwright --port ${p}`,
-  filesystem:  (p) => `npx @modelcontextprotocol/server-filesystem --port ${p} /path/to/dir`,
-  sqlite:      (p) => `npx mcp-server-sqlite --port ${p} --db-path ./db.sqlite`,
-  fetch:       (p) => `npx @modelcontextprotocol/server-fetch --port ${p}`,
-  puppeteer:   (p) => `npx @modelcontextprotocol/server-puppeteer --port ${p}`,
+// Browsers can't speak stdio, so a web app can only reach an MCP server over
+// HTTP/SSE. The reference MCP servers are stdio-only, so we wrap each in
+// `supergateway`, which spawns the stdio server and exposes it as SSE on a TCP
+// port (served at `/sse`). The map value is the INNER stdio command; the panel
+// wraps it in the gateway below. Package names/runtimes are the real ones:
+// npm servers run via `npx -y`, Python servers via `uvx`.
+const KNOWN_STDIO_SERVERS: Record<string, string> = {
+  filesystem:         'npx -y @modelcontextprotocol/server-filesystem /path/to/dir',
+  memory:             'npx -y @modelcontextprotocol/server-memory',
+  everything:         'npx -y @modelcontextprotocol/server-everything',
+  sequentialthinking: 'npx -y @modelcontextprotocol/server-sequential-thinking',
+  playwright:         'npx -y @playwright/mcp@latest',
+  fetch:              'uvx mcp-server-fetch',
+  git:                'uvx mcp-server-git --repository /path/to/repo',
+  sqlite:             'uvx mcp-server-sqlite --db-path ./db.sqlite',
 }
+
+// Wrap a stdio command in supergateway so it is reachable over SSE on `port`.
+const bridge = (stdioCmd: string, port: number) =>
+  `npx -y supergateway --stdio "${stdioCmd}" --port ${port}`
 
 const INPUT_CLS = 'w-full bg-surface-raised border border-border rounded-lg px-2.5 py-1.5 text-xs text-on-surface outline-none font-[inherit] focus:border-accent transition-colors duration-150'
 
@@ -26,14 +39,16 @@ export default function McpSetupPanel({ onClose }: Props) {
 
   const nameLower = name.trim().toLowerCase()
   const portNum = parseInt(port, 10) || 3001
-  const derivedUrl = `http://localhost:${portNum}/mcp`
+  // supergateway serves SSE at `/sse`; that's the endpoint the client connects to.
+  const derivedUrl = `http://localhost:${portNum}/sse`
   const url = customUrl.trim() || derivedUrl
 
-  const commandFn = KNOWN_SERVERS[nameLower]
-  const command = commandFn
-    ? commandFn(portNum)
-    : `npx ${nameLower || '<name>'}-mcp-server --port ${portNum}`
-  const isGenericCommand = !commandFn && name.trim()
+  const knownStdio = KNOWN_STDIO_SERVERS[nameLower]
+  const command = bridge(
+    knownStdio ?? 'npx -y <your-stdio-mcp-server>',
+    portNum,
+  )
+  const isGenericCommand = !knownStdio && name.trim()
 
   async function handleAdd() {
     const trimmedName = name.trim()
@@ -89,12 +104,16 @@ export default function McpSetupPanel({ onClose }: Props) {
 
       {name.trim() && (
         <div className="space-y-1.5">
-          <p className="text-[0.65rem] text-on-surface-muted">Run this in your terminal:</p>
+          <p className="text-[0.65rem] text-on-surface-muted">
+            Run this in your terminal — it bridges a stdio MCP server to SSE so the browser can connect:
+          </p>
           <div className="bg-surface border border-border rounded px-2.5 py-2 font-mono text-[0.65rem] text-on-surface break-all">
             {command}
           </div>
           {isGenericCommand && (
-            <p className="text-[0.65rem] text-on-surface-muted">Command may differ — check your server's docs.</p>
+            <p className="text-[0.65rem] text-on-surface-muted">
+              Replace <span className="font-mono">&lt;your-stdio-mcp-server&gt;</span> with the command that starts your MCP server.
+            </p>
           )}
           <button
             onClick={handleCopy}
