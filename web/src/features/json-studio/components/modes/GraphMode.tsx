@@ -1,17 +1,70 @@
-import { useMemo, useRef, useState, useCallback, useEffect } from 'react'
-import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
+import { useMemo, useRef, useState, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { ZoomIn, ZoomOut, Maximize2, FileImage, Printer, FileCode } from 'lucide-react'
+import { toPng, toSvg } from 'html-to-image'
 import { cn } from '@/lib/utils'
 import { buildGraph } from '../../utils/graphLayout'
 import type { GNode, GraphLayout } from '../../utils/graphLayout'
 import type { JsonStudioState } from '../../hooks/useJsonStudio'
 
-type Props = Pick<JsonStudioState, 'input'>
+export interface GraphModeHandle {
+  exportPng: () => Promise<void>
+  exportPdf: () => Promise<void>
+  exportHtml: () => Promise<void>
+}
+
+type Props = Pick<JsonStudioState, 'input'> & {
+  onExportPdf?: (html: string, filename: string) => void
+  onExportHtml?: (html: string, filename: string) => void
+}
 
 const VALUE_CLASS: Record<GNode['rows'][0]['valueType'], string> = {
   string: 'text-json-string',
   number: 'text-json-number',
   boolean: 'text-json-bool',
   null: 'text-json-null',
+}
+
+interface TooltipState {
+  text: string
+  anchorRect: DOMRect
+}
+
+function GraphTooltip({ text, anchorRect }: TooltipState) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [flipped, setFlipped] = useState(false)
+
+  useEffect(() => {
+    if (!ref.current) return
+    setFlipped(anchorRect.top - ref.current.offsetHeight - 12 < 0)
+  }, [anchorRect, text])
+
+  const left = anchorRect.left + anchorRect.width / 2
+  const top = flipped ? anchorRect.bottom + 8 : anchorRect.top - 8
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: 'fixed',
+        left,
+        top,
+        transform: flipped ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
+        zIndex: 9999,
+        pointerEvents: 'none',
+      }}
+    >
+      <div className="relative bg-[rgba(0,0,0,0.85)] text-white text-[0.72rem] leading-snug rounded-md px-2 py-[5px] max-w-[18rem] break-all font-mono shadow-lg whitespace-pre-wrap">
+        {text}
+        <div
+          className="absolute left-1/2 w-2 h-2 bg-[rgba(0,0,0,0.85)]"
+          style={{
+            [flipped ? 'top' : 'bottom']: -4,
+            transform: 'translateX(-50%) rotate(45deg)',
+          }}
+        />
+      </div>
+    </div>
+  )
 }
 
 function EdgePath({ from, to, nodes }: { from: string; to: string; nodes: Map<string, GNode> }) {
@@ -66,6 +119,7 @@ function NodeCard({ node }: { node: GNode }) {
         </span>
         {node.edgeLabel && (
           <span
+            data-tooltip={node.edgeLabel}
             className={cn(
               'text-[0.62rem] font-mono font-medium rounded-full px-[0.44rem] py-[0.06rem] shrink-0 truncate max-w-[5rem] border',
               isIndexLabel
@@ -83,14 +137,16 @@ function NodeCard({ node }: { node: GNode }) {
         ? node.rows.map((row, i) => (
             <div
               key={i}
-              data-tooltip={row.rawValue.length > 24 ? row.rawValue : undefined}
               className="flex items-center px-3 gap-2 border-b border-border last:border-0"
               style={{ height: 24 }}
             >
               <span className="text-[0.62rem] font-mono text-accent/60 shrink-0 w-6 text-right">
                 {i}
               </span>
-              <span className={cn('text-[0.69rem] font-mono truncate', VALUE_CLASS[row.valueType])}>
+              <span
+                data-tooltip={row.rawValue}
+                className={cn('text-[0.69rem] font-mono truncate', VALUE_CLASS[row.valueType])}
+              >
                 {row.value}
               </span>
             </div>
@@ -98,14 +154,16 @@ function NodeCard({ node }: { node: GNode }) {
         : node.rows.map((row, i) => (
             <div
               key={i}
-              data-tooltip={row.rawValue.length > 24 ? row.rawValue : undefined}
               className="flex items-center px-3 border-b border-border last:border-0"
               style={{ height: 24 }}
             >
               <span className="text-[0.69rem] text-on-surface-muted shrink-0 mr-2 font-mono max-w-[5.62rem] truncate">
                 {row.key}
               </span>
-              <span className={cn('text-[0.69rem] font-mono ml-auto truncate max-w-[6.25rem]', VALUE_CLASS[row.valueType])}>
+              <span
+                data-tooltip={row.rawValue}
+                className={cn('text-[0.69rem] font-mono ml-auto truncate max-w-25', VALUE_CLASS[row.valueType])}
+              >
                 {row.value}
               </span>
             </div>
@@ -114,7 +172,8 @@ function NodeCard({ node }: { node: GNode }) {
   )
 }
 
-function Graph({ layout }: { layout: GraphLayout }) {
+// forwardRef so GraphMode can grab the natural-size div for PNG capture
+const Graph = forwardRef<HTMLDivElement, { layout: GraphLayout }>(({ layout }, ref) => {
   const edges: { from: string; to: string }[] = []
   for (const node of layout.nodes.values()) {
     for (const edge of node.childEdges) {
@@ -124,6 +183,7 @@ function Graph({ layout }: { layout: GraphLayout }) {
 
   return (
     <div
+      ref={ref}
       className="relative"
       style={{ width: layout.totalWidth, height: layout.totalHeight }}
     >
@@ -142,21 +202,26 @@ function Graph({ layout }: { layout: GraphLayout }) {
       ))}
     </div>
   )
-}
+})
+Graph.displayName = 'Graph'
 
 const ZOOM_STEP = 1.25
-const ZOOM_MIN = 0.25
-const ZOOM_MAX = 2.0
+const ZOOM_MIN = 0.01
+const ZOOM_MAX = 4.0
 
-export default function GraphMode({ input }: Props) {
+const GraphMode = forwardRef<GraphModeHandle, Props>(function GraphMode({ input, onExportPdf, onExportHtml }, ref) {
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
   const dragStart = useRef({ mouseX: 0, mouseY: 0, panX: 0, panY: 0 })
   const viewportRef = useRef<HTMLDivElement>(null)
-  // Keep pan in a ref so the wheel handler always sees current value without re-registering
+  const graphRef = useRef<HTMLDivElement>(null)
   const panRef = useRef({ x: 0, y: 0 })
   const zoomRef = useRef(1)
+  const fitZoomRef = useRef(1)
+  const fitPanRef = useRef({ x: 0, y: 0 })
 
   const { layout, error } = useMemo(() => {
     if (!input.trim()) return { layout: null, error: null }
@@ -168,22 +233,157 @@ export default function GraphMode({ input }: Props) {
     }
   }, [input])
 
+  // Compute + apply fit zoom whenever layout changes
+  useEffect(() => {
+    if (!layout || !viewportRef.current) return
+    const { clientWidth: vpW, clientHeight: vpH } = viewportRef.current
+    const padding = 48
+    const fit = Math.min(
+      (vpW - padding) / layout.totalWidth,
+      (vpH - padding) / layout.totalHeight,
+      1,
+    )
+    const px = (vpW - layout.totalWidth * fit) / 2
+    const py = (vpH - layout.totalHeight * fit) / 2
+    fitZoomRef.current = fit
+    fitPanRef.current = { x: px, y: py }
+    setZoom(fit)
+    setPan({ x: px, y: py })
+    zoomRef.current = fit
+    panRef.current = { x: px, y: py }
+  }, [layout])
+
   const zoomIn = () => setZoom(z => Math.min(ZOOM_MAX, z * ZOOM_STEP))
   const zoomOut = () => setZoom(z => Math.max(ZOOM_MIN, z / ZOOM_STEP))
-  const zoomReset = () => { setZoom(1); setPan({ x: 0, y: 0 }) }
+  const zoomReset = () => {
+    const fz = fitZoomRef.current
+    const fp = fitPanRef.current
+    setZoom(fz)
+    setPan(fp)
+    zoomRef.current = fz
+    panRef.current = fp
+  }
 
   // Keep refs in sync so wheel handler reads latest without re-binding
   useEffect(() => { zoomRef.current = zoom }, [zoom])
   useEffect(() => { panRef.current = pan }, [pan])
 
-  // Wheel/trackpad: passive:false required to call preventDefault
+  // Canvas max texture size — exceeding this causes silent downsampling (blur).
+  // Keep output within 8192px on the longest side; still 2× for small graphs.
+  const captureRatio = useCallback((el: HTMLDivElement) => {
+    const MAX = 8192
+    return Math.min(2, MAX / el.offsetWidth, MAX / el.offsetHeight)
+  }, [])
+
+  // PNG export — captures graph at natural (unscaled) size
+  const exportPng = useCallback(async () => {
+    if (!graphRef.current || isExporting) return
+    setIsExporting(true)
+    try {
+      const dataUrl = await toPng(graphRef.current, { pixelRatio: captureRatio(graphRef.current) })
+      // Convert to blob so download works in both browser and VSCode webview
+      const blob = await fetch(dataUrl).then(r => r.blob())
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'graph.png'
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setIsExporting(false)
+    }
+  }, [isExporting, captureRatio])
+
+  // PDF export — embeds the PNG in a minimal HTML page and opens a print dialog
+  const exportPdf = useCallback(async () => {
+    if (!graphRef.current || isExporting) return
+    setIsExporting(true)
+    try {
+      const dataUrl = await toPng(graphRef.current, { pixelRatio: captureRatio(graphRef.current) })
+      const html =
+        `<!DOCTYPE html><html><head><title>Graph</title><style>` +
+        `*{margin:0;padding:0;box-sizing:border-box;}` +
+        `body{display:flex;justify-content:center;align-items:flex-start;padding:20mm;}` +
+        `img{max-width:100%;height:auto;}` +
+        `@page{margin:20mm;size:auto;}` +
+        `</style></head><body><img src="${dataUrl}"/></body></html>`
+      if (onExportPdf) {
+        onExportPdf(html, 'graph')
+      } else {
+        const win = window.open('', '_blank')
+        if (!win) return
+        win.document.write(html)
+        win.document.close()
+        win.focus()
+        setTimeout(() => win.print(), 250)
+      }
+    } finally {
+      setIsExporting(false)
+    }
+  }, [isExporting, onExportPdf, captureRatio])
+
+  // HTML export — uses SVG (vector, infinite resolution) wrapped in a standalone HTML page
+  const exportHtml = useCallback(async () => {
+    if (!graphRef.current || isExporting) return
+    setIsExporting(true)
+    try {
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()
+      const svgDataUrl = await toSvg(graphRef.current, { backgroundColor: bg || 'transparent' })
+      const svgStr = decodeURIComponent(svgDataUrl.split(',').slice(1).join(','))
+      const html =
+        `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Graph</title><style>` +
+        `*{margin:0;padding:0;box-sizing:border-box;}` +
+        `body{background:${bg || '#fff'};display:flex;justify-content:center;padding:24px;min-height:100vh;}` +
+        `svg{max-width:100%;height:auto;}` +
+        `</style></head><body>${svgStr}</body></html>`
+      if (onExportHtml) {
+        onExportHtml(html, 'graph')
+      } else {
+        const blob = new Blob([html], { type: 'text/html' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = 'graph.html'; a.click()
+        URL.revokeObjectURL(url)
+      }
+    } finally {
+      setIsExporting(false)
+    }
+  }, [isExporting, onExportHtml])
+
+  // Tooltip: event delegation on viewport
+  useEffect(() => {
+    const el = viewportRef.current
+    if (!el) return
+
+    const onOver = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement).closest('[data-tooltip]') as HTMLElement | null
+      if (!target) return
+      setTooltip({ text: target.getAttribute('data-tooltip')!, anchorRect: target.getBoundingClientRect() })
+    }
+
+    const onOut = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement).closest('[data-tooltip]') as HTMLElement | null
+      if (!target) return
+      const related = e.relatedTarget as HTMLElement | null
+      if (!related || !target.contains(related)) setTooltip(null)
+    }
+
+    el.addEventListener('mouseover', onOver)
+    el.addEventListener('mouseout', onOut)
+    return () => {
+      el.removeEventListener('mouseover', onOver)
+      el.removeEventListener('mouseout', onOut)
+    }
+  }, [])
+
+  // Wheel/trackpad
   useEffect(() => {
     const el = viewportRef.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
+      setTooltip(null)
       if (e.ctrlKey) {
-        // Pinch-to-zoom (trackpad) or ctrl+scroll
         const rect = el.getBoundingClientRect()
         const cx = e.clientX - rect.left
         const cy = e.clientY - rect.top
@@ -201,7 +401,6 @@ export default function GraphMode({ input }: Props) {
         setZoom(newZoom)
         setPan(newPan)
       } else {
-        // Two-finger scroll → pan
         const curPan = panRef.current
         const newPan = { x: curPan.x - e.deltaX, y: curPan.y - e.deltaY }
         panRef.current = newPan
@@ -214,6 +413,7 @@ export default function GraphMode({ input }: Props) {
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
+    setTooltip(null)
     dragStart.current = { mouseX: e.clientX, mouseY: e.clientY, panX: pan.x, panY: pan.y }
     setIsDragging(true)
   }, [pan])
@@ -234,6 +434,8 @@ export default function GraphMode({ input }: Props) {
       window.removeEventListener('mouseup', onUp)
     }
   }, [isDragging])
+
+  useImperativeHandle(ref, () => ({ exportPng, exportPdf, exportHtml }), [exportPng, exportPdf, exportHtml])
 
   return (
     <div className="flex-1 relative flex flex-col min-h-0 min-w-0 bg-surface">
@@ -272,12 +474,15 @@ export default function GraphMode({ input }: Props) {
               willChange: 'transform',
             }}
           >
-            <Graph layout={layout} />
+            <Graph ref={graphRef} layout={layout} />
           </div>
         )}
       </div>
 
-      {/* Zoom controls */}
+      {/* Tooltip */}
+      {tooltip && <GraphTooltip text={tooltip.text} anchorRect={tooltip.anchorRect} />}
+
+      {/* Zoom + export controls */}
       {layout && (
         <div className="absolute bottom-4 right-4 flex items-center gap-px bg-surface border border-border rounded-[0.56rem] shadow-[0_0.12rem_0.5rem_rgba(0,0,0,0.12)] overflow-hidden">
           <ZoomBtn onClick={zoomOut} title="Zoom out">
@@ -296,6 +501,16 @@ export default function GraphMode({ input }: Props) {
           <ZoomBtn onClick={zoomReset} title="Reset zoom">
             <Maximize2 size={12} />
           </ZoomBtn>
+          <div className="w-px h-4 bg-border mx-0.5" />
+          <ZoomBtn onClick={exportPng} title="Export PNG" disabled={isExporting}>
+            <FileImage size={13} />
+          </ZoomBtn>
+          <ZoomBtn onClick={exportPdf} title="Export PDF" disabled={isExporting}>
+            <Printer size={13} />
+          </ZoomBtn>
+          <ZoomBtn onClick={exportHtml} title="Export HTML" disabled={isExporting}>
+            <FileCode size={13} />
+          </ZoomBtn>
         </div>
       )}
 
@@ -307,14 +522,26 @@ export default function GraphMode({ input }: Props) {
       )}
     </div>
   )
-}
+})
+GraphMode.displayName = 'GraphMode'
 
-function ZoomBtn({ children, onClick, title }: { children: React.ReactNode; onClick: () => void; title: string }) {
+export default GraphMode
+
+function ZoomBtn({ children, onClick, title, disabled }: {
+  children: React.ReactNode
+  onClick: () => void
+  title: string
+  disabled?: boolean
+}) {
   return (
     <button
       onClick={onClick}
       title={title}
-      className="flex items-center justify-center w-[1.88rem] py-[0.38rem] bg-transparent border-none cursor-pointer text-on-surface-muted hover:bg-surface-hover hover:text-on-surface transition-colors duration-150"
+      disabled={disabled}
+      className={cn(
+        'flex items-center justify-center w-[1.88rem] py-[0.38rem] bg-transparent border-none cursor-pointer text-on-surface-muted transition-colors duration-150',
+        disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-surface-hover hover:text-on-surface',
+      )}
     >
       {children}
     </button>
