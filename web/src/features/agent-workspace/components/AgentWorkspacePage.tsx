@@ -28,12 +28,13 @@ export default function AgentWorkspacePage() {
   useEffect(() => () => { unloadModel() }, [])
 
   function handleNewRun() {
+    stop()
     useAgentStore.setState({ activeSessionId: null })
   }
 
   return (
     <div className="studio-root">
-      <AgentToolbar modelId={modelId} onModelChange={setModelId} onNewRun={handleNewRun} />
+      <AgentToolbar modelId={modelId} onModelChange={setModelId} onNewRun={handleNewRun} isRunning={isRunning} />
       <div className="flex flex-1 min-h-0">
         <aside className="w-72 shrink-0 border-r border-border overflow-y-auto flex flex-col">
           <div className="flex-1 overflow-y-auto">

@@ -295,30 +295,37 @@ export async function callWithTools(
   tools: ToolDefinition[],
   opts: { max_tokens?: number; resetFirst?: boolean; toolChoice?: 'auto' | 'none' } = {},
 ): Promise<LLMResponse> {
-  const engine = await getEngine(modelId)
-  // resetChat() clears the KV cache and flushes any system message cached from
-  // prior RAG/chat calls. Only do it on the FIRST call per agent run — repeated
-  // resets on every iteration exhaust WebGPU memory and crash the instance.
-  if (opts.resetFirst) await engine.resetChat()
-  // tool_choice 'none' forces a plain text answer (no tool calls) — used to break
-  // weak models out of an endless tool-calling loop and make them synthesize.
-  const toolChoice = opts.toolChoice ?? 'auto'
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const reply = await (engine.chat.completions.create as any)({
-    messages: [...messages], // shallow copy — web-llm mutates via unshift(system) for Hermes-2-Pro
-    // Omit tools entirely when forcing 'none' — some web-llm builds re-inject the
-    // tool grammar whenever `tools` is present, ignoring tool_choice.
-    ...(toolChoice === 'none' ? {} : { tools, tool_choice: 'auto' }),
-    max_tokens: opts.max_tokens ?? 1024,
-    temperature: 0.1,
-  })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const msg = reply.choices[0].message as any
-  // finish_reason is unreliable across model builds — check tool_calls directly
-  const tool_calls: ToolCall[] | null = msg.tool_calls?.length ? msg.tool_calls : null
-  return {
-    content: msg.content ?? null,
-    tool_calls,
-    finish_reason: tool_calls ? 'tool_calls' : (reply.choices[0].finish_reason ?? 'stop'),
+  // Serialise through the gen lock so agent tool calls don't race against RAG's
+  // streamComplete (they now share a single WebGPU engine after llm.ts was updated).
+  const release = await acquireGenLock()
+  try {
+    const engine = await getEngine(modelId)
+    // resetChat() clears the KV cache and flushes any system message cached from
+    // prior RAG/chat calls. Only do it on the FIRST call per agent run — repeated
+    // resets on every iteration exhaust WebGPU memory and crash the instance.
+    if (opts.resetFirst) await engine.resetChat()
+    // tool_choice 'none' forces a plain text answer (no tool calls) — used to break
+    // weak models out of an endless tool-calling loop and make them synthesize.
+    const toolChoice = opts.toolChoice ?? 'auto'
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reply = await (engine.chat.completions.create as any)({
+      messages: [...messages], // shallow copy — web-llm mutates via unshift(system) for Hermes-2-Pro
+      // Omit tools entirely when forcing 'none' — some web-llm builds re-inject the
+      // tool grammar whenever `tools` is present, ignoring tool_choice.
+      ...(toolChoice === 'none' ? {} : { tools, tool_choice: 'auto' }),
+      max_tokens: opts.max_tokens ?? 1024,
+      temperature: 0.1,
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const msg = reply.choices[0].message as any
+    // finish_reason is unreliable across model builds — check tool_calls directly
+    const tool_calls: ToolCall[] | null = msg.tool_calls?.length ? msg.tool_calls : null
+    return {
+      content: msg.content ?? null,
+      tool_calls,
+      finish_reason: tool_calls ? 'tool_calls' : (reply.choices[0].finish_reason ?? 'stop'),
+    }
+  } finally {
+    release()
   }
 }

@@ -5,6 +5,7 @@ import { ensureModelLoaded } from '@/lib/llm/loadModel'
 import { getModelById } from '@/lib/llm/models'
 import { useAgentStore, type AgentStep } from '../utils/agentStore'
 import { getAllMemoryKeys } from '../tools/memory'
+import { useIndexingStore } from '@/store/indexingStore'
 
 const log = (...args: unknown[]) => console.log('[agent]', ...args)
 
@@ -72,6 +73,10 @@ export function useAgentRunner(
   const abortRef = useRef(false)
   const runIdRef = useRef(0)
   const { createSession, appendStep, setStatus } = useAgentStore()
+  const indexStart = useIndexingStore((s) => s.start)
+  const indexSetProgress = useIndexingStore((s) => s.setProgress)
+  const indexFinish = useIndexingStore((s) => s.finish)
+  const indexSetError = useIndexingStore((s) => s.setError)
 
   async function run(task: string) {
     // Supersede any in-flight run: bump the token and interrupt the engine so the
@@ -87,13 +92,17 @@ export function useAgentRunner(
     const sessionId = createSession(task, modelId, enabledTools)
     log('session started', { sessionId, modelId, tools: enabledTools, task })
 
-    // Load the model through the shared loader so a fresh download surfaces in the
-    // common IndexingFooter (same UX as RAG) instead of silently blocking.
+    // Load the model and surface download progress in the shared IndexingFooter
+    // so the user sees the same progress bar as RAG model loads.
+    const modelEntry = getModelById(modelId)
+    indexStart(`Loading ${modelEntry?.label ?? modelId}`, () => {})
     try {
-      await ensureModelLoaded(modelId)
+      await ensureModelLoaded(modelId, (pct, _text) => indexSetProgress(pct, 100))
+      indexFinish()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error('[agent] model load failed:', err)
+      indexSetError('Agent model load failed')
       appendStep(sessionId, makeStep('error', `Model load failed: ${msg}`))
       setStatus(sessionId, 'error')
       return
@@ -103,7 +112,6 @@ export function useAgentRunner(
       return
     }
 
-    const modelEntry = getModelById(modelId)
     const contextWindow = modelEntry?.contextWindow ?? 4096
     const threshold = contextWindow * 0.6
 

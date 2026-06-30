@@ -16,12 +16,22 @@ async function getPyodide(): Promise<any> {
   return pyodide
 }
 
+function prepareCode(code: string): string {
+  // `return` at top-level is a SyntaxError in exec(). Wrap the code in an
+  // async function so `return` works — runPythonAsync supports top-level await.
+  if (/^[ \t]*return\b/m.test(code)) {
+    const indented = code.split('\n').map(l => '    ' + l).join('\n')
+    return `async def __devhub_run__():\n${indented}\nawait __devhub_run__()`
+  }
+  return code
+}
+
 self.onmessage = async ({ data: { id, code } }: MessageEvent<{ id: string; code: string }>) => {
   const stdout: string[] = []
   try {
     const py = await getPyodide()
     py.setStdout({ batched: (s: string) => stdout.push(s) })
-    const result = await py.runPythonAsync(code)
+    const result = await py.runPythonAsync(prepareCode(code))
     self.postMessage({ id, ok: true, result: String(result ?? ''), stdout })
   } catch (err: any) {
     // Always post back — a thrown/rejected handler would leave the caller hanging
