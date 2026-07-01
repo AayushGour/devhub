@@ -1,4 +1,4 @@
-import { complete } from './llm'
+import { complete } from '@/lib/llm/engine'
 import { queryExpansionPrompt, contextAwareExpansionPrompt } from './prompts'
 import { createLogger } from '@/lib/logger'
 

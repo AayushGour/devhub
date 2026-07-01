@@ -14,11 +14,6 @@ let _pipe: FeatureExtractionPipeline | null = null
 
 export type EmbedProgressCallback = (pct: number, file: string) => void
 
-export async function unloadEmbedder(): Promise<void> {
-  if (_pipe) await (_pipe as unknown as { dispose: () => Promise<void> }).dispose()
-  _pipe = null
-}
-
 export async function getEmbedder(onProgress?: EmbedProgressCallback): Promise<FeatureExtractionPipeline> {
   if (_pipe) return _pipe
 

@@ -1,9 +1,12 @@
 import { isWebGpuAvailable } from './webgpu'
 import { getModelsForEnvironment, DEFAULT_MODEL_ID, DEFAULT_CPU_MODEL_ID } from './models'
-import * as gpu from './llmGpu'
+// GPU operations go through the shared engine singleton so that RAG studio,
+// agent workspace, and the settings store all share one WebGPU worker and one
+// set of model weights instead of each spinning up their own.
+import * as gpu from '@/lib/llm/engine'
 import * as cpu from './llmCpu'
 
-export type { LLMProgressCallback, ChatMessage } from './llmGpu'
+export type { LLMProgressCallback, ChatMessage } from '@/lib/llm/engine'
 
 let _gpuAvailable: boolean | null = null
 

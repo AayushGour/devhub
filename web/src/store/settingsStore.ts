@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Theme } from '@/types'
-import { DEFAULT_MODEL_ID } from '@/features/rag-studio/utils/models'
-import { resetEngine } from '@/features/rag-studio/utils/llm'
+import { DEFAULT_MODEL_ID, getModelById } from '@/lib/llm/models'
+import { resetEngine, getEngine } from '@/lib/llm/engine'
+import { useIndexingStore } from './indexingStore'
 
 interface SettingsState {
   theme: Theme
@@ -31,6 +32,12 @@ export const useSettingsStore = create<SettingsState>()(
       setRagLlmModel: (modelId) => {
         resetEngine()
         set({ ragLlmModel: modelId })
+        const modelEntry = getModelById(modelId)
+        const { start, setProgress, finish, setError } = useIndexingStore.getState()
+        start(`Loading ${modelEntry?.label ?? modelId}`, () => {})
+        getEngine(modelId, (pct) => setProgress(pct, 100))
+          .then(() => finish())
+          .catch(() => setError('Model download failed'))
       },
     }),
     {
