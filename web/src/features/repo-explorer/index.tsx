@@ -24,6 +24,9 @@ export default function RepoExplorerPage() {
 
   const hasRepo = meta !== null && files.length > 0
 
+  // The shared GPU engine self-unloads after an idle period (see lib/llm/engine).
+  // We deliberately do NOT unload on unmount: a wiki-gen job can outlive this page.
+
   return (
     <div className="studio-root">
       {!hasRepo ? (

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import { Send, Square } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type ChatMessage, type RetrievalStage } from '../hooks/useRagEngine'
-import { getModelById } from '../utils/models'
+import { getModelById } from '@/lib/llm/models'
 import { parseMarkdown, postProcessPreview } from '@/features/markdown-studio/utils/parser'
 
 const STAGE_LABELS: Record<RetrievalStage, string> = {

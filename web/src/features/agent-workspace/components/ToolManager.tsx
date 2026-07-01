@@ -1,0 +1,168 @@
+import { useState } from 'react'
+import { Plus, Loader2, CheckCircle, XCircle, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { useMcpStore } from '../mcp/mcpStore'
+import McpSetupPanel from './McpSetupPanel'
+
+interface BuiltInRow {
+  name: string
+  description: string
+  enabled: boolean
+  onToggle: () => void
+  setupNote?: string
+}
+
+function BuiltInToolRow({ name, description, enabled, onToggle, setupNote }: BuiltInRow) {
+  return (
+    <div className="flex items-start gap-3 py-1.5">
+      <button
+        onClick={onToggle}
+        className={cn(
+          'mt-0.5 flex items-center w-8 h-[1.1rem] rounded-full shrink-0 px-[0.15rem] transition-colors duration-150',
+          enabled ? 'bg-accent justify-end' : 'bg-border justify-start',
+        )}
+        aria-label={enabled ? 'Disable' : 'Enable'}
+      >
+        <span className="w-[0.8rem] h-[0.8rem] rounded-full bg-white transition-all duration-150" />
+      </button>
+      <div className="min-w-0">
+        <p className="text-xs text-on-surface font-medium leading-tight">{name}</p>
+        <p className="text-[0.65rem] text-on-surface-muted leading-tight mt-0.5">{description}</p>
+        {setupNote && (
+          <p className="text-[0.65rem] text-on-surface-muted/70 leading-tight mt-0.5 italic">{setupNote}</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+interface Props {
+  builtInTools: Array<{
+    schema: { function: { name: string; description: string } }
+    setupNote?: string
+  }>
+  enabledBuiltIns: Set<string>
+  onToggle: (name: string) => void
+}
+
+export default function ToolManager({ builtInTools, enabledBuiltIns, onToggle }: Props) {
+  const [showAdd, setShowAdd] = useState(false)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const servers = useMcpStore((s) => s.servers)
+  const removeServer = useMcpStore((s) => s.removeServer)
+  const reconnect = useMcpStore((s) => s.reconnect)
+
+  const toggleExpanded = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+
+  return (
+    <div className="p-3 space-y-4">
+      <div>
+        <p className="text-[0.65rem] font-semibold text-on-surface-muted uppercase tracking-wider mb-2">
+          Built-in Tools
+        </p>
+        <div className="divide-y divide-border">
+          {builtInTools.map((t) => (
+            <BuiltInToolRow
+              key={t.schema.function.name}
+              name={t.schema.function.name}
+              description={t.schema.function.description}
+              enabled={enabledBuiltIns.has(t.schema.function.name)}
+              onToggle={() => onToggle(t.schema.function.name)}
+              setupNote={t.setupNote}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-[0.65rem] font-semibold text-on-surface-muted uppercase tracking-wider mb-2">
+          MCP Servers
+        </p>
+
+        {servers.length > 0 && (
+          <div className="space-y-2 mb-2">
+            {servers.map((srv) => (
+              <div key={srv.id} className="flex items-start gap-2 py-1.5">
+                <div className="mt-0.5 shrink-0">
+                  {srv.status === 'connected' && <CheckCircle size={13} className="text-green-400" />}
+                  {(srv.status === 'connecting' || srv.status === 'disconnected') && (
+                    <Loader2 size={13} className="text-on-surface-muted animate-spin" />
+                  )}
+                  {srv.status === 'error' && <XCircle size={13} className="text-red-400" />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-on-surface font-medium leading-tight">{srv.name}</p>
+                  <p className="text-[0.65rem] text-on-surface-muted leading-tight">{srv.url}</p>
+                  {srv.status === 'connected' && srv.tools.length > 0 && (
+                    <>
+                      <button
+                        onClick={() => toggleExpanded(srv.id)}
+                        className="flex items-center gap-0.5 text-[0.65rem] text-on-surface-muted/70 hover:text-on-surface leading-tight transition-colors duration-150"
+                      >
+                        {expanded.has(srv.id) ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+                        {srv.tools.length} tool{srv.tools.length !== 1 ? 's' : ''} available
+                      </button>
+                      {expanded.has(srv.id) && (
+                        <ul className="mt-1 space-y-1 border-l border-border pl-2">
+                          {srv.tools.map((t) => (
+                            <li key={t.function.name}>
+                              <p className="text-[0.65rem] text-on-surface font-mono leading-tight">{t.function.name}</p>
+                              {t.function.description && (
+                                <p className="text-[0.6rem] text-on-surface-muted/70 leading-tight">{t.function.description}</p>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  )}
+                  {(srv.status === 'connecting' || srv.status === 'disconnected') && (
+                    <p className="text-[0.65rem] text-on-surface-muted/70 leading-tight">Waiting for server…</p>
+                  )}
+                  {srv.status === 'error' && srv.errorMsg && (
+                    <p className="text-[0.65rem] text-red-400/70 leading-tight truncate">{srv.errorMsg}</p>
+                  )}
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  {srv.status !== 'connected' && (
+                    <button
+                      onClick={() => reconnect(srv.id)}
+                      title="Retry"
+                      className="p-1 rounded text-on-surface-muted hover:text-on-surface hover:bg-surface-hover transition-colors duration-150"
+                    >
+                      <RefreshCw size={11} />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => removeServer(srv.id)}
+                    title="Remove"
+                    className="p-1 rounded text-on-surface-muted hover:text-red-400 hover:bg-surface-hover transition-colors duration-150"
+                  >
+                    <XCircle size={11} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showAdd ? (
+          <McpSetupPanel onClose={() => setShowAdd(false)} />
+        ) : (
+          <button
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-1.5 text-xs text-on-surface-muted hover:text-on-surface transition-colors duration-150"
+          >
+            <Plus size={12} />
+            Add MCP server
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}

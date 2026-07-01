@@ -396,6 +396,27 @@ main.devhub-main {
   font-size: 1em;
 }
 
+/* ── Agent workspace AI bubble markdown overrides ── */
+.agent-ai-bubble .markdown-preview {
+  max-width: none;
+  background-color: transparent;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--on-surface);
+  --md-text: var(--on-surface);
+  --md-text-muted: var(--on-surface-muted);
+  --md-border: var(--border);
+  --md-accent: var(--accent);
+  --md-code-bg: var(--surface-raised);
+  --md-blockquote-bg: var(--surface-raised);
+  --md-blockquote-border: var(--accent);
+}
+.agent-ai-bubble .markdown-preview > :first-child { margin-top: 0; }
+.agent-ai-bubble .markdown-preview > :last-child { margin-bottom: 0; }
+.agent-ai-bubble .markdown-preview h1 { font-size: 1.25em; }
+.agent-ai-bubble .markdown-preview h2 { font-size: 1.1em; }
+.agent-ai-bubble .markdown-preview h3 { font-size: 1em; }
+
 /* ── Mermaid ──────────────────────────────────────── */
 .mermaid-block {
   margin: 1.5em 0;

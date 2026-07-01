@@ -24,6 +24,7 @@ function getWorker(): Worker {
 }
 
 export function resetEngine(): void {
+  cancelIdleUnload()
   // Terminate the worker too — it holds the GPU device + model weights in VRAM.
   if (_worker) {
     _worker.terminate()
@@ -34,12 +35,58 @@ export function resetEngine(): void {
   _loadedModelId = null
 }
 
+export async function unloadEngine(): Promise<void> {
+  cancelIdleUnload()
+  if (_engine) await _engine.unload()
+  _engine = null
+  _loadingPromise = null
+  _loadedModelId = null
+}
+
+// --- Idle lifecycle -------------------------------------------------------
+// The GPU engine is a process-wide singleton shared by RAG studio, the agent
+// workspace, repo-explorer wiki gen and the settings preload. Tying its unload
+// to component unmount was wrong: navigating away from a page would yank the
+// model out from under a still-running background index/wiki job that lives
+// above any single page. Instead the engine self-manages:
+//   • Any in-flight generation (every one goes through acquireGenLock) pins the
+//     engine — the idle timer is cancelled while _activeGen > 0.
+//   • Each generation and each getEngine() call "touches" the engine, resetting
+//     an idle countdown. After IDLE_UNLOAD_MS with no activity AND no active
+//     generation, the engine unloads on its own and frees VRAM.
+// A background job keeps the engine warm simply by doing its work; no page or
+// job needs to acquire/release anything.
+const IDLE_UNLOAD_MS = 5 * 60 * 1000
+let _activeGen = 0
+let _idleTimer: ReturnType<typeof setTimeout> | null = null
+
+function cancelIdleUnload(): void {
+  if (_idleTimer) {
+    clearTimeout(_idleTimer)
+    _idleTimer = null
+  }
+}
+
+// Restart the idle countdown. No-op when nothing is loaded (nothing to free).
+function touchEngine(): void {
+  cancelIdleUnload()
+  if (!_engine && !_loadingPromise) return
+  _idleTimer = setTimeout(() => {
+    _idleTimer = null
+    // A generation is running — defer; releaseGenLock will touch again when done.
+    if (_activeGen > 0) { touchEngine(); return }
+    log.log('engine idle — unloading to free VRAM')
+    void unloadEngine()
+  }, IDLE_UNLOAD_MS)
+}
+
 // Stop the in-flight generation on the loaded engine. web-llm ends the active
 // stream/completion; any `streamComplete` loop awaiting it then finishes.
 export function interruptGenerate(): void {
   log.log('interruptGenerate')
   _engine?.interruptGenerate()
 }
+
 
 // ---------------------------------------------------------------------------
 // Diagnostics — all routed through the shared logger, so they obey the global
@@ -161,7 +208,7 @@ async function loadEngineWithRetry(modelId: string, onProgress?: LLMProgressCall
 
 export async function getEngine(modelId: string, onProgress?: LLMProgressCallback): Promise<webllm.WebWorkerMLCEngine> {
   if (!modelId) throw new Error('getEngine called with empty modelId — check settingsStore ragLlmModel')
-  if (_engine && _loadedModelId === modelId) return _engine
+  if (_engine && _loadedModelId === modelId) { touchEngine(); return _engine }
   if (_loadingPromise && _loadedModelId === modelId) return _loadingPromise
 
   // Model changed — drop old engine
@@ -183,6 +230,7 @@ export async function getEngine(modelId: string, onProgress?: LLMProgressCallbac
     .then((engine) => {
       _engine = engine
       _loadingPromise = null
+      touchEngine()
       return engine
     })
     .catch((err) => {
@@ -211,7 +259,22 @@ function acquireGenLock(): Promise<() => void> {
   const next = new Promise<void>((r) => (release = r))
   const prev = _genLock
   _genLock = prev.then(() => next)
-  return prev.then(() => release)
+  return prev.then(() => {
+    // Generation is now starting — pin the engine so the idle timer can't unload
+    // it mid-stream. Guard against double-release (callers put release() in a
+    // finally that may run more than once on some error paths).
+    _activeGen++
+    cancelIdleUnload()
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      release()
+      _activeGen = Math.max(0, _activeGen - 1)
+      // Last generation finished → restart the idle countdown.
+      if (_activeGen === 0) touchEngine()
+    }
+  })
 }
 
 export async function complete(
@@ -222,6 +285,7 @@ export async function complete(
   const release = await acquireGenLock()
   try {
     const engine = await getEngine(modelId)
+
     const reply = await engine.chat.completions.create({
       messages,
       max_tokens: opts.max_tokens ?? 512,
@@ -241,6 +305,7 @@ export async function* streamComplete(
   const release = await acquireGenLock()
   try {
     const engine = await getEngine(modelId)
+
     const stream = await engine.chat.completions.create({
       messages,
       max_tokens: opts.max_tokens ?? 512,
@@ -283,28 +348,52 @@ export async function callWithTools(
   modelId: string,
   messages: AgentMessage[],
   tools: ToolDefinition[],
-  opts: { max_tokens?: number; resetFirst?: boolean } = {},
+  opts: { max_tokens?: number; resetFirst?: boolean; toolChoice?: 'auto' | 'none' } = {},
 ): Promise<LLMResponse> {
-  const engine = await getEngine(modelId)
-  // resetChat() clears the KV cache and flushes any system message cached from
-  // prior RAG/chat calls. Only do it on the FIRST call per agent run — repeated
-  // resets on every iteration exhaust WebGPU memory and crash the instance.
-  if (opts.resetFirst) await engine.resetChat()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const reply = await (engine.chat.completions.create as any)({
-    messages: [...messages], // shallow copy — web-llm mutates via unshift(system) for Hermes-2-Pro
-    tools,
-    tool_choice: 'auto',
-    max_tokens: opts.max_tokens ?? 1024,
-    temperature: 0.1,
-  })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const msg = reply.choices[0].message as any
-  // finish_reason is unreliable across model builds — check tool_calls directly
-  const tool_calls: ToolCall[] | null = msg.tool_calls?.length ? msg.tool_calls : null
-  return {
-    content: msg.content ?? null,
-    tool_calls,
-    finish_reason: tool_calls ? 'tool_calls' : (reply.choices[0].finish_reason ?? 'stop'),
+  // Serialise through the gen lock so agent tool calls don't race against RAG's
+  // streamComplete (they now share a single WebGPU engine after llm.ts was updated).
+  const release = await acquireGenLock()
+  try {
+    const engine = await getEngine(modelId)
+    // resetChat() clears the KV cache and flushes any system message cached from
+    // prior RAG/chat calls. Only do it on the FIRST call per agent run — repeated
+    // resets on every iteration exhaust WebGPU memory and crash the instance.
+    if (opts.resetFirst) await engine.resetChat()
+    // tool_choice 'none' forces a plain text answer (no tool calls) — used to break
+    // weak models out of an endless tool-calling loop and make them synthesize.
+    const toolChoice = opts.toolChoice ?? 'auto'
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const reply = await (engine.chat.completions.create as any)({
+        messages: [...messages], // shallow copy — web-llm mutates via unshift(system) for Hermes-2-Pro
+        // Omit tools entirely when forcing 'none' — some web-llm builds re-inject the
+        // tool grammar whenever `tools` is present, ignoring tool_choice.
+        ...(toolChoice === 'none' ? {} : { tools, tool_choice: 'auto' }),
+        max_tokens: opts.max_tokens ?? 1024,
+        temperature: 0.1,
+      })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const msg = reply.choices[0].message as any
+      // finish_reason is unreliable across model builds — check tool_calls directly
+      const tool_calls: ToolCall[] | null = msg.tool_calls?.length ? msg.tool_calls : null
+      return {
+        content: msg.content ?? null,
+        tool_calls,
+        finish_reason: tool_calls ? 'tool_calls' : (reply.choices[0].finish_reason ?? 'stop'),
+      }
+    } catch (err) {
+      // web-llm throws ToolCallOutputParseError when the tool-call JSON is truncated
+      // (hit max_tokens mid-JSON). Convert to an empty LLMResponse so the agent loop
+      // can handle it with a text-only fallback rather than surfacing an ugly error.
+      const name = err instanceof Error ? err.name : ''
+      const msg = err instanceof Error ? err.message : ''
+      if (name === 'ToolCallOutputParseError' || msg.includes('ToolCallOutputParseError')) {
+        log.warn('ToolCallOutputParseError — tool-call JSON truncated, returning empty response')
+        return { content: null, tool_calls: null, finish_reason: 'length' }
+      }
+      throw err
+    }
+  } finally {
+    release()
   }
 }
