@@ -3,6 +3,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { getWebviewHtml, colorThemeName } from './html'
+import { inlineAssets, injectNavInterceptor } from './htmlPreprocess'
 
 type Tool = 'markdown' | 'html' | 'diagram' | 'json' | 'svg' | 'token' | 'yaml' | 'xml' | 'toml'
 
@@ -32,6 +33,21 @@ function toolForDocument(doc: vscode.TextDocument): Tool | undefined {
   if (lang === 'yaml' || name.endsWith('.yaml') || name.endsWith('.yml')) return 'yaml'
   if (lang === 'xml' || name.endsWith('.xml')) return 'xml'
   if (lang === 'toml' || name.endsWith('.toml')) return 'toml'
+  return undefined
+}
+
+/** Maps a file path to a DevHub preview tool (for navigation where no TextDocument exists). */
+function toolForPath(fsPath: string): Tool | undefined {
+  const name = fsPath.toLowerCase()
+  if (name.endsWith('.md') || name.endsWith('.mdc')) return 'markdown'
+  if (name.endsWith('.html') || name.endsWith('.htm')) return 'html'
+  if (name.endsWith('.mmd') || name.endsWith('.mermaid')) return 'diagram'
+  if (name.endsWith('.jsonl') || name.endsWith('.ndjson')) return 'json'
+  if (name.endsWith('.json') || name.endsWith('.jsonc')) return 'json'
+  if (name.endsWith('.svg')) return 'svg'
+  if (name.endsWith('.yaml') || name.endsWith('.yml')) return 'yaml'
+  if (name.endsWith('.xml')) return 'xml'
+  if (name.endsWith('.toml')) return 'toml'
   return undefined
 }
 
@@ -99,11 +115,20 @@ export class PreviewManager {
 
     const post = () => {
       const d = findDoc(preview.docUri)
+      let text = d?.getText() ?? ''
+      if (!text) {
+        try { text = fs.readFileSync(preview.docUri.fsPath, 'utf8') } catch { text = '' }
+      }
+      const currentTool = preview.tool
+      if (currentTool === 'html') {
+        text = inlineAssets(text, path.dirname(preview.docUri.fsPath))
+        text = injectNavInterceptor(text)
+      }
       panel.webview.postMessage({
         type: 'update',
-        tool,
-        format,
-        text: d?.getText() ?? '',
+        tool: currentTool,
+        format: d ? previewFormat(d) : undefined,
+        text,
         languageId: d?.languageId ?? '',
         colorTheme: colorThemeName(),
       })
@@ -113,6 +138,33 @@ export class PreviewManager {
     preview.disposables.push(
       panel.webview.onDidReceiveMessage((msg) => {
         if (msg?.type === 'ready') post()
+        if (msg?.type === 'navigate') {
+          const href = msg.href as string
+          if (href.match(/^https?:/)) {
+            vscode.env.openExternal(vscode.Uri.parse(href))
+            return
+          }
+          // Strip fragment for file resolution; ignore query strings
+          const hrefPath = href.split('?')[0].split('#')[0]
+          if (!hrefPath) return
+          const currentDir = path.dirname(preview.docUri.fsPath)
+          const newFsPath = path.resolve(currentDir, hrefPath)
+          const newTool = toolForPath(newFsPath)
+          if (!newTool) {
+            vscode.window.showErrorMessage(`DevHub: no preview for ${path.basename(newFsPath)}`)
+            return
+          }
+          preview.docUri = vscode.Uri.file(newFsPath)
+          preview.tool = newTool
+          const basename = path.basename(newFsPath)
+          const label = newTool === 'html' ? 'HTML' : newTool[0].toUpperCase() + newTool.slice(1)
+          panel.title = `${label}: ${basename}`
+          post()
+        }
+        if (msg?.type === 'openExternal') {
+          const href = msg.href as string
+          vscode.env.openExternal(vscode.Uri.parse(href))
+        }
         if (msg?.type === 'exportPDF') {
           const html = msg.html as string
           const filename = (msg.filename as string | undefined) ?? 'document'

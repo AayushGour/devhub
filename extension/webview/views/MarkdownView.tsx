@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileText, FileCode, Printer } from 'lucide-react'
 import PreviewPane from '@/features/markdown-studio/components/PreviewPane'
 import { createDefaultSettings } from '@/features/markdown-studio/utils/styleBuilder'
 import { THEMES } from '@/features/markdown-studio/utils/themes'
 import { exportToHTML, exportToMarkdown, defaultExportConfig, getExportHTML } from '@/features/markdown-studio/utils/pdfExport'
 import { exportPDFViaHost } from '../utils/print'
+import { getVsCodeApi } from '../vscode-api'
 
 const DEFAULT_STYLE = createDefaultSettings()
 const SELECT_CLS =
@@ -87,6 +88,23 @@ export default function MarkdownView({ text }: { text: string; colorTheme: 'ligh
   const previewRef = useRef<HTMLDivElement>(null)
   const [themeId, setThemeId] = useState<string>(MATCH_VSCODE)
 
+  const handleLinkClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const anchor = (e.target as HTMLElement).closest('a[href]') as HTMLAnchorElement | null
+    if (!anchor) return
+    const href = anchor.getAttribute('href')
+    if (!href) return
+    e.preventDefault()
+    if (href.match(/^https?:/)) {
+      getVsCodeApi().postMessage({ type: 'openExternal', href })
+    } else if (href.startsWith('#')) {
+      const id = href.slice(1)
+      const el = document.getElementById(id) ?? document.querySelector(`[name="${id}"]`)
+      el?.scrollIntoView({ behavior: 'smooth' })
+    } else {
+      getVsCodeApi().postMessage({ type: 'navigate', href })
+    }
+  }, [])
+
   // Toggle the VS Code colour override stylesheet based on the selection.
   useEffect(() => {
     let el = document.getElementById(VSCODE_STYLE_ID) as HTMLStyleElement | null
@@ -150,7 +168,7 @@ export default function MarkdownView({ text }: { text: string; colorTheme: 'ligh
           </button>
         </div>
       </div>
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0" onClick={handleLinkClick}>
         <PreviewPane
           content={text}
           themeId={renderThemeId}
