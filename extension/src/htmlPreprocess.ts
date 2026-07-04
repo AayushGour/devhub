@@ -11,9 +11,17 @@ const NAV_INTERCEPTOR = `<script>
     if (!a) return;
     var href = a.getAttribute('href');
     if (!href) return;
-    if (href.startsWith('#')) return; // anchor — allow default scroll
+    // Always preventDefault — srcdoc iframes in Electron lose their content on
+    // ANY navigation, including #anchor fragments, resulting in a blank page.
     e.preventDefault();
     e.stopPropagation();
+    if (href.startsWith('#')) {
+      // Scroll manually within the iframe instead of navigating.
+      var id = href.slice(1);
+      var target = document.getElementById(id) || document.querySelector('[name="' + id + '"]');
+      if (target) target.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
     if (href.match(/^https?:/)) {
       window.parent.postMessage({ type: 'devhub-external', href: href }, '*');
     } else if (isRelative(href)) {
