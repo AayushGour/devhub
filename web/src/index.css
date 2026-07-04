@@ -424,6 +424,7 @@ main.devhub-main {
 }
 .mermaid-block svg {
   display: block;
+  overflow: visible;
   min-width: max-content;
   margin: 0 auto;
   height: auto;

@@ -141,6 +141,22 @@ function assignPos(
   }
 }
 
+export function recomputeExportLayout(
+  layout: GraphLayout,
+  exportHeights: Map<string, number>
+): GraphLayout {
+  const nodes = new Map<string, GNode>()
+  for (const [id, node] of layout.nodes) {
+    nodes.set(id, { ...node, height: exportHeights.get(id) ?? node.height })
+  }
+  const cache = new Map<string, number>()
+  const rootH = subtreeH(layout.rootId, nodes, cache)
+  assignPos(layout.rootId, nodes, cache, 0, CANVAS_PAD, CANVAS_PAD + rootH)
+  let maxY = 0
+  for (const n of nodes.values()) maxY = Math.max(maxY, n.y + n.height)
+  return { nodes, rootId: layout.rootId, totalWidth: layout.totalWidth, totalHeight: maxY + CANVAS_PAD }
+}
+
 export function buildGraph(value: unknown): GraphLayout {
   _seq = 0
   const nodes = new Map<string, GNode>()
