@@ -4,6 +4,9 @@ export interface ModelEntry {
   family: string
   sizeLabel: string
   vramMB: number
+  // Emits chain-of-thought (<think> blocks). When true the Settings reasoning
+  // toggle is active for this model; enable_thinking:false suppresses the CoT.
+  supportsReasoning?: boolean
 }
 
 export function formatVram(mb: number): string {
@@ -13,15 +16,15 @@ export function formatVram(mb: number): string {
 
 export const CURATED_MODELS: ModelEntry[] = [
   // Qwen3
-  { id: 'Qwen3-0.6B-q4f16_1-MLC',  label: 'Qwen3 0.6B',  family: 'Qwen3',    sizeLabel: '0.6B', vramMB: 1403  },
-  { id: 'Qwen3-1.7B-q4f16_1-MLC',  label: 'Qwen3 1.7B',  family: 'Qwen3',    sizeLabel: '1.7B', vramMB: 2037  },
-  { id: 'Qwen3-4B-q4f16_1-MLC',    label: 'Qwen3 4B',    family: 'Qwen3',    sizeLabel: '4B',   vramMB: 3432  },
-  { id: 'Qwen3-8B-q4f16_1-MLC',    label: 'Qwen3 8B',    family: 'Qwen3',    sizeLabel: '8B',   vramMB: 5696  },
+  { id: 'Qwen3-0.6B-q4f16_1-MLC',  label: 'Qwen3 0.6B',  family: 'Qwen3',    sizeLabel: '0.6B', vramMB: 1403, supportsReasoning: true  },
+  { id: 'Qwen3-1.7B-q4f16_1-MLC',  label: 'Qwen3 1.7B',  family: 'Qwen3',    sizeLabel: '1.7B', vramMB: 2037, supportsReasoning: true  },
+  { id: 'Qwen3-4B-q4f16_1-MLC',    label: 'Qwen3 4B',    family: 'Qwen3',    sizeLabel: '4B',   vramMB: 3432, supportsReasoning: true  },
+  { id: 'Qwen3-8B-q4f16_1-MLC',    label: 'Qwen3 8B',    family: 'Qwen3',    sizeLabel: '8B',   vramMB: 5696, supportsReasoning: true  },
   // Qwen3.5
-  { id: 'Qwen3.5-0.8B-q4f16_1-MLC', label: 'Qwen3.5 0.8B', family: 'Qwen3.5', sizeLabel: '0.8B', vramMB: 1629 },
-  { id: 'Qwen3.5-2B-q4f16_1-MLC',   label: 'Qwen3.5 2B',   family: 'Qwen3.5', sizeLabel: '2B',   vramMB: 2245 },
-  { id: 'Qwen3.5-4B-q4f16_1-MLC',   label: 'Qwen3.5 4B',   family: 'Qwen3.5', sizeLabel: '4B',   vramMB: 3868 },
-  { id: 'Qwen3.5-9B-q4f16_1-MLC',   label: 'Qwen3.5 9B',   family: 'Qwen3.5', sizeLabel: '9B',   vramMB: 6433 },
+  { id: 'Qwen3.5-0.8B-q4f16_1-MLC', label: 'Qwen3.5 0.8B', family: 'Qwen3.5', sizeLabel: '0.8B', vramMB: 1629, supportsReasoning: true },
+  { id: 'Qwen3.5-2B-q4f16_1-MLC',   label: 'Qwen3.5 2B',   family: 'Qwen3.5', sizeLabel: '2B',   vramMB: 2245, supportsReasoning: true },
+  { id: 'Qwen3.5-4B-q4f16_1-MLC',   label: 'Qwen3.5 4B',   family: 'Qwen3.5', sizeLabel: '4B',   vramMB: 3868, supportsReasoning: true },
+  { id: 'Qwen3.5-9B-q4f16_1-MLC',   label: 'Qwen3.5 9B',   family: 'Qwen3.5', sizeLabel: '9B',   vramMB: 6433, supportsReasoning: true },
   // Llama 3.x
   { id: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', label: 'Llama 3.2 1B', family: 'Llama', sizeLabel: '1B', vramMB: 879  },
   { id: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', label: 'Llama 3.2 3B', family: 'Llama', sizeLabel: '3B', vramMB: 2264 },
@@ -38,8 +41,8 @@ export const CURATED_MODELS: ModelEntry[] = [
   { id: 'gemma-2-2b-it-q4f16_1-MLC',  label: 'Gemma 2 2B', family: 'Gemma', sizeLabel: '2B', vramMB: 1895 },
   { id: 'gemma-2-9b-it-q4f16_1-MLC',  label: 'Gemma 2 9B', family: 'Gemma', sizeLabel: '9B', vramMB: 6422 },
   // DeepSeek R1 Distill
-  { id: 'DeepSeek-R1-Distill-Qwen-7B-q4f16_1-MLC',  label: 'DeepSeek R1 Qwen 7B',  family: 'DeepSeek', sizeLabel: '7B', vramMB: 5107 },
-  { id: 'DeepSeek-R1-Distill-Llama-8B-q4f16_1-MLC', label: 'DeepSeek R1 Llama 8B', family: 'DeepSeek', sizeLabel: '8B', vramMB: 5001 },
+  { id: 'DeepSeek-R1-Distill-Qwen-7B-q4f16_1-MLC',  label: 'DeepSeek R1 Qwen 7B',  family: 'DeepSeek', sizeLabel: '7B', vramMB: 5107, supportsReasoning: true },
+  { id: 'DeepSeek-R1-Distill-Llama-8B-q4f16_1-MLC', label: 'DeepSeek R1 Llama 8B', family: 'DeepSeek', sizeLabel: '8B', vramMB: 5001, supportsReasoning: true },
   // Mistral / Ministral
   { id: 'Mistral-7B-Instruct-v0.3-q4f16_1-MLC',          label: 'Mistral 7B v0.3', family: 'Mistral', sizeLabel: '7B', vramMB: 4573 },
   { id: 'Ministral-3-3B-Instruct-2512-BF16-q4f16_1-MLC', label: 'Ministral 3B',    family: 'Mistral', sizeLabel: '3B', vramMB: 2864 },
@@ -57,6 +60,14 @@ export const MODEL_FAMILIES = [...new Set(CURATED_MODELS.map((m) => m.family))]
 
 export function getModelById(id: string): ModelEntry | undefined {
   return CURATED_MODELS.find((m) => m.id === id)
+}
+
+// Does the model emit chain-of-thought that the reasoning toggle can control?
+// Checks both GPU and CPU catalogs. CPU models are all non-reasoning today.
+export function modelSupportsReasoning(id: string): boolean {
+  const entry =
+    CURATED_MODELS.find((m) => m.id === id) ?? CPU_MODELS.find((m) => m.id === id)
+  return entry?.supportsReasoning ?? false
 }
 
 // 0.5B is ~5x faster than 1.7B on WASM (decode is memory-bound, so smaller weights

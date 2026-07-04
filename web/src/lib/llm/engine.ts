@@ -87,6 +87,17 @@ export function interruptGenerate(): void {
   _engine?.interruptGenerate()
 }
 
+// --- Reasoning (chain-of-thought) toggle ----------------------------------
+// web-llm reads `extra_body.enable_thinking` per request. false prefills an
+// empty "<think>\n\n</think>" block so a reasoning model skips its CoT. It is a
+// no-op for models that don't emit <think>, so we forward it unconditionally.
+// Settings owns the user's choice and pushes it here via setThinking().
+let _enableThinking = true
+
+export function setThinking(on: boolean): void {
+  _enableThinking = on
+}
+
 
 // ---------------------------------------------------------------------------
 // Diagnostics — all routed through the shared logger, so they obey the global
@@ -290,6 +301,7 @@ export async function complete(
       messages,
       max_tokens: opts.max_tokens ?? 512,
       temperature: opts.temperature ?? 0.1,
+      extra_body: { enable_thinking: _enableThinking },
     })
     return reply.choices[0]?.message?.content ?? ''
   } finally {
@@ -311,6 +323,7 @@ export async function* streamComplete(
       max_tokens: opts.max_tokens ?? 512,
       temperature: 0.1,
       stream: true,
+      extra_body: { enable_thinking: _enableThinking },
     })
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta?.content ?? ''
@@ -371,6 +384,7 @@ export async function callWithTools(
         ...(toolChoice === 'none' ? {} : { tools, tool_choice: 'auto' }),
         max_tokens: opts.max_tokens ?? 1024,
         temperature: 0.1,
+        extra_body: { enable_thinking: _enableThinking },
       })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const msg = reply.choices[0].message as any
