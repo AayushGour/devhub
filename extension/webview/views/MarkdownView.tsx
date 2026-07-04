@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FileText, FileCode, Printer } from 'lucide-react'
 import PreviewPane from '@/features/markdown-studio/components/PreviewPane'
 import { createDefaultSettings } from '@/features/markdown-studio/utils/styleBuilder'
@@ -86,23 +86,33 @@ const MATCH_VSCODE = 'vscode'
 
 export default function MarkdownView({ text }: { text: string; colorTheme: 'light' | 'dark' }) {
   const previewRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const [themeId, setThemeId] = useState<string>(MATCH_VSCODE)
 
-  const handleLinkClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const anchor = (e.target as HTMLElement).closest('a[href]') as HTMLAnchorElement | null
-    if (!anchor) return
-    const href = anchor.getAttribute('href')
-    if (!href) return
-    e.preventDefault()
-    if (href.match(/^https?:/)) {
-      getVsCodeApi().postMessage({ type: 'openExternal', href })
-    } else if (href.startsWith('#')) {
-      const id = href.slice(1)
-      const el = document.getElementById(id) ?? document.querySelector(`[name="${id}"]`)
-      el?.scrollIntoView({ behavior: 'smooth' })
-    } else {
-      getVsCodeApi().postMessage({ type: 'navigate', href })
+  // Use a native capture-phase listener so we intercept before VS Code's webview
+  // link handler, which opens all <a> clicks in the system browser natively.
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const handler = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement).closest('a[href]') as HTMLAnchorElement | null
+      if (!anchor) return
+      const href = anchor.getAttribute('href')
+      if (!href) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (href.match(/^https?:/)) {
+        getVsCodeApi().postMessage({ type: 'openExternal', href })
+      } else if (href.startsWith('#')) {
+        const id = href.slice(1)
+        const el = document.getElementById(id) ?? document.querySelector(`[name="${id}"]`)
+        el?.scrollIntoView({ behavior: 'smooth' })
+      } else {
+        getVsCodeApi().postMessage({ type: 'navigate', href })
+      }
     }
+    container.addEventListener('click', handler, { capture: true })
+    return () => container.removeEventListener('click', handler, { capture: true })
   }, [])
 
   // Toggle the VS Code colour override stylesheet based on the selection.
@@ -168,7 +178,7 @@ export default function MarkdownView({ text }: { text: string; colorTheme: 'ligh
           </button>
         </div>
       </div>
-      <div className="flex flex-1 min-h-0" onClick={handleLinkClick}>
+      <div ref={containerRef} className="flex flex-1 min-h-0">
         <PreviewPane
           content={text}
           themeId={renderThemeId}
