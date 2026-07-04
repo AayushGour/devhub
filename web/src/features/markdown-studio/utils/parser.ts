@@ -74,8 +74,15 @@ function slugify(text: string): string {
 export function postProcessPreview(container: HTMLElement): { hasMermaid: boolean } {
   let hasMermaid = false
 
+  // Assign heading IDs, deduplicating with a numeric suffix when the same slug
+  // appears more than once (e.g. multiple "## Introduction" headings).
+  const slugCount = new Map<string, number>()
   container.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6').forEach((h) => {
-    if (!h.id) h.id = slugify(h.textContent ?? '')
+    if (h.id) return
+    const base = slugify(h.textContent ?? '')
+    const count = slugCount.get(base) ?? 0
+    slugCount.set(base, count + 1)
+    h.id = count === 0 ? base : `${base}-${count}`
   })
 
   container.querySelectorAll<HTMLElement>('pre > code').forEach((codeEl) => {

@@ -4,7 +4,7 @@ import * as path from 'node:path'
 const NAV_INTERCEPTOR = `<script>
 (function () {
   function isRelative(href) {
-    return href && !href.match(/^(https?:|ftp:|mailto:|data:|#|\\/\\/)/);
+    return href && !href.match(/^(https?:|ftp:|mailto:|data:|#|\\/\\/|\\/)/);
   }
   document.addEventListener('click', function (e) {
     var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
@@ -31,11 +31,14 @@ const NAV_INTERCEPTOR = `<script>
 })();
 </script>`
 
-/** Inject link-interception script into <head> (or prepend if no <head>). */
+/** Inject link-interception script after <head> (or prepend if no <head>). */
 export function injectNavInterceptor(html: string): string {
-  if (html.includes('<head>')) return html.replace('<head>', `<head>${NAV_INTERCEPTOR}`)
-  if (html.includes('<Head>')) return html.replace('<Head>', `<Head>${NAV_INTERCEPTOR}`)
-  // No <head> tag — prepend script before everything else
+  // Match <head> with any attributes, case-insensitive — plain string match missed <head lang="en"> / <HEAD>
+  const m = html.match(/<head(\s[^>]*)?\s*>/i)
+  if (m?.index !== undefined) {
+    const insertAt = m.index + m[0].length
+    return html.slice(0, insertAt) + NAV_INTERCEPTOR + html.slice(insertAt)
+  }
   return NAV_INTERCEPTOR + html
 }
 
@@ -44,12 +47,13 @@ export function inlineAssets(html: string, baseDir: string): string {
   // <link rel="stylesheet" href="...">
   html = html.replace(
     /<link([^>]*)\brel=["']stylesheet["']([^>]*)>/gi,
-    (match, before, after) => {
-      const href = extractAttr(match, 'href')
+    (match) => {
+      const href = extractHref(match)
       if (!href || !isRelativePath(href)) return match
-      const css = readFile(path.resolve(baseDir, href))
+      const absPath = path.resolve(baseDir, href)
+      const css = readFile(absPath)
       if (css === null) return match
-      return `<style>${inlineCssImports(css, path.dirname(path.resolve(baseDir, href)))}</style>`
+      return `<style>${inlineCssImports(css, path.dirname(absPath), new Set([absPath]))}</style>`
     },
   )
 
@@ -58,7 +62,8 @@ export function inlineAssets(html: string, baseDir: string): string {
     if (!isRelativePath(src)) return match
     const js = readFile(path.resolve(baseDir, src))
     if (js === null) return match
-    return `<script${before}${after}>${js}</script>`
+    // Escape </script> inside inlined content so the HTML parser doesn't close the tag early
+    return `<script${before}${after}>${js.replace(/<\/script>/gi, '<\\/script>')}</script>`
   })
 
   // <img src="...">
@@ -84,28 +89,37 @@ export function inlineAssets(html: string, baseDir: string): string {
   return html
 }
 
-/** Recursively inline @import rules inside a CSS string. */
-function inlineCssImports(css: string, baseDir: string): string {
+/**
+ * Recursively inline @import rules inside a CSS string.
+ * `visited` tracks absolute paths already inlined to break circular imports.
+ */
+function inlineCssImports(css: string, baseDir: string, visited: Set<string>): string {
   return css.replace(
     /@import\s+(?:url\()?["']([^"')]+)["']\)?[^;]*;/g,
     (match, href) => {
       if (!isRelativePath(href)) return match
       const absPath = path.resolve(baseDir, href)
+      if (visited.has(absPath)) return '' // break circular import
+      visited.add(absPath)
       const imported = readFile(absPath)
       if (imported === null) return match
-      return inlineCssImports(imported, path.dirname(absPath))
+      return inlineCssImports(imported, path.dirname(absPath), visited)
     },
   )
 }
 
-function extractAttr(tag: string, attr: string): string | null {
-  const re = new RegExp(`\\b${attr}=["']([^"']+)["']`, 'i')
-  const m = tag.match(re)
+const HREF_RE = /\bhref=["']([^"']+)["']/i
+
+function extractHref(tag: string): string | null {
+  const m = tag.match(HREF_RE)
   return m ? m[1] : null
 }
 
 function isRelativePath(href: string): boolean {
-  return !href.match(/^(https?:|ftp:|mailto:|data:|#|\/\/)/)
+  // Block absolute paths (single /), protocol-relative (//), and named schemes.
+  // path.resolve(base, '/absolute') ignores base entirely — must be excluded here.
+  if (href.startsWith('/')) return false
+  return !href.match(/^(https?:|ftp:|mailto:|data:|#)/)
 }
 
 function readFile(absPath: string): string | null {
