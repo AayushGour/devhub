@@ -7,6 +7,7 @@ import {
   CPU_MODEL_FAMILIES,
   MODEL_FAMILIES,
   getModelsForEnvironment,
+  modelSupportsReasoning,
   formatVram,
 } from '@/features/rag-studio/utils/models'
 import { isWebGpuAvailable } from '@/features/rag-studio/utils/webgpu'
@@ -38,6 +39,7 @@ export default function SettingsPage() {
     theme, setTheme,
     contextAwareExpansion, setContextAwareExpansion,
     ragLlmModel, setRagLlmModel,
+    reasoningEnabled, setReasoningEnabled,
   } = useSettingsStore()
 
   const [activeTab, setActiveTab] = useState<Tab>('models')
@@ -99,6 +101,7 @@ export default function SettingsPage() {
   const models = gpuAvailable === null ? [] : getModelsForEnvironment(gpuAvailable)
   const families = gpuAvailable === false ? CPU_MODEL_FAMILIES : MODEL_FAMILIES
   const isCpu = gpuAvailable === false
+  const activeModelReasons = modelSupportsReasoning(ragLlmModel)
 
   return (
     <div className="max-w-[42.5rem] mx-auto py-8 px-10">
@@ -205,6 +208,44 @@ export default function SettingsPage() {
                 })}
               </div>
             )}
+          </section>
+
+          {/* Reasoning toggle — controls chain-of-thought for models that emit it */}
+          <section className="bg-surface border border-border rounded-[1.12rem] p-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[1.06rem] font-semibold tracking-[-0.02rem] text-on-surface mb-1">
+                  Reasoning
+                </p>
+                <p className="text-xs text-on-surface-muted leading-relaxed">
+                  {activeModelReasons
+                    ? 'Let the model think step-by-step before answering. More accurate on hard prompts, but slower. Turn off for quick replies.'
+                    : 'The selected model doesn’t produce reasoning. Pick a Qwen3, Qwen3.5, or DeepSeek R1 model to use this.'}
+                </p>
+              </div>
+              <button
+                role="switch"
+                aria-checked={activeModelReasons && reasoningEnabled}
+                aria-label="Toggle reasoning"
+                disabled={!activeModelReasons}
+                onClick={() => setReasoningEnabled(!reasoningEnabled)}
+                className={cn(
+                  'relative shrink-0 w-11 h-6 rounded-full border-none transition-colors duration-200',
+                  !activeModelReasons
+                    ? 'bg-border opacity-40 cursor-not-allowed'
+                    : reasoningEnabled
+                      ? 'bg-accent cursor-pointer'
+                      : 'bg-border cursor-pointer',
+                )}
+              >
+                <span
+                  className={cn(
+                    'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-[left] duration-200',
+                    activeModelReasons && reasoningEnabled ? 'left-[1.38rem]' : 'left-0.5',
+                  )}
+                />
+              </button>
+            </div>
           </section>
         </div>
       )}
