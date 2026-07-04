@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import { FileText, FileCode, Printer } from 'lucide-react'
+import * as ContextMenu from '@radix-ui/react-context-menu'
+import { ArrowLeft, ArrowRight, FileText, FileCode, Printer } from 'lucide-react'
 import PreviewPane from '@/features/markdown-studio/components/PreviewPane'
 import { createDefaultSettings } from '@/features/markdown-studio/utils/styleBuilder'
 import { THEMES } from '@/features/markdown-studio/utils/themes'
 import { exportToHTML, exportToMarkdown, defaultExportConfig, getExportHTML } from '@/features/markdown-studio/utils/pdfExport'
 import { exportPDFViaHost } from '../utils/print'
+import { getVsCodeApi } from '../vscode-api'
+import HistoryMenuItems from './HistoryMenuItems'
+import type { HistoryEntry } from '../PreviewHost'
 
 const DEFAULT_STYLE = createDefaultSettings()
 const SELECT_CLS =
   'bg-surface-raised border border-border rounded-md px-2 py-1 text-xs text-on-surface outline-none font-[inherit] cursor-pointer'
+const ICON_BTN_CLS =
+  'p-1.5 rounded-md text-on-surface-muted hover:bg-surface-hover hover:text-on-surface transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed'
 
 // "Match VS Code" — overrides the markdown paper (which the shared component
 // forces light) so it follows the editor's own theme colors.
@@ -83,9 +89,48 @@ const VSCODE_OVERRIDE = `
 
 const MATCH_VSCODE = 'vscode'
 
-export default function MarkdownView({ text }: { text: string; colorTheme: 'light' | 'dark' }) {
+export default function MarkdownView({
+  text,
+  history,
+  historyIndex,
+}: {
+  text: string
+  colorTheme: 'light' | 'dark'
+  history: HistoryEntry[]
+  historyIndex: number
+}) {
   const previewRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const [themeId, setThemeId] = useState<string>(MATCH_VSCODE)
+  const canGoBack = historyIndex > 0
+  const canGoForward = historyIndex < history.length - 1
+  const jump = (index: number) => getVsCodeApi().postMessage({ type: 'historyJump', index })
+
+  // Use a native capture-phase listener so we intercept before VS Code's webview
+  // link handler, which opens all <a> clicks in the system browser natively.
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const handler = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement).closest('a[href]') as HTMLAnchorElement | null
+      if (!anchor) return
+      const href = anchor.getAttribute('href')
+      if (!href) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (href.match(/^https?:/)) {
+        getVsCodeApi().postMessage({ type: 'openExternal', href })
+      } else if (href.startsWith('#')) {
+        const id = href.slice(1)
+        const el = document.getElementById(id) ?? document.querySelector(`[name="${id}"]`)
+        el?.scrollIntoView({ behavior: 'smooth' })
+      } else {
+        getVsCodeApi().postMessage({ type: 'navigate', href })
+      }
+    }
+    container.addEventListener('click', handler, { capture: true })
+    return () => container.removeEventListener('click', handler, { capture: true })
+  }, [])
 
   // Toggle the VS Code colour override stylesheet based on the selection.
   useEffect(() => {
@@ -115,6 +160,38 @@ export default function MarkdownView({ text }: { text: string; colorTheme: 'ligh
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="preview-toolbar shrink-0 flex items-center gap-2 px-3 h-9 border-b border-border bg-surface-raised">
+        <div className="flex items-center gap-0.5">
+          <ContextMenu.Root>
+            <ContextMenu.Trigger asChild>
+              <button
+                data-tooltip="Back"
+                disabled={!canGoBack}
+                onClick={() => jump(historyIndex - 1)}
+                className={ICON_BTN_CLS}
+              >
+                <ArrowLeft size={14} />
+              </button>
+            </ContextMenu.Trigger>
+            <ContextMenu.Portal>
+              <HistoryMenuItems history={history} historyIndex={historyIndex} direction="back" onJump={jump} />
+            </ContextMenu.Portal>
+          </ContextMenu.Root>
+          <ContextMenu.Root>
+            <ContextMenu.Trigger asChild>
+              <button
+                data-tooltip="Forward"
+                disabled={!canGoForward}
+                onClick={() => jump(historyIndex + 1)}
+                className={ICON_BTN_CLS}
+              >
+                <ArrowRight size={14} />
+              </button>
+            </ContextMenu.Trigger>
+            <ContextMenu.Portal>
+              <HistoryMenuItems history={history} historyIndex={historyIndex} direction="forward" onJump={jump} />
+            </ContextMenu.Portal>
+          </ContextMenu.Root>
+        </div>
         <span className="text-[0.69rem] font-semibold text-on-surface-muted uppercase tracking-[0.06em]">
           Theme
         </span>
@@ -130,27 +207,27 @@ export default function MarkdownView({ text }: { text: string; colorTheme: 'ligh
           <button
             data-tooltip="Export Markdown (.md)"
             onClick={() => exportToMarkdown(text, 'document')}
-            className="p-1.5 rounded-md text-on-surface-muted hover:bg-surface-hover hover:text-on-surface transition-colors duration-150"
+            className={ICON_BTN_CLS}
           >
             <FileText size={14} />
           </button>
           <button
             data-tooltip="Export HTML"
             onClick={() => previewRef.current && exportToHTML(previewRef.current, buildExportConfig())}
-            className="p-1.5 rounded-md text-on-surface-muted hover:bg-surface-hover hover:text-on-surface transition-colors duration-150"
+            className={ICON_BTN_CLS}
           >
             <FileCode size={14} />
           </button>
           <button
             data-tooltip="Export PDF"
             onClick={() => previewRef.current && exportPDFViaHost(getExportHTML(previewRef.current, buildExportConfig()), 'document')}
-            className="p-1.5 rounded-md text-on-surface-muted hover:bg-surface-hover hover:text-on-surface transition-colors duration-150"
+            className={ICON_BTN_CLS}
           >
             <Printer size={14} />
           </button>
         </div>
       </div>
-      <div className="flex flex-1 min-h-0">
+      <div ref={containerRef} className="flex flex-1 min-h-0">
         <PreviewPane
           content={text}
           themeId={renderThemeId}

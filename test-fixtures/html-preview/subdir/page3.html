@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>HTML Preview — Test Page 3 (subdir)</title>
+  <!-- CSS in same subdirectory -->
+  <link rel="stylesheet" href="page3.css">
+</head>
+<body>
+  <h1>Page 3 — Subdirectory</h1>
+  <span class="badge">subdir/page3.html</span>
+
+  <div class="card" style="background:#fef9c3;border-color:#fde047;">
+    Navigated into a subdirectory! ✓<br>
+    Amber/yellow theme = <code>subdir/page3.css</code> loaded with correct relative path ✓
+  </div>
+
+  <nav>
+    <!-- relative path going UP a directory -->
+    <a href="../index.html">← Back to Page 1</a>
+    <a href="../page2.html">← Back to Page 2</a>
+  </nav>
+
+  <div class="card">
+    <p>
+      This page lives in <code>subdir/</code>. Navigating back to Page 1 uses
+      <code>../index.html</code> — verifying that <code>path.resolve</code> handles
+      parent-directory traversal correctly.
+    </p>
+  </div>
+</body>
+</html>
