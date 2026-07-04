@@ -7,14 +7,20 @@ import { inlineAssets, injectNavInterceptor } from './htmlPreprocess'
 
 type Tool = 'markdown' | 'html' | 'diagram' | 'json' | 'svg' | 'token' | 'yaml' | 'xml' | 'toml'
 
+interface HistoryEntry {
+  uri: vscode.Uri
+  tool: Tool
+}
+
 interface Preview {
   panel: vscode.WebviewPanel
-  docUri: vscode.Uri
-  tool: Tool
   /** Current map key — updated on in-place navigation so dispose deletes the right entry. */
   key: string
   /** Navigation sandbox: resolved once at open time, never widened. */
   boundary: string
+  /** Browser-style navigation stack. history[historyIndex] is the current page. */
+  history: HistoryEntry[]
+  historyIndex: number
   disposables: vscode.Disposable[]
 }
 
@@ -79,6 +85,26 @@ export class PreviewManager {
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
+  private current(preview: Preview): HistoryEntry {
+    return preview.history[preview.historyIndex]
+  }
+
+  /**
+   * Commits `preview.history[preview.historyIndex]` as the live page: re-keys
+   * the map entry (the f42528c fix — dispose/lookup must use the live key,
+   * not the one captured at open time), retitles the panel, and re-renders.
+   * Shared by forward navigation and historyJump so this is never triplicated.
+   */
+  private commitNavigation(preview: Preview, post: () => void): void {
+    const { uri, tool } = this.current(preview)
+    this.previews.delete(preview.key)
+    const newKey = `${tool}:${uri.toString()}`
+    preview.key = newKey
+    this.previews.set(newKey, preview)
+    preview.panel.title = `${toolLabel(tool)}: ${path.basename(uri.fsPath)}`
+    post()
+  }
+
   /** Opens (or reveals) a preview for the active editor. `force` ignores language detection. */
   openForActiveEditor(force?: Tool): void {
     const editor = vscode.window.activeTextEditor
@@ -118,7 +144,14 @@ export class PreviewManager {
     const wsFolder = vscode.workspace.getWorkspaceFolder(doc.uri)
     const boundary = wsFolder?.uri.fsPath ?? path.dirname(doc.uri.fsPath)
 
-    const preview: Preview = { panel, docUri: doc.uri, tool, key, boundary, disposables: [] }
+    const preview: Preview = {
+      panel,
+      key,
+      boundary,
+      history: [{ uri: doc.uri, tool }],
+      historyIndex: 0,
+      disposables: [],
+    }
     this.previews.set(key, preview)
 
     panel.webview.html = getWebviewHtml(panel.webview, this.context.extensionUri, {
@@ -128,25 +161,30 @@ export class PreviewManager {
     })
 
     const post = () => {
-      const d = findDoc(preview.docUri)
+      const { uri, tool: currentTool } = this.current(preview)
+      const d = findDoc(uri)
       let text = d?.getText() ?? ''
       // Only fall back to disk read when the document is NOT open in VS Code
       // (d === undefined). An open-but-empty file must not trigger a re-read.
       if (d === undefined) {
-        try { text = fs.readFileSync(preview.docUri.fsPath, 'utf8') } catch { text = '' }
+        try { text = fs.readFileSync(uri.fsPath, 'utf8') } catch { text = '' }
       }
-      const currentTool = preview.tool
       if (currentTool === 'html') {
-        text = inlineAssets(text, path.dirname(preview.docUri.fsPath))
+        text = inlineAssets(text, path.dirname(uri.fsPath))
         text = injectNavInterceptor(text)
       }
       panel.webview.postMessage({
         type: 'update',
         tool: currentTool,
-        format: d ? previewFormat(d) : formatForPath(preview.docUri.fsPath),
+        format: d ? previewFormat(d) : formatForPath(uri.fsPath),
         text,
         languageId: d?.languageId ?? '',
         colorTheme: colorThemeName(),
+        history: preview.history.map((h) => ({
+          fileName: path.basename(h.uri.fsPath),
+          relativePath: path.relative(preview.boundary, h.uri.fsPath),
+        })),
+        historyIndex: preview.historyIndex,
       })
     }
 
@@ -169,7 +207,7 @@ export class PreviewManager {
           const hrefPath = href.split('?')[0].split('#')[0]
           if (!hrefPath) return
 
-          const currentDir = path.dirname(preview.docUri.fsPath)
+          const currentDir = path.dirname(this.current(preview).uri.fsPath)
           const newFsPath = path.resolve(currentDir, hrefPath)
 
           // Prevent path traversal outside the initial workspace/project boundary.
@@ -196,18 +234,32 @@ export class PreviewManager {
             return
           }
 
-          // All checks passed — commit the navigation.
-          this.previews.delete(preview.key)
-          const newKey = `${newTool}:${vscode.Uri.file(newFsPath).toString()}`
-          preview.key = newKey
-          preview.docUri = vscode.Uri.file(newFsPath)
-          preview.tool = newTool
-          this.previews.set(newKey, preview)
+          // All checks passed — drop any stale forward entries, push the new
+          // page, and move the pointer onto it.
+          preview.history.length = preview.historyIndex + 1
+          preview.history.push({ uri: vscode.Uri.file(newFsPath), tool: newTool })
+          preview.historyIndex = preview.history.length - 1
+          this.commitNavigation(preview, post)
+        }
 
-          const basename = path.basename(newFsPath)
-          const label = newTool === 'html' ? 'HTML' : newTool[0].toUpperCase() + newTool.slice(1)
-          panel.title = `${label}: ${basename}`
-          post()
+        if (msg?.type === 'historyJump') {
+          const index = msg.index as number
+          if (!Number.isInteger(index) || index < 0 || index >= preview.history.length) return
+          if (index === preview.historyIndex) return
+
+          // Re-check readability — the target may have been deleted/renamed
+          // since it was first visited. Never re-checks `boundary`: entries
+          // only ever entered history after passing that check once.
+          const target = preview.history[index]
+          try {
+            fs.accessSync(target.uri.fsPath, fs.constants.R_OK)
+          } catch {
+            vscode.window.showErrorMessage(`DevHub: cannot open ${path.basename(target.uri.fsPath)}`)
+            return
+          }
+
+          preview.historyIndex = index
+          this.commitNavigation(preview, post)
         }
 
         if (msg?.type === 'openExternal') {
@@ -266,7 +318,7 @@ window.addEventListener('afterprint', function () {
     let timer: ReturnType<typeof setTimeout> | undefined
     preview.disposables.push(
       vscode.workspace.onDidChangeTextDocument((e) => {
-        if (e.document.uri.toString() !== preview.docUri.toString()) return
+        if (e.document.uri.toString() !== this.current(preview).uri.toString()) return
         if (timer) clearTimeout(timer)
         timer = setTimeout(post, DEBOUNCE_MS)
       }),
@@ -289,9 +341,14 @@ function findDoc(uri: vscode.Uri): vscode.TextDocument | undefined {
   return vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString())
 }
 
+/** Human-readable label for a tool, used in panel titles (e.g. "Markdown: foo.md"). */
+function toolLabel(tool: Tool): string {
+  if (tool === 'token') return 'Tokens'
+  if (tool === 'html') return 'HTML'
+  return tool[0].toUpperCase() + tool.slice(1)
+}
+
 function previewTitle(tool: Tool, doc: vscode.TextDocument): string {
   const name = doc.fileName.split(/[\\/]/).pop() ?? 'Untitled'
-  const label =
-    tool === 'token' ? 'Tokens' : tool === 'html' ? 'HTML' : tool[0].toUpperCase() + tool.slice(1)
-  return `${label}: ${name}`
+  return `${toolLabel(tool)}: ${name}`
 }

@@ -10,6 +10,11 @@ import YamlView from './views/YamlView'
 import XmlView from './views/XmlView'
 import TomlView from './views/TomlView'
 
+export interface HistoryEntry {
+  fileName: string
+  relativePath: string
+}
+
 interface UpdateMessage {
   type: 'update'
   tool: string
@@ -17,6 +22,8 @@ interface UpdateMessage {
   languageId: string
   format?: 'jsonl'
   colorTheme?: 'light' | 'dark'
+  history: HistoryEntry[]
+  historyIndex: number
 }
 
 /**
@@ -33,6 +40,8 @@ export default function PreviewHost({ tool: initialTool }: { tool: string }) {
   const [colorTheme, setColorTheme] = useState<'light' | 'dark'>(
     window.__DEVHUB__?.colorTheme ?? 'dark',
   )
+  const [history, setHistory] = useState<HistoryEntry[]>([])
+  const [historyIndex, setHistoryIndex] = useState(0)
 
   useEffect(() => {
     const vscode = getVsCodeApi()
@@ -42,6 +51,8 @@ export default function PreviewHost({ tool: initialTool }: { tool: string }) {
       if (msg.tool) setTool(msg.tool)
       setText(msg.text ?? '')
       setFormat(msg.format)
+      setHistory(msg.history ?? [])
+      setHistoryIndex(msg.historyIndex ?? 0)
       if (msg.colorTheme) {
         setColorTheme(msg.colorTheme)
         document.documentElement.setAttribute('data-theme', msg.colorTheme)
@@ -53,20 +64,33 @@ export default function PreviewHost({ tool: initialTool }: { tool: string }) {
     return () => window.removeEventListener('message', onMessage)
   }, [])
 
-  return <div className="studio-root">{renderTool(tool, text, colorTheme, format)}</div>
+  return (
+    <div className="studio-root">
+      {renderTool(tool, text, colorTheme, history, historyIndex, format)}
+    </div>
+  )
 }
 
 function renderTool(
   tool: string,
   text: string,
   colorTheme: 'light' | 'dark',
+  history: HistoryEntry[],
+  historyIndex: number,
   format?: 'jsonl',
 ) {
   switch (tool) {
     case 'markdown':
-      return <MarkdownView text={text} colorTheme={colorTheme} />
+      return (
+        <MarkdownView
+          text={text}
+          colorTheme={colorTheme}
+          history={history}
+          historyIndex={historyIndex}
+        />
+      )
     case 'html':
-      return <HtmlView text={text} />
+      return <HtmlView text={text} history={history} historyIndex={historyIndex} />
     case 'diagram':
       return <DiagramView text={text} colorTheme={colorTheme} />
     case 'json':
