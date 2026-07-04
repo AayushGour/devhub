@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HTML Preview — Test Page 1</title>
+  <!-- TEST: external CSS (+ @import inside it) must load -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <img src="images/logo.svg" alt="DevHub logo" width="120">
+
+  <h1>Page 1 — Asset &amp; Traversal Test</h1>
+  <span class="badge">index.html</span>
+
+  <div class="highlight">
+    If this box has a yellow-left-border and the heading is blue, <strong>CSS loaded correctly</strong>
+    (including the <code>@import</code> from <code>typography.css</code>).
+    If the logo appears above, <strong>image inlining works</strong>.
+  </div>
+
+  <nav>
+    <strong>Navigation (link traversal test):</strong><br><br>
+    <a href="page2.html">→ Go to Page 2</a>
+    <a href="subdir/page3.html">→ Go to Page 3 (subdirectory)</a>
+    <a href="https://github.com">↗ External link (opens browser)</a>
+  </nav>
+
+  <div class="card">
+    <h2>What to verify</h2>
+    <ul>
+      <li>Page has blue heading and styled text (CSS loaded from <code>styles.css</code>)</li>
+      <li>Logo SVG appears at top (image inlined as base64)</li>
+      <li>Clicking "Page 2" navigates the preview panel in-place</li>
+      <li>Clicking "Page 3" navigates into a subdirectory</li>
+      <li>Clicking the external GitHub link opens the browser</li>
+      <li><a href="#bottom">Jump to bottom</a> scrolls within this page (anchor link)</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Inline script test</h2>
+    <p id="script-result">JavaScript not yet run</p>
+    <script>
+      document.getElementById('script-result').textContent =
+        'JavaScript ran ✓ (inline scripts execute in the iframe)'
+    </script>
+  </div>
+
+  <div id="bottom" class="card" style="margin-top: 200px;">
+    <p>You scrolled to the bottom via the anchor link. ✓</p>
+  </div>
+</body>
+</html>

@@ -22,8 +22,12 @@ interface UpdateMessage {
 /**
  * Side-preview shell. Holds the document text pushed from the extension host and
  * renders the matching DevHub preview component.
+ *
+ * `tool` is initialised from the bootstrap data but becomes stateful so that
+ * in-preview link navigation can switch between file types (e.g. HTML → Markdown).
  */
-export default function PreviewHost({ tool }: { tool: string }) {
+export default function PreviewHost({ tool: initialTool }: { tool: string }) {
+  const [tool, setTool] = useState(initialTool)
   const [text, setText] = useState('')
   const [format, setFormat] = useState<'jsonl' | undefined>(undefined)
   const [colorTheme, setColorTheme] = useState<'light' | 'dark'>(
@@ -35,6 +39,7 @@ export default function PreviewHost({ tool }: { tool: string }) {
     const onMessage = (e: MessageEvent) => {
       const msg = e.data as UpdateMessage | undefined
       if (msg?.type !== 'update') return
+      if (msg.tool) setTool(msg.tool)
       setText(msg.text ?? '')
       setFormat(msg.format)
       if (msg.colorTheme) {

@@ -61,13 +61,29 @@ function frontmatterTable(rows: [string, string][]): string {
   )
 }
 
+function slugify(text: string): string {
+  return text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim()
+}
+
 /**
  * Post-process a rendered preview element:
- * 1. Apply hljs syntax highlighting to code blocks
- * 2. Convert `code.language-mermaid` blocks to mermaid-renderable divs
+ * 1. Add id attributes to headings (marked doesn't emit them) so #anchor links resolve
+ * 2. Apply hljs syntax highlighting to code blocks
+ * 3. Convert `code.language-mermaid` blocks to mermaid-renderable divs
  */
 export function postProcessPreview(container: HTMLElement): { hasMermaid: boolean } {
   let hasMermaid = false
+
+  // Assign heading IDs, deduplicating with a numeric suffix when the same slug
+  // appears more than once (e.g. multiple "## Introduction" headings).
+  const slugCount = new Map<string, number>()
+  container.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6').forEach((h) => {
+    if (h.id) return
+    const base = slugify(h.textContent ?? '')
+    const count = slugCount.get(base) ?? 0
+    slugCount.set(base, count + 1)
+    h.id = count === 0 ? base : `${base}-${count}`
+  })
 
   container.querySelectorAll<HTMLElement>('pre > code').forEach((codeEl) => {
     const pre = codeEl.parentElement!
