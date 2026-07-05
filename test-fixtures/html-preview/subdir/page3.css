@@ -1,0 +1,51 @@
+/* subdir/page3.css — tests relative path resolution from a subdirectory */
+body {
+  font-family: 'Segoe UI', sans-serif;
+  max-width: 700px;
+  margin: 40px auto;
+  padding: 0 24px;
+  background: #fefce8;
+  color: #713f12;
+}
+
+h1 {
+  color: #b45309;
+  border-bottom: 3px solid #f59e0b;
+  padding-bottom: 8px;
+}
+
+.badge {
+  display: inline-block;
+  background: #f59e0b;
+  color: #1c1917;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+nav {
+  margin: 24px 0;
+  padding: 16px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+}
+
+nav a {
+  display: inline-block;
+  margin-right: 16px;
+  color: #b45309;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.card {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 20px;
+  margin: 16px 0;
+  line-height: 1.7;
+}

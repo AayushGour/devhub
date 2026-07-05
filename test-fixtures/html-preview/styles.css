@@ -1,0 +1,62 @@
+/* loaded via <link> — if this renders, asset inlining works */
+@import './typography.css';
+
+body {
+  font-family: 'Segoe UI', sans-serif;
+  max-width: 700px;
+  margin: 40px auto;
+  padding: 0 24px;
+  background: #f8f9fa;
+  color: #212529;
+}
+
+h1 {
+  color: #2563eb;
+  border-bottom: 3px solid #2563eb;
+  padding-bottom: 8px;
+}
+
+.badge {
+  display: inline-block;
+  background: #10b981;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+nav {
+  margin: 24px 0;
+  padding: 16px;
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+}
+
+nav a {
+  display: inline-block;
+  margin-right: 16px;
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+nav a:hover {
+  text-decoration: underline;
+}
+
+.card {
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 20px;
+  margin: 16px 0;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}

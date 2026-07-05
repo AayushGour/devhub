@@ -129,11 +129,20 @@ export function buildCustomCss(settings: StyleSettings, root: string): string {
   return chunks.join('\n')
 }
 
+// CJK system fonts injected before generic family so Japanese/Chinese/Korean
+// characters fall through to these rather than stopping at a Latin-only sans-serif.
+const CJK_FONTS = '"Hiragino Sans", "Hiragino Sans GB", "PingFang SC", "PingFang TC", "Microsoft YaHei", "Noto Sans SC"'
+
+function withCjkFallback(fontFamily: string): string {
+  if (!fontFamily || fontFamily.includes('monospace') || fontFamily.includes('Mono')) return fontFamily
+  return fontFamily.replace(/,?\s*(sans-serif|serif)\s*$/, `, ${CJK_FONTS}, $1`)
+}
+
 export function themeToCss(theme: Theme, root: string): string {
   const scoped = (sel: string) => sel.split(',').map(s => `${root} ${s.trim()}`).join(', ')
   const lines: string[] = []
 
-  lines.push(`${root} { font-family: ${theme.fontBody}; line-height: ${theme.lineHeight}; }`)
+  lines.push(`${root} { font-family: ${withCjkFallback(theme.fontBody)}; line-height: ${theme.lineHeight}; }`)
 
   if (theme.headingLetterSpacing)
     lines.push(`${scoped('h1,h2,h3,h4,h5,h6')} { letter-spacing: ${theme.headingLetterSpacing}; }`)
@@ -141,7 +150,7 @@ export function themeToCss(theme: Theme, root: string): string {
     lines.push(`${scoped('h1,h2,h3,h4,h5,h6')} { text-transform: ${theme.headingTextTransform}; }`)
   if (theme.fontHeading) {
     const scope = theme.headingFontScope === 'all' ? 'h1,h2,h3,h4,h5,h6' : 'h1,h2,h3'
-    lines.push(`${scoped(scope)} { font-family: ${theme.fontHeading}; }`)
+    lines.push(`${scoped(scope)} { font-family: ${withCjkFallback(theme.fontHeading)}; }`)
   }
 
   const { h1, h2, h3, h456 } = theme.colors

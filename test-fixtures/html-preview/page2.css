@@ -1,0 +1,62 @@
+/* page2's own stylesheet — loaded via <link>, separate from page1's CSS */
+body {
+  font-family: 'Segoe UI', sans-serif;
+  max-width: 700px;
+  margin: 40px auto;
+  padding: 0 24px;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+h1 {
+  color: #a78bfa;
+  border-bottom: 3px solid #a78bfa;
+  padding-bottom: 8px;
+}
+
+.badge {
+  display: inline-block;
+  background: #7c3aed;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+nav {
+  margin: 24px 0;
+  padding: 16px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+}
+
+nav a {
+  display: inline-block;
+  margin-right: 16px;
+  color: #a78bfa;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+nav a:hover { text-decoration: underline; }
+
+.card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 20px;
+  margin: 16px 0;
+  line-height: 1.7;
+}
+
+.success {
+  background: #14532d;
+  border: 1px solid #16a34a;
+  border-radius: 8px;
+  padding: 16px 20px;
+  color: #86efac;
+  margin: 16px 0;
+}
