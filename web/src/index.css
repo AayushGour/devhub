@@ -242,6 +242,11 @@ main.devhub-main {
   border-bottom: 1px solid var(--md-border);
   padding-bottom: 0.3em;
 }
+/* When h1 is the very first element (no content above it to separate from),
+   the shared heading rule's padding-top is wasted space — drop it. */
+.markdown-preview > h1:first-child {
+  padding-top: 0;
+}
 .markdown-preview h2 {
   font-size: 1.5em;
   border-bottom: 1px solid var(--md-border);
