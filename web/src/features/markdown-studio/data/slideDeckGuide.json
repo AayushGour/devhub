@@ -11,6 +11,22 @@
   ],
   "overview": {
     "intro": "Slide Deck mode turns a single markdown document into a paginated 16:9 slide deck. You author the deck in markdown (often with an LLM assistant), preview it as landscape cards, and export a PPTX-style landscape PDF. DevHub never calls an LLM itself — it only defines the convention, parses it, and renders it.",
+    "pipeline": {
+      "title": "The full pipeline",
+      "intro": "This is the whole loop, end to end:",
+      "steps": [
+        { "icon": "file-text", "label": "SKILL.md", "description": "the authoring contract" },
+        { "icon": "bot", "label": "LLM agent", "description": "writes the deck markdown" },
+        { "icon": "file-code", "label": "Markdown deck", "description": "yaml-fenced slides" },
+        { "icon": "presentation", "label": "DevHub", "description": "parses + exports a PDF" }
+      ]
+    },
+    "skillDownload": {
+      "label": "Download SKILL.md",
+      "description": "Give this file to your LLM agent — it's the exact authoring contract this pipeline is built on.",
+      "href": "skills/slide-deck-markdown/SKILL.md",
+      "filename": "SKILL.md"
+    },
     "rules": [
       {
         "label": "Slide separator",
@@ -93,6 +109,10 @@
     "overflow": {
       "label": "Overflow",
       "body": "Slides are a fixed 13.333in × 7.5in box. Overlong content shrinks to fit (floor 0.6, then clips). A \"content overflows\" badge shows in preview only. Scale-to-fit is a safety net — keep slides short rather than relying on it."
+    },
+    "media": {
+      "label": "Mermaid & images",
+      "body": "Slides are landscape — prefer `LR` mermaid diagrams (`graph LR`/`flowchart LR`) over `TB`, which grows tall and wastes the slide's horizontal space. If a diagram genuinely needs `TB` (a real hierarchy), put it in a `two-column` slide instead of fighting it into `LR`. Images (inline or `image-focus`) are auto-scaled to fit the slide box — pick landscape-ish sources where you can."
     }
   },
   "example": {

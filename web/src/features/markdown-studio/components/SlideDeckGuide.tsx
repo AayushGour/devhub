@@ -1,10 +1,27 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { useState } from 'react'
-import { X, Presentation } from 'lucide-react'
+import { X, Presentation, Bot, FileText, FileCode, ArrowRight, Download, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatInline } from './guideInlineFormat'
 import { Code } from './GuideCode'
 import guideData from '../data/slideDeckGuide.json'
+
+// Maps the JSON's `icon` string keys to actual icon components — the JSON can only
+// hold data, not component references, so this is the one place a new pipeline step
+// icon needs a code change (adding a new lucide import + registry entry). Everything
+// else about the pipeline (steps, labels, descriptions) is pure JSON.
+const PIPELINE_ICONS: Record<string, LucideIcon> = {
+  'file-text': FileText,
+  bot: Bot,
+  'file-code': FileCode,
+  presentation: Presentation,
+}
+
+// SKILL.md is authored once at docs/skills/slide-deck-markdown/SKILL.md (also read by
+// external LLM agents directly from the repo). web/public/skills/slide-deck-markdown/
+// SKILL.md is a symlink to that same file (not a copy) so Vite's public dir can serve
+// it as a direct download without a second file to keep in sync.
+const BASE_PATH = (import.meta.env.VITE_BASE_PATH ?? '/devhub').replace(/\/$/, '')
 
 interface SlideDeckGuideProps {
   open: boolean
@@ -86,10 +103,20 @@ export default function SlideDeckGuide({ open, onClose }: SlideDeckGuideProps) {
 // ── Tabs ─────────────────────────────────────────────
 
 function OverviewTab() {
-  const { intro, rules } = guideData.overview
+  const { intro, pipeline, skillDownload, rules } = guideData.overview
   return (
     <div className="flex flex-col gap-4">
       <p>{intro}</p>
+
+      <div className="rounded-[0.69rem] border border-border bg-surface-raised p-4 flex flex-col gap-3">
+        <div>
+          <p className="text-[0.69rem] font-semibold tracking-[0.06em] uppercase text-accent">{pipeline.title}</p>
+          <p className="text-on-surface-muted text-[0.78rem] mt-0.5">{pipeline.intro}</p>
+        </div>
+        <Pipeline steps={pipeline.steps} />
+        <SkillDownloadLink data={skillDownload} />
+      </div>
+
       {rules.map(rule => (
         <Rule key={rule.label} label={rule.label}>{formatInline(rule.body)}</Rule>
       ))}
@@ -126,7 +153,7 @@ function TypesTab() {
 }
 
 function FieldsTab() {
-  const { intro, rules, guardrailsTitle, guardrailsIntro, guardrails, overflow } = guideData.fields
+  const { intro, rules, guardrailsTitle, guardrailsIntro, guardrails, overflow, media } = guideData.fields
   return (
     <div className="flex flex-col gap-4">
       <p className="text-on-surface-muted">{intro}</p>
@@ -148,6 +175,7 @@ function FieldsTab() {
       </div>
 
       <Rule label={overflow.label}>{formatInline(overflow.body)}</Rule>
+      <Rule label={media.label}>{formatInline(media.body)}</Rule>
     </div>
   )
 }
@@ -197,5 +225,47 @@ function Guard({ k, children }: { k: string; children: React.ReactNode }) {
       <code className="shrink-0 font-mono text-accent text-[0.78em] mt-px">{k}</code>
       <span className="text-on-surface-muted">{children}</span>
     </li>
+  )
+}
+
+type PipelineStep = { icon: string; label: string; description: string }
+
+function Pipeline({ steps }: { steps: PipelineStep[] }) {
+  return (
+    <div className="flex items-center gap-1.5 overflow-x-auto py-1">
+      {steps.map((step, i) => {
+        const Icon = PIPELINE_ICONS[step.icon] ?? FileText
+        return (
+          <div key={step.label} className="flex items-center gap-1.5 shrink-0">
+            <div className="flex flex-col items-center gap-1.5 w-[6.75rem] text-center">
+              <span className="flex items-center justify-center w-9 h-9 rounded-full bg-accent/10 text-accent shrink-0">
+                <Icon size={16} />
+              </span>
+              <span className="text-[0.72rem] font-semibold text-on-surface leading-tight">{step.label}</span>
+              <span className="text-[0.62rem] text-on-surface-muted leading-snug">{step.description}</span>
+            </div>
+            {i < steps.length - 1 && <ArrowRight size={14} className="text-on-surface-muted shrink-0" />}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function SkillDownloadLink({ data }: { data: { label: string; description: string; href: string; filename: string } }) {
+  return (
+    <a
+      href={`${BASE_PATH}/${data.href}`}
+      download={data.filename}
+      className="flex items-center gap-2.5 rounded-lg border border-accent/40 bg-accent/5 px-3 py-2 text-on-surface no-underline hover:bg-accent/10 transition-colors duration-150"
+    >
+      <span className="flex items-center justify-center w-7 h-7 rounded-full bg-accent/15 text-accent shrink-0">
+        <Download size={13} />
+      </span>
+      <span className="flex flex-col">
+        <span className="text-[0.78rem] font-semibold">{data.label}</span>
+        <span className="text-[0.66rem] text-on-surface-muted">{data.description}</span>
+      </span>
+    </a>
   )
 }

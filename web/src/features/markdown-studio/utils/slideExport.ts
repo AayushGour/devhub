@@ -48,6 +48,14 @@ const SLIDE_PAGE_CSS = `
      fixed size that didn't scale with the page. */
   /* notes are stripped entirely before this doc is built — never emitted */
   img { max-width: 100%; }
+  /* Inline markdown images (body/columns/caption) additionally get a height cap so a
+     tall/portrait image can't overflow the fixed-height print page — mirrors
+     SlideCard.css's preview rule (em-based, scales with the slide the same way title/
+     body text does). Scoped to .markdown-preview img only — does NOT touch
+     image-focus's dedicated image field, which is already correctly bounded by its
+     own flex parent's max-h-full (a real Tailwind class, present via
+     collectAppStylesheetCss() above). */
+  .markdown-preview img { max-height: 18em; object-fit: contain; width: auto; }
   table { border-collapse: collapse; width: 100%; }
   /* em padding so cells scale with the slide's container-relative base font. */
   th, td { border: 1px solid #dfe2e5; padding: 0.3em 0.6em; }

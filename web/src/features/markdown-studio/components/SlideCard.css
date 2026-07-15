@@ -45,3 +45,19 @@
   max-width: 100%;
   height: auto;
 }
+
+/* Inline markdown images (`![]()` in a slide's body/columns/caption — the shared
+   .markdown-preview typography rule from index.css only caps width, not height) can
+   still overflow a fixed-height slide box: a tall/portrait image has no width limit
+   that would shrink it vertically. max-width alone isn't enough here. Cap height in
+   `em` (not a fixed px/vh) so it scales with the slide the same way everything else
+   does — `.slide-card .markdown-preview`'s font-size is itself 1em off the
+   cqw-derived base above, so an em-based max-height is indirectly container-relative
+   too, without needing full `container-type: size` (cqh) support. This does NOT apply
+   to image-focus's dedicated `image` field (a plain <img>, not wrapped in
+   .markdown-preview) — that one is already correctly bounded by its own flex parent. */
+.slide-card .markdown-preview img {
+  max-height: 18em;
+  object-fit: contain;
+  width: auto;
+}

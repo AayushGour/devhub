@@ -341,6 +341,46 @@ How it works:
 
 ---
 
+## Media in Slides (Mermaid & Images)
+
+Slides are **landscape** (16:9, wider than tall). Diagrams and images should be oriented to make use of that shape, not fight it.
+
+### Mermaid orientation
+
+**Prefer `LR` (left-right) over `TB` (top-bottom) wherever the diagram allows it.** A `TB` flowchart grows tall and narrow — on a landscape slide that wastes the horizontal space and leaves most of the slide empty, while the diagram itself may still overflow vertically (triggering scale-to-fit or clipping).
+
+```mermaid
+graph LR
+  A[Editor] --> B[Parser] --> C[Preview] --> D[PDF]
+```
+
+renders wide and shallow — fits a landscape slide naturally. The equivalent `TB` version grows tall and thin instead:
+
+```mermaid
+graph TB
+  A[Editor] --> B[Parser] --> C[Preview] --> D[PDF]
+```
+
+**If your diagram genuinely needs `TB`** (e.g. a real hierarchy — an org chart, a decision tree that reads top-down more naturally than left-right), don't fight it into `LR` just for the sake of it. Instead, **use the `two-column` layout**: put the `TB` diagram in one column and supporting text/notes in the other. That uses the slide's own width for something useful instead of leaving it blank beside a narrow tall diagram.
+
+```yaml
+type: two-column
+title: "Decision Tree"
+columns:
+  - "```mermaid\ngraph TB\n  A[Start] --> B{Condition?}\n  B -->|Yes| C[Path A]\n  B -->|No| D[Path B]\n```"
+  - "### Notes\n- Path A when X\n- Path B when Y"
+```
+
+Same rule applies to `flowchart` (an alias for `graph`) — `flowchart LR` over `flowchart TB` for the same reason.
+
+### Images
+
+Images (inline `![alt](url)` in a slide's body/columns/caption, or the dedicated `image` field on `image-focus`) are **automatically scaled to fit the slide** — you don't need to manually resize a source image or worry about exact pixel dimensions. A tall/portrait image is capped and letterboxed to fit rather than overflowing the slide box.
+
+That said, don't rely on this as a substitute for choosing a reasonably-proportioned source image: a very tall or very wide image will still render tiny once scaled down to fit — pick landscape-ish screenshots/diagrams where you can, and use `image-focus` (not an inline body image) when the image is the main point of the slide, since that layout gives it the most space.
+
+---
+
 ## Fallback Behavior
 
 The decoder is forgiving. Every error degrades gracefully:
@@ -516,8 +556,8 @@ The `---` inside the mermaid fence is literal content, not a slide separator, be
 **Notes on this example:**
 - **Deck-level config** — a `type: deck` opening block turns on the footer and page numbers for the whole deck (`footer.show: true`, `footer.pageNumber: true`, `footer.left: "DevHub"`) — every slide in the example inherits that unless it sets its own `footer`.
 - **Lists and tables** — plain markdown in a `content` slide's body. No special handling needed.
-- **Images** — `![alt](url)` inline in `content` slides, or the dedicated `image` slot in `image-focus` slides.
-- **Mermaid** — ` ```mermaid ... ``` ` fenced blocks inside `content` slide body. The fence-aware split means `---` lines inside mermaid blocks are safe.
+- **Images** — `![alt](url)` inline in `content` slides, or the dedicated `image` slot in `image-focus` slides. Auto-scaled to fit the slide box either way (see "Media in Slides" above).
+- **Mermaid** — ` ```mermaid ... ``` ` fenced blocks inside `content` slide body, using `LR` per the orientation guidance above. The fence-aware split means `---` lines inside mermaid blocks are safe.
 - **Footer override** — the "Release Comparison" slide overrides only `right`, inheriting other footer fields from the deck.
 - **Style override** — several slides show `style` at different nesting levels.
 - **Notes** — visible in the editor preview, completely stripped from PDF export.
@@ -543,6 +583,7 @@ Before handing off your deck:
 - [ ] All `style` background.image URLs start with `http://` or `https://`
 - [ ] Content on each slide is short enough to fit in the slide box (watch for overflow badges in preview)
 - [ ] Markdown in body, columns, and caption slots uses standard syntax (lists, tables, code, mermaid all work)
+- [ ] Mermaid diagrams use `LR` (or `flowchart LR`), not `TB`, unless the diagram is a genuine top-down hierarchy — if it must be `TB`, it's placed in a `two-column` slide so the width isn't wasted
 
 ---
 
