@@ -1,5 +1,6 @@
 import { Play, Download, X, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { OUTPUT_FORMAT_LIST, OUTPUT_FORMATS } from '../utils/formatInfo'
 import type { ImageItem } from '../hooks/useImageStudio'
 
@@ -120,36 +121,44 @@ export default function ImageQueueItem({
           <CheckCircle size={14} className="text-emerald-500" />
         )}
         {item.status === 'error' && (
-          <span title={item.error ?? 'Error'}>
-            <AlertCircle size={14} className="text-red-500" />
-          </span>
+          <Tooltip content={item.error ?? 'Error'}>
+            <span>
+              <AlertCircle size={14} className="text-red-500" />
+            </span>
+          </Tooltip>
         )}
 
         {item.status !== 'converting' && (
-          <button
-            onClick={onConvert}
-            title="Convert"
-            className={cn(BTN, 'border border-border text-on-surface-muted hover:text-accent hover:border-accent')}
-          >
-            <Play size={11} fill="currentColor" />
-          </button>
+          <Tooltip content="Convert">
+            <button
+              onClick={onConvert}
+              aria-label="Convert"
+              className={cn(BTN, 'border border-border text-on-surface-muted hover:text-accent hover:border-accent')}
+            >
+              <Play size={11} fill="currentColor" />
+            </button>
+          </Tooltip>
         )}
 
         {item.status === 'done' && (
-          <button
-            onClick={onDownload}
-            title="Download"
-            className={cn(BTN, 'border border-border text-on-surface-muted hover:text-accent hover:border-accent')}
-          >
-            <Download size={11} />
-          </button>
+          <Tooltip content="Download">
+            <button
+              onClick={onDownload}
+              aria-label="Download"
+              className={cn(BTN, 'border border-border text-on-surface-muted hover:text-accent hover:border-accent')}
+            >
+              <Download size={11} />
+            </button>
+          </Tooltip>
         )}
       </div>
 
       {item.status === 'error' && item.error && (
-        <p className="mt-1.5 pl-11 text-[0.63rem] text-red-500 truncate" title={item.error}>
-          {item.error}
-        </p>
+        <Tooltip content={item.error}>
+          <p className="mt-1.5 pl-11 text-[0.63rem] text-red-500 truncate">
+            {item.error}
+          </p>
+        </Tooltip>
       )}
     </div>
   )

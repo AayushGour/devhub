@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Send, Square } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { type ChatMessage, type RetrievalStage } from '../hooks/useRagEngine'
 import { getModelById } from '../utils/models'
 import { parseMarkdown, postProcessPreview } from '@/features/markdown-studio/utils/parser'
@@ -146,14 +147,16 @@ export default function ChatPanel({ messages, disabled, stage, onSend, onStop }:
           className="flex-1 resize-none rounded-lg border border-border bg-surface-raised text-sm text-on-surface placeholder:text-on-surface-muted px-3 py-2 focus:outline-none focus:border-accent transition-colors duration-150 disabled:opacity-50 font-[inherit]"
         />
         {disabled ? (
-          <button
-            type="button"
-            onClick={onStop}
-            title="Stop generating"
-            className="self-end flex items-center justify-center w-9 h-9 rounded-lg bg-surface-raised text-on-surface border border-border cursor-pointer transition-colors duration-150 hover:border-accent"
-          >
-            <Square size={13} className="fill-current" />
-          </button>
+          <Tooltip content="Stop generating">
+            <button
+              type="button"
+              onClick={onStop}
+              aria-label="Stop generating"
+              className="self-end flex items-center justify-center w-9 h-9 rounded-lg bg-surface-raised text-on-surface border border-border cursor-pointer transition-colors duration-150 hover:border-accent"
+            >
+              <Square size={13} className="fill-current" />
+            </button>
+          </Tooltip>
         ) : (
           <button
             type="submit"

@@ -1,8 +1,8 @@
 import { NavLink, useMatch } from 'react-router-dom'
-import * as Tooltip from '@radix-ui/react-tooltip'
 import { Home, FolderOpen, Settings, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useSettingsStore } from '@/store/settingsStore'
 import { cn } from '@/lib/utils'
+import { Tooltip } from '@/components/ui/Tooltip'
 import './Sidebar.css'
 
 const navItems = [
@@ -18,7 +18,7 @@ export default function Sidebar() {
   const { sidebarCollapsed, setSidebarCollapsed } = useSettingsStore()
 
   return (
-    <Tooltip.Provider delayDuration={150}>
+    <>
       <aside className={cn(
         'shrink-0 flex flex-col bg-surface-raised border-r border-border transition-[width] duration-200 ease',
         sidebarCollapsed ? 'w-12' : 'w-[13.75rem]'
@@ -86,7 +86,7 @@ export default function Sidebar() {
           </button>
         </div>
       </aside>
-    </Tooltip.Provider>
+    </>
   )
 }
 
@@ -122,18 +122,8 @@ function NavItem({ to, label, icon, collapsed, end }: NavItemProps) {
   if (!collapsed) return link
 
   return (
-    <Tooltip.Root>
-      <Tooltip.Trigger asChild>{link}</Tooltip.Trigger>
-      <Tooltip.Portal>
-        <Tooltip.Content
-          side="right"
-          sideOffset={10}
-          className="bg-surface-raised text-on-surface text-xs font-medium tracking-[-0.01rem] px-[0.62rem] py-[0.31rem] rounded-lg border border-border shadow-[0_0.12rem_0.5rem_rgba(0,0,0,0.12)] z-50"
-        >
-          {label}
-          <Tooltip.Arrow className="fill-border" />
-        </Tooltip.Content>
-      </Tooltip.Portal>
-    </Tooltip.Root>
+    <Tooltip content={label} side="right" sideOffset={10}>
+      {link}
+    </Tooltip>
   )
 }

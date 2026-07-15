@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState, useCallback, useEffect, forwardRef, useImperativeHandle, useDeferredValue, memo } from 'react'
+import { createPortal } from 'react-dom'
 import { ZoomIn, ZoomOut, Maximize2, FileImage, Printer, FileCode } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { buildGraph, EXPORT_NODE_WIDTH, NODE_WIDTH, SPACING_X, CANVAS_PAD, NODE_HEADER_H, NODE_ROW_H } from '../../utils/graphLayout'
 import type { GNode, GraphLayout } from '../../utils/graphLayout'
 import type { JsonStudioState } from '../../hooks/useJsonStudio'
@@ -42,7 +44,7 @@ function GraphTooltip({ text, anchorRect }: TooltipState) {
   const left = anchorRect.left + anchorRect.width / 2
   const top = flipped ? anchorRect.bottom + 8 : anchorRect.top - 8
 
-  return (
+  return createPortal(
     <div
       ref={ref}
       style={{
@@ -64,7 +66,8 @@ function GraphTooltip({ text, anchorRect }: TooltipState) {
           }}
         />
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -882,16 +885,18 @@ function ZoomBtn({ children, onClick, title, disabled }: {
   disabled?: boolean
 }) {
   return (
-    <button
-      onClick={onClick}
-      title={title}
-      disabled={disabled}
-      className={cn(
-        'flex items-center justify-center w-[1.88rem] py-[0.38rem] bg-transparent border-none cursor-pointer text-on-surface-muted transition-colors duration-150',
-        disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-surface-hover hover:text-on-surface',
-      )}
-    >
-      {children}
-    </button>
+    <Tooltip content={title}>
+      <button
+        onClick={onClick}
+        aria-label={title}
+        disabled={disabled}
+        className={cn(
+          'flex items-center justify-center w-[1.88rem] py-[0.38rem] bg-transparent border-none cursor-pointer text-on-surface-muted transition-colors duration-150',
+          disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-surface-hover hover:text-on-surface',
+        )}
+      >
+        {children}
+      </button>
+    </Tooltip>
   )
 }
