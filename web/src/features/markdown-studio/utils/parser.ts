@@ -70,6 +70,13 @@ export function postProcessPreview(container: HTMLElement): { hasMermaid: boolea
   let hasMermaid = false
 
   container.querySelectorAll<HTMLElement>('pre > code').forEach((codeEl) => {
+    // Idempotency guard: without this, calling postProcessPreview twice on the same
+    // DOM (e.g. React StrictMode's double effect-invoke) re-derives `lang` from this
+    // element's own previously-added "hljs" class instead of its original
+    // "language-x" token, producing a `lang` value with a space in it that then
+    // throws in classList.add() below.
+    if (codeEl.classList.contains('hljs')) return
+
     const pre = codeEl.parentElement!
     const className = codeEl.className // e.g. "language-typescript"
     const lang = className.replace('language-', '').trim()

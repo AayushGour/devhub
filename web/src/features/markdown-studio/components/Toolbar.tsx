@@ -95,7 +95,7 @@ export default function Toolbar({
                 : 'border-border bg-transparent text-on-surface-muted hover:text-on-surface'
             )}
           >
-            <HelpCircle size={13} />
+            <HelpCircle size={"1rem"} />
           </button>
         </Tooltip>
       </div>

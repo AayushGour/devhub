@@ -1,0 +1,102 @@
+{
+  "header": {
+    "title": "Slide Deck Mode",
+    "description": "Write a markdown deck, preview it as slides, export a landscape PDF."
+  },
+  "tabs": [
+    { "id": "overview", "label": "Overview" },
+    { "id": "types", "label": "Slide Types" },
+    { "id": "fields", "label": "Fields & Style" },
+    { "id": "example", "label": "Example" }
+  ],
+  "overview": {
+    "intro": "Slide Deck mode turns a single markdown document into a paginated 16:9 slide deck. You author the deck in markdown (often with an LLM assistant), preview it as landscape cards, and export a PPTX-style landscape PDF. DevHub never calls an LLM itself — it only defines the convention, parses it, and renders it.",
+    "rules": [
+      {
+        "label": "Slide separator",
+        "body": "A line containing only `---` ends one slide and starts the next. The split is fence-aware: a `---` inside a fenced code or mermaid block is literal content and never splits the deck."
+      },
+      {
+        "label": "Per-slide config",
+        "body": "Each slide can open with a fenced yaml block holding its config — not `---` frontmatter (frontmatter's own `---` fences would collide with the slide separator). The yaml block is optional."
+      },
+      {
+        "label": "Deck title",
+        "body": "There is no separate deck-level frontmatter. The first slide, with `type: title`, carries the deck's title / subtitle / author / date."
+      },
+      {
+        "label": "Deck-level config",
+        "body": "A `type: deck` block (same yaml-fence convention, never rendered as a slide) sets deck-wide `style`/`footer` defaults. Every slide field-merges its own `style`/`footer` over these — deck = default, slide = override, one consistent model at both levels."
+      },
+      {
+        "label": "Forgiving by design",
+        "body": "Nothing hard-fails. A chunk with no yaml, an unknown `type`, malformed yaml, or a bad style value all degrade gracefully to a rendered `content` slide — a slide is never dropped."
+      }
+    ]
+  },
+  "types": {
+    "intro": "Five slide types. Set with `type:` in the yaml fence.",
+    "table": [
+      { "type": "title", "slots": "title, subtitle, author, date", "body": "ignored" },
+      { "type": "section", "slots": "title", "body": "ignored" },
+      { "type": "content", "slots": "title (optional)", "body": "full — lists, tables, images, code, mermaid" },
+      { "type": "two-column", "slots": "title, columns: [left, right]", "body": "ignored" },
+      { "type": "image-focus", "slots": "title, image (URL), caption", "body": "optional side-text" }
+    ],
+    "rules": [
+      {
+        "label": "content (default)",
+        "body": "The fallback type when `type` is missing or unrecognized. Full markdown body — mermaid diagrams and code blocks render exactly as in normal preview."
+      },
+      {
+        "label": "two-column",
+        "body": "`columns` must be exactly 2 markdown strings. More or fewer is padded/truncated to 2 (a missing column renders empty)."
+      }
+    ]
+  },
+  "fields": {
+    "intro": "Three universal fields work on any slide type, applied at the slide-wrapper level.",
+    "rules": [
+      {
+        "label": "notes",
+        "body": "Speaker notes. Shown in preview only, **stripped from the PDF export**."
+      },
+      {
+        "label": "footer",
+        "body": "Per-slide footer override — flat, 2 levels: `show`, `left`, `center`, `right`, `pageNumber`. Any field you omit inherits the deck-level footer (a `type: deck` block, or the built-in default). **Page numbers are off by default** — set `footer.pageNumber: true` deck-wide or per-slide to turn them on. Common use: `footer.show: false` to hide the footer on the title slide."
+      },
+      {
+        "label": "style",
+        "body": "Per-slide styling, nested exactly 3 levels — `style.<category>.<property>`. Categories: `background` (color, image), `title` (color, fontSize, align), `body` (color, fontSize). Unknown keys are ignored; the rest still applies."
+      }
+    ],
+    "guardrailsTitle": "Style value guardrails (hard rules)",
+    "guardrailsIntro": "A value that fails its rule is silently ignored and the default applies. Stay inside the rules.",
+    "guardrails": [
+      {
+        "key": "color",
+        "body": "`#fff` / `#ffffff` / `rgb()` / `rgba()` only — named colors, `hsl()`, `var()` are rejected."
+      },
+      {
+        "key": "fontSize",
+        "body": "use `em` (relative — scales with the slide box); `px`/`rem` are accepted but stay fixed and won't scale on export. Must resolve to 8–120px."
+      },
+      {
+        "key": "align",
+        "body": "`left`, `center`, or `right` only."
+      },
+      {
+        "key": "background.image",
+        "body": "must be an `http(s)://` URL — `javascript:`/`data:`/relative paths blocked."
+      }
+    ],
+    "overflow": {
+      "label": "Overflow",
+      "body": "Slides are a fixed 13.333in × 7.5in box. Overlong content shrinks to fit (floor 0.6, then clips). A \"content overflows\" badge shows in preview only. Scale-to-fit is a safety net — keep slides short rather than relying on it."
+    }
+  },
+  "example": {
+    "description": "A valid deck exercising a `type: deck` block, the title slide, universal fields, two-column, and mermaid. Toggle Slide Deck off to see the raw markdown, or paste this into the editor.",
+    "code": "---\n```yaml\ntype: deck\nfooter:\n  show: true\n  left: \"DevHub\"\n  pageNumber: true\n```\n\n---\n```yaml\ntype: title\ntitle: \"Q3 Review\"\nsubtitle: \"Architecture & Roadmap\"\nauthor: \"Aayush Gour\"\ndate: \"2026-07-14\"\nfooter:\n  show: false\nstyle:\n  background:\n    color: \"#0f172a\"\n  title:\n    color: \"#ffffff\"\n    fontSize: \"2.75em\"\n    align: \"center\"\n```\n\n---\n```yaml\ntype: content\ntitle: \"Key Points\"\n```\n- Ships this quarter\n- Mermaid theming pass\n- Graph mode edge labels\n\n---\n```yaml\ntype: two-column\ntitle: \"Build vs Buy\"\ncolumns:\n  - \"### Build\\n- Full control\\n- Owns roadmap\"\n  - \"### Buy\\n- Faster to market\\n- Vendor lock-in\"\n```\n\n---\n```yaml\ntype: content\ntitle: \"Pipeline\"\n```\n```mermaid\ngraph LR\n  A[Editor] --> B[Parser] --> C[Preview] --> D[PDF]\n```"
+  }
+}
