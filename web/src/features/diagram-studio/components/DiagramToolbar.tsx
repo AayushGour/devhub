@@ -1,5 +1,6 @@
 import { FileImage, FileType, LayoutTemplate } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Tooltip } from '@/components/ui/Tooltip'
 import type { MermaidTheme } from '../hooks/useDiagramEditor'
 import type { DiagramType } from '../utils/diagramTemplates'
 import { DIAGRAM_TYPE_LABELS } from '../utils/diagramTemplates'
@@ -61,16 +62,17 @@ export default function DiagramToolbar({
 
       <div className="w-px h-5 bg-border" />
 
-      <select
-        value={mermaidTheme}
-        onChange={e => onMermaidThemeChange(e.target.value as MermaidTheme)}
-        className={SELECT_CLS}
-        title="Diagram theme"
-      >
-        {MERMAID_THEMES.map(t => (
-          <option key={t.value} value={t.value}>{t.label}</option>
-        ))}
-      </select>
+      <Tooltip content="Diagram theme">
+        <select
+          value={mermaidTheme}
+          onChange={e => onMermaidThemeChange(e.target.value as MermaidTheme)}
+          className={SELECT_CLS}
+        >
+          {MERMAID_THEMES.map(t => (
+            <option key={t.value} value={t.value}>{t.label}</option>
+          ))}
+        </select>
+      </Tooltip>
 
       <div className="w-px h-5 bg-border" />
 

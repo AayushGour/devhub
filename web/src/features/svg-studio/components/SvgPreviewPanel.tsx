@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Tooltip } from '@/components/ui/Tooltip'
 import DOMPurify from 'dompurify'
 import { normalizeSvgForDisplay } from '../utils/postprocess'
 
@@ -23,13 +24,15 @@ function ZoomBtn({
   title: string
 }) {
   return (
-    <button
-      onClick={onClick}
-      title={title}
-      className="flex items-center justify-center w-[1.88rem] py-[0.38rem] bg-transparent border-none cursor-pointer text-on-surface-muted hover:bg-surface-hover hover:text-on-surface transition-colors duration-150"
-    >
-      {children}
-    </button>
+    <Tooltip content={title}>
+      <button
+        onClick={onClick}
+        aria-label={title}
+        className="flex items-center justify-center w-[1.88rem] py-[0.38rem] bg-transparent border-none cursor-pointer text-on-surface-muted hover:bg-surface-hover hover:text-on-surface transition-colors duration-150"
+      >
+        {children}
+      </button>
+    </Tooltip>
   )
 }
 

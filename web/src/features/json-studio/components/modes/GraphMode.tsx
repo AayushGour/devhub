@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState, useCallback, useEffect, forwardRef, useImperativeHandle, useDeferredValue, memo } from 'react'
+import { createPortal } from 'react-dom'
 import { ZoomIn, ZoomOut, Maximize2, FileImage, Printer, FileCode } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { buildGraph, recomputeExportLayout, EXPORT_NODE_WIDTH, NODE_WIDTH, SPACING_X, CANVAS_PAD, NODE_HEADER_H, NODE_ROW_H } from '../../utils/graphLayout'
 import type { GNode, GraphLayout } from '../../utils/graphLayout'
 import type { JsonStudioState } from '../../hooks/useJsonStudio'
@@ -42,7 +44,7 @@ function GraphTooltip({ text, anchorRect }: TooltipState) {
   const left = anchorRect.left + anchorRect.width / 2
   const top = flipped ? anchorRect.bottom + 8 : anchorRect.top - 8
 
-  return (
+  return createPortal(
     <div
       ref={ref}
       style={{
@@ -64,7 +66,8 @@ function GraphTooltip({ text, anchorRect }: TooltipState) {
           }}
         />
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -143,53 +146,53 @@ function NodeCard({ node }: { node: GNode }) {
       {/* Rows */}
       {isArr
         ? node.rows.map((row, i) => {
-            const isNested = row.valueType === 'object' || row.valueType === 'array'
-            const displayIdx = row.key.replace(/^\[(\d+)\]$/, '$1')
-            return (
-              <div
-                key={i}
-                data-row-key={row.key}
-                className="flex items-center px-3 gap-2 border-b border-border last:border-0"
-                style={{ height: 24 }}
+          const isNested = row.valueType === 'object' || row.valueType === 'array'
+          const displayIdx = row.key.replace(/^\[(\d+)\]$/, '$1')
+          return (
+            <div
+              key={i}
+              data-row-key={row.key}
+              className="flex items-center px-3 gap-2 border-b border-border last:border-0"
+              style={{ height: 24 }}
+            >
+              <span className="text-[0.62rem] font-mono text-accent/60 shrink-0 w-6 text-right">
+                {displayIdx}
+              </span>
+              <span
+                {...(!isNested && row.rawValue ? { 'data-tooltip': row.rawValue } : {})}
+                {...(!isNested ? { 'data-export-value': row.valueType === 'string' ? `"${row.rawValue}"` : row.rawValue } : { 'data-export-value': row.value })}
+                className={cn('text-[0.69rem] font-mono truncate', VALUE_CLASS[row.valueType])}
               >
-                <span className="text-[0.62rem] font-mono text-accent/60 shrink-0 w-6 text-right">
-                  {displayIdx}
-                </span>
-                <span
-                  {...(!isNested && row.rawValue ? { 'data-tooltip': row.rawValue } : {})}
-                  {...(!isNested ? { 'data-export-value': row.valueType === 'string' ? `"${row.rawValue}"` : row.rawValue } : { 'data-export-value': row.value })}
-                  className={cn('text-[0.69rem] font-mono truncate', VALUE_CLASS[row.valueType])}
-                >
-                  {row.value}
-                </span>
-              </div>
-            )
-          })
+                {row.value}
+              </span>
+            </div>
+          )
+        })
         : node.rows.map((row, i) => {
-            const isNested = row.valueType === 'object' || row.valueType === 'array'
-            return (
-              <div
-                key={i}
-                data-row-key={row.key}
-                className="flex items-center px-3 border-b border-border last:border-0"
-                style={{ height: 24 }}
+          const isNested = row.valueType === 'object' || row.valueType === 'array'
+          return (
+            <div
+              key={i}
+              data-row-key={row.key}
+              className="flex items-center px-3 border-b border-border last:border-0"
+              style={{ height: 24 }}
+            >
+              <span
+                data-tooltip={row.key}
+                className="text-[0.69rem] text-on-surface-muted shrink-0 mr-2 font-mono max-w-[5.62rem] truncate"
               >
-                <span
-                  data-tooltip={row.key}
-                  className="text-[0.69rem] text-on-surface-muted shrink-0 mr-2 font-mono max-w-[5.62rem] truncate"
-                >
-                  {row.key}
-                </span>
-                <span
-                  {...(!isNested && row.rawValue ? { 'data-tooltip': row.rawValue } : {})}
-                  {...(!isNested ? { 'data-export-value': row.valueType === 'string' ? `"${row.rawValue}"` : row.rawValue } : { 'data-export-value': row.value })}
-                  className={cn('text-[0.69rem] font-mono ml-auto truncate max-w-25', VALUE_CLASS[row.valueType])}
-                >
-                  {row.value}
-                </span>
-              </div>
-            )
-          })}
+                {row.key}
+              </span>
+              <span
+                {...(!isNested && row.rawValue ? { 'data-tooltip': row.rawValue } : {})}
+                {...(!isNested ? { 'data-export-value': row.valueType === 'string' ? `"${row.rawValue}"` : row.rawValue } : { 'data-export-value': row.value })}
+                className={cn('text-[0.69rem] font-mono ml-auto truncate max-w-25', VALUE_CLASS[row.valueType])}
+              >
+                {row.value}
+              </span>
+            </div>
+          )
+        })}
     </div>
   )
 }
@@ -947,16 +950,18 @@ function ZoomBtn({ children, onClick, title, disabled }: {
   disabled?: boolean
 }) {
   return (
-    <button
-      onClick={onClick}
-      title={title}
-      disabled={disabled}
-      className={cn(
-        'flex items-center justify-center w-[1.88rem] py-[0.38rem] bg-transparent border-none cursor-pointer text-on-surface-muted transition-colors duration-150',
-        disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-surface-hover hover:text-on-surface',
-      )}
-    >
-      {children}
-    </button>
+    <Tooltip content={title}>
+      <button
+        onClick={onClick}
+        aria-label={title}
+        disabled={disabled}
+        className={cn(
+          'flex items-center justify-center w-[1.88rem] py-[0.38rem] bg-transparent border-none cursor-pointer text-on-surface-muted transition-colors duration-150',
+          disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-surface-hover hover:text-on-surface',
+        )}
+      >
+        {children}
+      </button>
+    </Tooltip>
   )
 }

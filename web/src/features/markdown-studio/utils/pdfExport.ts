@@ -17,6 +17,12 @@ export interface ExportConfig {
   showFooter: boolean
   footerPageNumbers: boolean
   watermark: string
+  // Deck-level footer text fields (D5) — additive only. Continuous-mode buildPrintDoc
+  // never reads these; they exist so per-slide `footer.left/center/right` overrides
+  // (slideExport.ts) have deck-level values to field-merge over via mergeFooter.
+  footerLeft?: string
+  footerCenter?: string
+  footerRight?: string
 }
 
 export function defaultExportConfig(docTitle = ''): ExportConfig {
@@ -38,6 +44,9 @@ export function defaultExportConfig(docTitle = ''): ExportConfig {
     showFooter: true,
     footerPageNumbers: true,
     watermark: '',
+    footerLeft: '',
+    footerCenter: '',
+    footerRight: '',
   }
 }
 

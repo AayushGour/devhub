@@ -1,5 +1,6 @@
 import { Link2, Link2Off } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { OUTPUT_FORMAT_LIST, OUTPUT_FORMATS } from '../utils/formatInfo'
 import type { GlobalSettings } from '../hooks/useImageStudio'
 
@@ -69,18 +70,20 @@ export default function GlobalControls({ settings, onChange, onApplyAll }: Props
           onChange={e => onChange({ ...settings, resize: { ...settings.resize, height: e.target.value } })}
           className={INPUT_CLS}
         />
-        <button
-          onClick={() => onChange({ ...settings, resize: { ...settings.resize, maintainAspectRatio: !settings.resize.maintainAspectRatio } })}
-          title={settings.resize.maintainAspectRatio ? 'Aspect ratio locked' : 'Aspect ratio unlocked'}
-          className={cn(
-            'p-1 rounded-md border transition-colors duration-150',
-            settings.resize.maintainAspectRatio
-              ? 'border-accent text-accent bg-accent/10'
-              : 'border-border text-on-surface-muted hover:border-accent/50'
-          )}
-        >
-          {settings.resize.maintainAspectRatio ? <Link2 size={12} /> : <Link2Off size={12} />}
-        </button>
+        <Tooltip content={settings.resize.maintainAspectRatio ? 'Aspect ratio locked' : 'Aspect ratio unlocked'}>
+          <button
+            onClick={() => onChange({ ...settings, resize: { ...settings.resize, maintainAspectRatio: !settings.resize.maintainAspectRatio } })}
+            aria-label={settings.resize.maintainAspectRatio ? 'Aspect ratio locked' : 'Aspect ratio unlocked'}
+            className={cn(
+              'p-1 rounded-md border transition-colors duration-150',
+              settings.resize.maintainAspectRatio
+                ? 'border-accent text-accent bg-accent/10'
+                : 'border-border text-on-surface-muted hover:border-accent/50'
+            )}
+          >
+            {settings.resize.maintainAspectRatio ? <Link2 size={12} /> : <Link2Off size={12} />}
+          </button>
+        </Tooltip>
 
         <div className="flex-1" />
 

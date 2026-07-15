@@ -22,11 +22,13 @@ interface ExportModalProps {
   onExportPDF: (config: ExportConfig) => void
   onExportHTML: (config: ExportConfig) => void
   documentTitle: string
+  deckMode: boolean
+  onExportDeck: (config: ExportConfig) => void
 }
 
 type Tab = 'preset' | 'style' | 'layout'
 
-export default function ExportModal({ open, onClose, onExportPDF, onExportHTML, documentTitle }: ExportModalProps) {
+export default function ExportModal({ open, onClose, onExportPDF, onExportHTML, documentTitle, deckMode, onExportDeck }: ExportModalProps) {
   const [tab, setTab] = useState<Tab>('preset')
   const [config, setConfig] = useState<ExportConfig>(() => defaultExportConfig(documentTitle))
 
@@ -87,7 +89,7 @@ export default function ExportModal({ open, onClose, onExportPDF, onExportHTML, 
           <div className="flex-1 overflow-y-auto p-6">
             {tab === 'preset' && <PresetTab config={config} setC={setC} />}
             {tab === 'style' && <StyleTab config={config} setDoc={setDoc} setRule={setRule} addRule={addRule} removeRule={removeRule} resetStyle={resetStyle} />}
-            {tab === 'layout' && <LayoutTab config={config} setC={setC} />}
+            {tab === 'layout' && <LayoutTab config={config} setC={setC} deckMode={deckMode} />}
           </div>
 
           {/* Footer */}
@@ -95,9 +97,15 @@ export default function ExportModal({ open, onClose, onExportPDF, onExportHTML, 
             <button onClick={() => { onExportHTML(config); onClose() }} className={SECONDARY_BTN_CLS}>
               Export HTML
             </button>
-            <button onClick={() => { onExportPDF(config); onClose() }} className={PRIMARY_BTN_CLS}>
-              Export PDF
-            </button>
+            {deckMode ? (
+              <button onClick={() => { onExportDeck(config); onClose() }} className={PRIMARY_BTN_CLS}>
+                Slide Deck (PDF)
+              </button>
+            ) : (
+              <button onClick={() => { onExportPDF(config); onClose() }} className={PRIMARY_BTN_CLS}>
+                Export PDF
+              </button>
+            )}
           </div>
         </Dialog.Content>
       </Dialog.Portal>
@@ -309,27 +317,29 @@ function ExportRuleCard({ rule, index, onChange, onRemove }: {
 
 // ── Layout Tab ──────────────────────────────────────
 
-function LayoutTab({ config, setC }: { config: ExportConfig; setC: (p: Partial<ExportConfig>) => void }) {
+function LayoutTab({ config, setC, deckMode }: { config: ExportConfig; setC: (p: Partial<ExportConfig>) => void; deckMode: boolean }) {
   return (
     <div className="flex flex-col gap-6">
-      <section>
-        <SectionLabel>Cover Page</SectionLabel>
-        <div className="mt-[0.62rem] flex flex-col gap-[0.62rem]">
-          <Toggle label="Include cover page" checked={config.coverPage} onChange={v => setC({ coverPage: v })} />
-          {config.coverPage && (
-            <div className="grid grid-cols-2 gap-[0.62rem] mt-1">
-              <div className="col-span-full">
-                <Field label="Title" value={config.coverTitle} onChange={v => setC({ coverTitle: v })} placeholder="Document title" />
+      {!deckMode && (
+        <section>
+          <SectionLabel>Cover Page</SectionLabel>
+          <div className="mt-[0.62rem] flex flex-col gap-[0.62rem]">
+            <Toggle label="Include cover page" checked={config.coverPage} onChange={v => setC({ coverPage: v })} />
+            {config.coverPage && (
+              <div className="grid grid-cols-2 gap-[0.62rem] mt-1">
+                <div className="col-span-full">
+                  <Field label="Title" value={config.coverTitle} onChange={v => setC({ coverTitle: v })} placeholder="Document title" />
+                </div>
+                <div className="col-span-full">
+                  <Field label="Subtitle" value={config.coverSubtitle} onChange={v => setC({ coverSubtitle: v })} placeholder="Optional subtitle" />
+                </div>
+                <Field label="Author" value={config.coverAuthor} onChange={v => setC({ coverAuthor: v })} placeholder="Your name" />
+                <Field label="Date" value={config.coverDate} onChange={v => setC({ coverDate: v })} placeholder="June 16, 2026" />
               </div>
-              <div className="col-span-full">
-                <Field label="Subtitle" value={config.coverSubtitle} onChange={v => setC({ coverSubtitle: v })} placeholder="Optional subtitle" />
-              </div>
-              <Field label="Author" value={config.coverAuthor} onChange={v => setC({ coverAuthor: v })} placeholder="Your name" />
-              <Field label="Date" value={config.coverDate} onChange={v => setC({ coverDate: v })} placeholder="June 16, 2026" />
-            </div>
-          )}
-        </div>
-      </section>
+            )}
+          </div>
+        </section>
+      )}
 
       <section>
         <SectionLabel>Header</SectionLabel>

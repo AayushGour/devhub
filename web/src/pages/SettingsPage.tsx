@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { hasModelInCache, deleteModelAllInfoInCache } from '@mlc-ai/web-llm'
 import { useSettingsStore } from '@/store/settingsStore'
 import { cn } from '@/lib/utils'
+import { Tooltip } from '@/components/ui/Tooltip'
 import {
   CURATED_MODELS,
   CPU_MODEL_FAMILIES,
@@ -191,7 +192,9 @@ export default function SettingsPage() {
                                   {model.label}
                                 </span>
                                 {cachedIds.has(model.id) && (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" title="Cached" />
+                                  <Tooltip content="Cached">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                                  </Tooltip>
                                 )}
                               </div>
                               {!isCpu && (
