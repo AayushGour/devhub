@@ -89,5 +89,22 @@
   },
   "booleans": { "yes": true, "no": false },
   "large_array": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                  21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40]
+                  21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40],
+  "long_keys_and_values": {
+    "this_is_a_very_long_key_name_that_exceeds_the_card_width_in_the_graph_export": "short",
+    "another_extremely_verbose_property_name_for_testing_overflow_behavior": 12345,
+    "third_long_key_with_nested_children": {
+      "inner_long_key_one": "a value that is much longer than twenty-four characters and should be truncated in display",
+      "inner_long_key_two_also_very_verbose": "another very long string value exceeding the display limit set by fmtValue truncation logic",
+      "inner_long_key_three": true
+    },
+    "short_key": "this string value is intentionally very long to trigger the truncation path inside fmtValue which cuts at 24 characters"
+  },
+  "long_value_array": [
+    "first element with a very long string value that would previously cause row height to expand and overlap sibling cards",
+    "second element also intentionally long to verify that array node height stays fixed at NODE_ROW_H per item regardless of content",
+    "third long array element to pad out the node so the overlap regression is visible when multiple such nodes exist side by side",
+    "fourth element",
+    "fifth element"
+  ]
 }

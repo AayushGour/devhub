@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { ZoomIn, ZoomOut, Maximize2, FileImage, Printer, FileCode } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip } from '@/components/ui/Tooltip'
-import { buildGraph, EXPORT_NODE_WIDTH, NODE_WIDTH, SPACING_X, CANVAS_PAD, NODE_HEADER_H, NODE_ROW_H } from '../../utils/graphLayout'
+import { buildGraph, recomputeExportLayout, EXPORT_NODE_WIDTH, NODE_WIDTH, SPACING_X, CANVAS_PAD, NODE_HEADER_H, NODE_ROW_H } from '../../utils/graphLayout'
 import type { GNode, GraphLayout } from '../../utils/graphLayout'
 import type { JsonStudioState } from '../../hooks/useJsonStudio'
 
@@ -122,14 +122,17 @@ function NodeCard({ node }: { node: GNode }) {
         >
           {isArr ? '[ ]' : '{ }'}
         </span>
-        <span className="text-[0.69rem] font-semibold text-on-surface tracking-[-0.01rem] flex-1 truncate">
+        <span
+          data-tooltip={node.title}
+          className="text-[0.69rem] font-semibold text-on-surface tracking-[-0.01rem] flex-1 truncate"
+        >
           {node.title}
         </span>
         {node.edgeLabel && (
           <span
             data-tooltip={node.edgeLabel}
             className={cn(
-              'text-[0.62rem] font-mono font-medium rounded-full px-[0.44rem] py-[0.06rem] shrink-0 truncate max-w-[5rem] border',
+              'text-[0.62rem] font-mono font-medium rounded-full px-[0.44rem] py-[0.06rem] shrink-0 truncate max-w-20 border',
               isIndexLabel
                 ? 'text-accent bg-accent/10 border-accent/30'
                 : 'text-accent bg-surface border-border',
@@ -143,50 +146,53 @@ function NodeCard({ node }: { node: GNode }) {
       {/* Rows */}
       {isArr
         ? node.rows.map((row, i) => {
-            const isNested = row.valueType === 'object' || row.valueType === 'array'
-            const displayIdx = row.key.replace(/^\[(\d+)\]$/, '$1')
-            return (
-              <div
-                key={i}
-                data-row-key={row.key}
-                className="flex items-center px-3 gap-2 border-b border-border last:border-0"
-                style={{ height: 24 }}
+          const isNested = row.valueType === 'object' || row.valueType === 'array'
+          const displayIdx = row.key.replace(/^\[(\d+)\]$/, '$1')
+          return (
+            <div
+              key={i}
+              data-row-key={row.key}
+              className="flex items-center px-3 gap-2 border-b border-border last:border-0"
+              style={{ height: 24 }}
+            >
+              <span className="text-[0.62rem] font-mono text-accent/60 shrink-0 w-6 text-right">
+                {displayIdx}
+              </span>
+              <span
+                {...(!isNested && row.rawValue ? { 'data-tooltip': row.rawValue } : {})}
+                {...(!isNested ? { 'data-export-value': row.valueType === 'string' ? `"${row.rawValue}"` : row.rawValue } : { 'data-export-value': row.value })}
+                className={cn('text-[0.69rem] font-mono truncate', VALUE_CLASS[row.valueType])}
               >
-                <span className="text-[0.62rem] font-mono text-accent/60 shrink-0 w-6 text-right">
-                  {displayIdx}
-                </span>
-                <span
-                  {...(!isNested && row.rawValue ? { 'data-tooltip': row.rawValue } : {})}
-                  {...(!isNested ? { 'data-export-value': row.valueType === 'string' ? `"${row.rawValue}"` : row.rawValue } : { 'data-export-value': row.value })}
-                  className={cn('text-[0.69rem] font-mono truncate', VALUE_CLASS[row.valueType])}
-                >
-                  {row.value}
-                </span>
-              </div>
-            )
-          })
+                {row.value}
+              </span>
+            </div>
+          )
+        })
         : node.rows.map((row, i) => {
-            const isNested = row.valueType === 'object' || row.valueType === 'array'
-            return (
-              <div
-                key={i}
-                data-row-key={row.key}
-                className="flex items-center px-3 border-b border-border last:border-0"
-                style={{ height: 24 }}
+          const isNested = row.valueType === 'object' || row.valueType === 'array'
+          return (
+            <div
+              key={i}
+              data-row-key={row.key}
+              className="flex items-center px-3 border-b border-border last:border-0"
+              style={{ height: 24 }}
+            >
+              <span
+                data-tooltip={row.key}
+                className="text-[0.69rem] text-on-surface-muted shrink-0 mr-2 font-mono max-w-[5.62rem] truncate"
               >
-                <span className="text-[0.69rem] text-on-surface-muted shrink-0 mr-2 font-mono max-w-[5.62rem] truncate">
-                  {row.key}
-                </span>
-                <span
-                  {...(!isNested && row.rawValue ? { 'data-tooltip': row.rawValue } : {})}
-                  {...(!isNested ? { 'data-export-value': row.valueType === 'string' ? `"${row.rawValue}"` : row.rawValue } : { 'data-export-value': row.value })}
-                  className={cn('text-[0.69rem] font-mono ml-auto truncate max-w-25', VALUE_CLASS[row.valueType])}
-                >
-                  {row.value}
-                </span>
-              </div>
-            )
-          })}
+                {row.key}
+              </span>
+              <span
+                {...(!isNested && row.rawValue ? { 'data-tooltip': row.rawValue } : {})}
+                {...(!isNested ? { 'data-export-value': row.valueType === 'string' ? `"${row.rawValue}"` : row.rawValue } : { 'data-export-value': row.value })}
+                className={cn('text-[0.69rem] font-mono ml-auto truncate max-w-25', VALUE_CLASS[row.valueType])}
+              >
+                {row.value}
+              </span>
+            </div>
+          )
+        })}
     </div>
   )
 }
@@ -242,28 +248,85 @@ function buildHtmlExport(layout: GraphLayout): string {
     jsonBool: v('--json-bool'), jsonNull: v('--json-null'),
   }
 
-  // Expand node x positions to EXPORT_NODE_WIDTH
-  const nodeX = new Map<string, number>()
+  // Measure text to compute per-row heights for export (rows show full text, no truncation)
+  const mCtx = document.createElement('canvas').getContext('2d')!
+  mCtx.font = `11px ui-monospace,Menlo,Monaco,"Cascadia Mono","Segoe UI Mono",monospace`
+  const PADDING_H = 24   // 12px left + 12px right
+  const GAP = 8
+  const IDX_W = 28       // index column width in array rows
+  const KEY_MAX_W = 90   // max-width of key column in object rows
+  const LINE_H = 18      // line height at 11px mono
+  const ROW_VERT_PAD = 8 // top+bottom text padding per row
+  const ROW_MIN_H = 24
+
+  // Per-node: array of per-row heights (used for edge origin Y and inline row style)
+  const exportRowHeights = new Map<string, number[]>()
+  const exportHeights = new Map<string, number>()
+
   for (const [id, node] of layout.nodes) {
+    const isArr = node.nodeType === 'array'
+    const rowHs: number[] = []
+    let totalH = NODE_HEADER_H
+    for (const row of node.rows) {
+      const isNested = row.valueType === 'object' || row.valueType === 'array'
+      const displayVal = isNested
+        ? row.value
+        : row.valueType === 'string' ? `"${row.rawValue}"` : (row.rawValue || row.value)
+
+      let rowH: number
+      if (isArr) {
+        const valAvail = EXPORT_NODE_WIDTH - PADDING_H - IDX_W - GAP
+        const valPx = mCtx.measureText(displayVal).width
+        const lines = Math.max(1, Math.ceil(valPx / valAvail))
+        rowH = Math.max(ROW_MIN_H, lines * LINE_H + ROW_VERT_PAD)
+      } else {
+        const keyPx = mCtx.measureText(row.key).width
+        const keyLines = Math.max(1, Math.ceil(keyPx / KEY_MAX_W))
+        const valAvail = EXPORT_NODE_WIDTH - PADDING_H - Math.min(keyPx, KEY_MAX_W) - GAP
+        const valPx = mCtx.measureText(displayVal).width
+        const valLines = Math.max(1, Math.ceil(valPx / valAvail))
+        rowH = Math.max(ROW_MIN_H, Math.max(keyLines, valLines) * LINE_H + ROW_VERT_PAD)
+      }
+      // Safety buffer: font metrics vary across systems
+      rowH += 4
+      rowHs.push(rowH)
+      totalH += rowH
+    }
+    exportRowHeights.set(id, rowHs)
+    exportHeights.set(id, totalH)
+  }
+
+  // Recompute Y positions with export heights so no cards overlap
+  const exportLayout = recomputeExportLayout(layout, exportHeights)
+
+  // Remap X positions to EXPORT_NODE_WIDTH
+  const nodeX = new Map<string, number>()
+  for (const [id, node] of exportLayout.nodes) {
     const level = Math.round((node.x - CANVAS_PAD) / (NODE_WIDTH + SPACING_X))
     nodeX.set(id, CANVAS_PAD + level * (EXPORT_NODE_WIDTH + SPACING_X))
   }
-  let maxX = 0
-  for (const [id] of layout.nodes) maxX = Math.max(maxX, (nodeX.get(id) ?? 0) + EXPORT_NODE_WIDTH)
-  const totalWidth = maxX + CANVAS_PAD
+  let maxRight = 0
+  for (const [id] of exportLayout.nodes) maxRight = Math.max(maxRight, (nodeX.get(id) ?? 0) + EXPORT_NODE_WIDTH)
+  const totalWidth = maxRight + CANVAS_PAD
+  const totalHeight = exportLayout.totalHeight
 
-  // Edges SVG paths (row-origin y same as live view)
+  // Edge paths — use cumulative per-row heights for row-origin Y
   const edgePaths: string[] = []
-  for (const node of layout.nodes.values()) {
+  for (const node of exportLayout.nodes.values()) {
+    const rowHs = exportRowHeights.get(node.id) ?? []
     for (const edge of node.childEdges) {
-      const dst = layout.nodes.get(edge.childId)!
+      const dst = exportLayout.nodes.get(edge.childId)!
       const x1 = (nodeX.get(node.id) ?? 0) + EXPORT_NODE_WIDTH
       const rowIndex = node.rows.findIndex(r => r.key === edge.label)
-      const y1 = rowIndex >= 0
-        ? node.y + NODE_HEADER_H + rowIndex * NODE_ROW_H + NODE_ROW_H / 2
-        : node.y + node.height / 2
+      let y1: number
+      if (rowIndex >= 0) {
+        const cumY = rowHs.slice(0, rowIndex).reduce((a, h) => a + h, 0)
+        y1 = node.y + NODE_HEADER_H + cumY + rowHs[rowIndex] / 2
+      } else {
+        y1 = node.y + (exportHeights.get(node.id) ?? node.height) / 2
+      }
       const x2 = nodeX.get(dst.id) ?? 0
-      const y2 = dst.y + dst.height / 2
+      const y2 = dst.y + (exportHeights.get(dst.id) ?? dst.height) / 2
       const mid = (x1 + x2) / 2
       edgePaths.push(`<path d="M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}" fill="none" stroke="${esc(colors.border)}" stroke-width="1.5"/>`)
     }
@@ -271,19 +334,21 @@ function buildHtmlExport(layout: GraphLayout): string {
 
   // Node cards HTML
   const nodesHtml: string[] = []
-  for (const node of layout.nodes.values()) {
+  for (const node of exportLayout.nodes.values()) {
     const x = nodeX.get(node.id) ?? 0
     const isArr = node.nodeType === 'array'
+    const rowHs = exportRowHeights.get(node.id) ?? []
 
-    const rowsHtml = node.rows.map(row => {
+    const rowsHtml = node.rows.map((row, i) => {
       const isNested = row.valueType === 'object' || row.valueType === 'array'
       const displayVal = isNested ? row.value : row.valueType === 'string' ? `"${row.rawValue}"` : (row.rawValue || row.value)
       const cls = VAL_CLASS[row.valueType]
+      const rowStyle = rowHs[i] ? ` style="min-height:${rowHs[i]}px"` : ''
       if (isArr) {
         const idx = row.key.replace(/^\[(\d+)\]$/, '$1')
-        return `<div class="row"><span class="row-idx">${esc(idx)}</span><span class="row-val ${cls}">${esc(displayVal)}</span></div>`
+        return `<div class="row"${rowStyle}><span class="row-idx">${esc(idx)}</span><span class="row-val ${cls}">${esc(displayVal)}</span></div>`
       }
-      return `<div class="row"><span class="row-key">${esc(row.key)}</span><span class="row-val ${cls}">${esc(displayVal)}</span></div>`
+      return `<div class="row"${rowStyle}><span class="row-key">${esc(row.key)}</span><span class="row-val ${cls}">${esc(displayVal)}</span></div>`
     }).join('')
 
     const edgeLabelHtml = node.edgeLabel
@@ -320,8 +385,8 @@ body{background:var(--surface);padding:24px;font-family:-apple-system,BlinkMacSy
 .row-val.str{color:var(--json-string);}.row-val.num{color:var(--json-number);}.row-val.bool{color:var(--json-bool);}.row-val.null{color:var(--json-null);}.row-val.nested{color:var(--on-surface-muted);font-style:italic;}`
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Graph</title><style>${css}</style></head>` +
-    `<body><div class="canvas" style="width:${totalWidth}px;height:${layout.totalHeight}px;">` +
-    `<svg style="position:absolute;inset:0;pointer-events:none;" width="${totalWidth}" height="${layout.totalHeight}">` +
+    `<body><div class="canvas" style="width:${totalWidth}px;height:${totalHeight}px;">` +
+    `<svg style="position:absolute;inset:0;pointer-events:none;" width="${totalWidth}" height="${totalHeight}">` +
     `${edgePaths.join('')}</svg>${nodesHtml.join('')}</div></body></html>`
 }
 

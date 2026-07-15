@@ -11,20 +11,28 @@ function ValueToken({ value }: { value: unknown }) {
   if (value === null) return <span className="text-json-null italic text-[0.75rem]">null</span>
   if (typeof value === 'boolean') return <span className="text-json-bool text-[0.75rem]">{String(value)}</span>
   if (typeof value === 'number') return <span className="text-json-number text-[0.75rem]">{value}</span>
-  if (typeof value === 'string') return (
-    <span className="text-json-string text-[0.75rem]">
-      &ldquo;{value.length > 100 ? value.slice(0, 100) + '…' : value}&rdquo;
-    </span>
-  )
+  if (typeof value === 'string') {
+    const truncated = value.length > 100
+    return (
+      <span
+        className="text-json-string text-[0.75rem]"
+        title={truncated ? value : undefined}
+      >
+        &ldquo;{truncated ? value.slice(0, 100) + '…' : value}&rdquo;
+      </span>
+    )
+  }
   return null
 }
 
 function KeyLabel({ label }: { label: string | number | null }) {
   if (label === null) return null
+  const str = typeof label === 'string' ? `"${label}"` : String(label)
+  const long = typeof label === 'string' && label.length > 30
   return (
     <>
-      <span className="text-accent text-[0.75rem]">
-        {typeof label === 'string' ? `"${label}"` : label}
+      <span className="text-accent text-[0.75rem]" title={long ? str : undefined}>
+        {str}
       </span>
       <span className="text-on-surface-muted text-[0.75rem]">:&nbsp;</span>
     </>

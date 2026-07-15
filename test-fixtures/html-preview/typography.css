@@ -1,0 +1,22 @@
+/* loaded via @import inside styles.css — tests recursive CSS inlining */
+p {
+  line-height: 1.7;
+  color: #495057;
+}
+
+code {
+  background: #e9ecef;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 0.9em;
+  color: #d63384;
+}
+
+.highlight {
+  background: #fff3cd;
+  border-left: 4px solid #ffc107;
+  padding: 12px 16px;
+  border-radius: 0 8px 8px 0;
+  margin: 16px 0;
+}

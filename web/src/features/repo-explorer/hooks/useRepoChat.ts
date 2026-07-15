@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
-import { streamComplete } from '@/features/rag-studio/utils/llm'
-import { embed } from '@/features/rag-studio/utils/embed'
+import { streamComplete } from '@/lib/llm/engine'
+import { embed } from '@/lib/llm/embed'
 import { useSettingsStore } from '@/store/settingsStore'
 import { createLogger } from '@/lib/logger'
 import type { RepoFile, RepoMeta } from '../types'

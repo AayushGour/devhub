@@ -26,6 +26,9 @@ export default function RagStudioPage() {
     loadPersistedDocs()
   }, [bootEmbedder, loadPersistedDocs])
 
+  // The shared GPU engine self-unloads after an idle period (see lib/llm/engine).
+  // We deliberately do NOT unload on unmount: an indexing job can outlive this page.
+
   return (
     <div className="studio-root">
       <RagToolbar onClearAll={clearDocs} />
