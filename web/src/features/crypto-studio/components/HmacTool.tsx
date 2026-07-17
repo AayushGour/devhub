@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Copy, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { TextAreaField } from '@/components/ui/TextAreaField'
 import { computeHmac } from '../utils/hmac'
 import { HMAC_ALGORITHMS } from '../utils/constants'
 import type { HmacAlgorithm } from '../utils/constants'
 import { useCopy } from '../hooks/useCopy'
 
-const TEXTAREA_CLS =
-  'w-full flex-1 bg-surface-raised border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent transition-colors duration-150 resize-none font-mono'
 const INPUT_CLS =
   'w-full bg-surface-raised border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent transition-colors duration-150 font-mono'
 const SELECT_CLS =
@@ -36,11 +35,11 @@ export function HmacTool() {
       {/* Left */}
       <div className="flex flex-col flex-1 min-w-0 border-r border-border p-4 gap-3">
         <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">Message</span>
-        <textarea
-          className={TEXTAREA_CLS}
+        <TextAreaField
+          className="flex-1"
           placeholder="Enter message…"
           value={message}
-          onChange={e => setMessage(e.target.value)}
+          onChange={setMessage}
         />
         <div className="flex flex-col gap-1.5 flex-shrink-0">
           <label className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">Secret Key</label>
