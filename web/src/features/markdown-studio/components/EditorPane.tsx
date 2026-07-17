@@ -1,5 +1,5 @@
-import Editor, { type OnMount } from '@monaco-editor/react'
-import { useSettingsStore } from '@/store/settingsStore'
+import type { OnMount } from '@monaco-editor/react'
+import { CodeEditor } from '@/components/ui/CodeEditor'
 
 interface EditorPaneProps {
   defaultValue: string
@@ -8,16 +8,12 @@ interface EditorPaneProps {
 }
 
 const EDITOR_OPTIONS = {
-  minimap: { enabled: false },
   wordWrap: 'on' as const,
   lineNumbers: 'off' as const,
   fontSize: 14,
   fontFamily: "'Fira Code', 'SF Mono', Consolas, monospace",
   padding: { top: 20, bottom: 20 },
-  scrollBeyondLastLine: false,
   renderLineHighlight: 'none' as const,
-  overviewRulerLanes: 0,
-  hideCursorInOverviewRuler: true,
   overviewRulerBorder: false,
   folding: false,
   lineDecorationsWidth: 16,
@@ -26,24 +22,14 @@ const EDITOR_OPTIONS = {
 }
 
 export default function EditorPane({ defaultValue, onChange, onMount }: EditorPaneProps) {
-  const { theme } = useSettingsStore()
-
   return (
-    <div className="flex-1 min-w-0 border-r border-border overflow-hidden">
-      <Editor
-        height="100%"
-        language="markdown"
-        defaultValue={defaultValue}
-        onChange={onChange}
-        onMount={onMount}
-        theme={theme === 'light' ? 'vs' : 'vs-dark'}
-        loading={
-          <div className="flex items-center justify-center h-full text-on-surface-muted text-sm">
-            Loading editor…
-          </div>
-        }
-        options={EDITOR_OPTIONS}
-      />
-    </div>
+    <CodeEditor
+      className="flex-1 min-w-0 border-r border-border overflow-hidden"
+      language="markdown"
+      defaultValue={defaultValue}
+      onChange={onChange}
+      onMount={onMount}
+      options={EDITOR_OPTIONS}
+    />
   )
 }
