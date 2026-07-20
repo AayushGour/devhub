@@ -2,6 +2,72 @@
 
 This is the airtight authoring contract for generating DevHub slide-deck markdown. Follow these rules precisely so your deck renders as intended.
 
+**This skill has two jobs.** The section below (Content Transformation) tells you how to turn arbitrary source material into slide-worthy content. Everything after it tells you the exact markdown syntax to encode that content in. Both are required — syntactically valid slides full of pasted paragraphs are still a failed deck.
+
+---
+
+## Content Transformation: Source → Slides (READ THIS FIRST)
+
+This is the step most authors get wrong, and the failure is invisible in a syntax check: the deck parses fine, every yaml block validates, and it's still a bad deck.
+
+**Your job is synthesis, not transcription.** Never carry a source paragraph into a slide body as prose — trimmed, condensed, "lightly adapted," or otherwise. A trimmed paragraph is still a paragraph. If a slide body contains a sentence with a subject, verb, and multiple clauses joined by commas, the transformation step didn't happen.
+
+**The source being written as prose is irrelevant.** Almost all real source material — reports, docs, analyses — is prose. That's exactly why this step exists: extracting the claims out of the sentences and onto the slide is your work, not something the source does for you. "The source is narrative, so I kept it narrative" is not a valid reason to skip transformation — it describes every source you will ever be given.
+
+### The process
+
+1. **Read the whole source first.** Don't transform section-by-section as you go — you need the full picture to decide what's a slide, what's a sub-point, and what's cuttable.
+2. **List the distinct claims, not the source's paragraph boundaries.** A paragraph often bundles several independent claims (a problem + its cause + its impact + a proposed fix). Each can be its own bullet, or its own slide if it has enough supporting detail. One source section does NOT have to equal one slide — split it when it's doing too much; merge thin ones together (e.g. a `section` divider plus one supporting slide, or a `two-column` pairing).
+3. **For each claim, choose a slide type by its shape — never default to `content`-with-prose:**
+
+   | Content shape in the source | Slide type |
+   |---|---|
+   | Independent facts, findings, or takeaways | `content` with a bullet list |
+   | Two things being contrasted or compared (before/after, build/buy, current/proposed) | `two-column` |
+   | Numbers, metrics, comparisons across rows | `content` with a markdown table |
+   | A sequence, pipeline, or process flow | `content` with a `mermaid graph LR` |
+   | Priority order / ranked steps | `content` with a numbered list |
+   | A topic shift covering several following slides | `section` divider |
+   | A screenshot or diagram is the point | `image-focus` |
+
+4. **Compress every bullet to a headline, not a sentence.** State the claim; drop the connective tissue ("this is because...", "which means that...", "as a result of..."). Two independent facts joined by "and" are two bullets, not one.
+5. **Budget ~6 bullets and ~40-60 words per content slide, max.** If a claim needs more than that to land, split it: a slide title plus a follow-up slide of supporting detail — not a denser bullet.
+6. **Title each slide with the takeaway, not the source's section label.** "Auth refresh has a race condition" beats "5. Authentication Token Refresh Race Condition" — the title should carry the point even if the reader sees nothing else.
+
+### Rationalizations (don't do these)
+
+| Excuse | Reality |
+|---|---|
+| "I trimmed it, so it's not verbatim" | Trimming a paragraph still leaves a paragraph. If it still reads as full sentences with connective clauses, it's prose, not a slide. |
+| "The source is narrative, not bullet-native" | All source material is narrative until you extract from it. That extraction is the entire point of this skill. |
+| "One source section = one slide, keep it simple" | Section boundaries are the author's organization, not the deck's. Split dense sections, merge thin ones. |
+| "Shortening it would lose meaning/nuance" | A slide is a prompt for the speaker, not the full document. Nuance goes in `notes`, not the body. |
+| "It's faster to keep the paragraph" | A pasted paragraph is a spec violation the reader notices immediately — dense prose is also the #1 cause of the overflow badge (see Overflow Handling below). |
+
+### Red flags — you're about to produce a bad deck if
+
+- A slide body has a sentence over ~15 words.
+- A slide body has more than one full sentence in a row (vs. bullet fragments).
+- Your slide count roughly equals the source's heading count (you mapped sections 1:1 instead of mapping claims).
+- You haven't used `two-column`, a table, or a `mermaid` diagram anywhere, despite the source containing comparisons, numbers, or a process.
+- Every slide is `type: content` with no `section` dividers, even though the source covers multiple distinct topics.
+
+### Worked example
+
+**Source paragraph (do not paste this into a slide body):**
+> "When two API requests fire concurrently near token expiry, both can independently detect an expired token and both fire a refresh request, since there's no in-flight-refresh guard in `apiClient.ts`. The second refresh response invalidates the first refresh token, so if the first request's refresh completes second, it ends up storing an already-invalidated token, and the user is logged out on their next request. This shows up in production error logs roughly 40 times a day, correlating with users who have multiple tabs open."
+
+**Transformed slide:**
+```yaml
+type: content
+title: "Auth Refresh Has a Race Condition"
+```
+- No in-flight-refresh guard in `apiClient.ts`
+- Concurrent requests near expiry both trigger a refresh
+- Second refresh invalidates the first → user gets logged out
+- ~40 occurrences/day in production, correlates with multi-tab users
+- **Fix:** share one in-flight refresh promise across concurrent 401s
+
 ---
 
 ## Slide Separator
@@ -569,6 +635,8 @@ The `---` inside the mermaid fence is literal content, not a slide separator, be
 
 Before handing off your deck:
 
+- [ ] No slide body is source prose — every source paragraph was decomposed into bullets, a table, a `two-column`, or a `mermaid` diagram (see Content Transformation above)
+- [ ] Slide count reflects distinct claims, not a 1:1 mapping of the source's headings
 - [ ] First slide has `type: title` with deck title/subtitle/author/date
 - [ ] If the deck needs shared styling/footer defaults, a `type: deck` block is present (anywhere, conventionally first) with only `style`/`footer` set
 - [ ] Page numbers are intentionally on or off — remember the default is OFF; set `footer.pageNumber: true` (deck-level or per-slide) if you want them
