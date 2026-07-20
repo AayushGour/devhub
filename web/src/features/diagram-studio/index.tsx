@@ -14,6 +14,7 @@ export default function DiagramStudioPage() {
   const { generate, isGenerating, status, error } = useDiagramAI(updateCode)
   const svgRef = useRef<SVGSVGElement | null>(null)
   const [templatesOpen, setTemplatesOpen] = useState(false)
+  const [editorCollapsed, setEditorCollapsed] = useState(false)
 
   return (
     <div className="studio-root">
@@ -29,10 +30,18 @@ export default function DiagramStudioPage() {
       />
 
       <div className="flex flex-1 min-h-0">
-        <DiagramEditor value={code} onChange={updateCode}>
-          <DiagramAIPrompt onGenerate={generate} isGenerating={isGenerating} status={status} error={error} />
-        </DiagramEditor>
-        <DiagramPreview code={code} mermaidTheme={mermaidTheme} svgRef={svgRef} />
+        {!editorCollapsed && (
+          <DiagramEditor value={code} onChange={updateCode}>
+            <DiagramAIPrompt onGenerate={generate} isGenerating={isGenerating} status={status} error={error} />
+          </DiagramEditor>
+        )}
+        <DiagramPreview
+          code={code}
+          mermaidTheme={mermaidTheme}
+          svgRef={svgRef}
+          editorCollapsed={editorCollapsed}
+          onToggleEditor={() => setEditorCollapsed(v => !v)}
+        />
       </div>
 
       <TemplateModal
