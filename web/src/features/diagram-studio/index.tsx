@@ -3,6 +3,7 @@ import DiagramToolbar from './components/DiagramToolbar'
 import DiagramEditor from './components/DiagramEditor'
 import DiagramPreview from './components/DiagramPreview'
 import DiagramAIPrompt from './components/DiagramAIPrompt'
+import DiagramFilesPanel from './components/DiagramFilesPanel'
 import TemplateModal from './components/TemplateModal'
 import { useDiagramEditor } from './hooks/useDiagramEditor'
 import { useDiagramAI } from './hooks/useDiagramAI'
@@ -10,11 +11,15 @@ import { detectDiagramType } from './utils/diagramTemplates'
 import { exportSVG, exportPNG } from './utils/diagramExport'
 
 export default function DiagramStudioPage() {
-  const { title, setTitle, code, updateCode, mermaidTheme, setMermaidTheme } = useDiagramEditor()
+  const {
+    title, setTitle, code, updateCode, mermaidTheme, setMermaidTheme,
+    files, activeId, selectFile, newFile, removeFile, renameFile,
+  } = useDiagramEditor()
   const { generate, isGenerating, status, error } = useDiagramAI(updateCode)
   const svgRef = useRef<SVGSVGElement | null>(null)
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [editorCollapsed, setEditorCollapsed] = useState(false)
+  const [filesOpen, setFilesOpen] = useState(false)
 
   return (
     <div className="studio-root">
@@ -25,6 +30,8 @@ export default function DiagramStudioPage() {
         onMermaidThemeChange={setMermaidTheme}
         diagramType={detectDiagramType(code)}
         onOpenTemplates={() => setTemplatesOpen(true)}
+        filesOpen={filesOpen}
+        onToggleFiles={() => setFilesOpen(v => !v)}
         onExportSVG={() => svgRef.current && exportSVG(svgRef.current, title)}
         onExportPNG={() => svgRef.current && exportPNG(svgRef.current, title)}
       />
@@ -42,6 +49,16 @@ export default function DiagramStudioPage() {
           editorCollapsed={editorCollapsed}
           onToggleEditor={() => setEditorCollapsed(v => !v)}
         />
+        {filesOpen && (
+          <DiagramFilesPanel
+            files={files}
+            activeId={activeId}
+            onSelectFile={selectFile}
+            onRenameFile={renameFile}
+            onRemoveFile={removeFile}
+            onNewFile={newFile}
+          />
+        )}
       </div>
 
       <TemplateModal
