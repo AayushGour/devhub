@@ -1,4 +1,4 @@
-import { FileImage, FileType, LayoutTemplate } from 'lucide-react'
+import { FileImage, FileType, LayoutTemplate, FolderOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip } from '@/components/ui/Tooltip'
 import type { MermaidTheme } from '../hooks/useDiagramEditor'
@@ -21,6 +21,8 @@ interface DiagramToolbarProps {
   onMermaidThemeChange: (t: MermaidTheme) => void
   diagramType: DiagramType | null
   onOpenTemplates: () => void
+  filesOpen: boolean
+  onToggleFiles: () => void
   onExportSVG: () => void
   onExportPNG: () => void
 }
@@ -29,6 +31,7 @@ export default function DiagramToolbar({
   title, onTitleChange,
   mermaidTheme, onMermaidThemeChange,
   diagramType, onOpenTemplates,
+  filesOpen, onToggleFiles,
   onExportSVG, onExportPNG,
 }: DiagramToolbarProps) {
   return (
@@ -58,6 +61,19 @@ export default function DiagramToolbar({
       >
         <LayoutTemplate size={13} />
         Templates
+      </button>
+
+      <button
+        onClick={onToggleFiles}
+        className={cn(
+          'flex items-center gap-[0.31rem] px-[0.62rem] py-[0.31rem] rounded-[0.44rem] border text-xs cursor-pointer font-[inherit] transition-colors duration-150',
+          filesOpen
+            ? 'border-accent bg-accent text-accent-text'
+            : 'border-border bg-transparent text-on-surface-muted hover:text-on-surface hover:border-on-surface-muted'
+        )}
+      >
+        <FolderOpen size={13} />
+        Files
       </button>
 
       <div className="w-px h-5 bg-border" />
