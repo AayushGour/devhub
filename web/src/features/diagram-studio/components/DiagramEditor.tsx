@@ -9,7 +9,7 @@ interface DiagramEditorProps {
 
 export default function DiagramEditor({ value, onChange, children }: DiagramEditorProps) {
   return (
-    <div className="w-[50%] shrink-0 border-r border-border flex flex-col">
+    <>
       <div className="flex-1 min-h-0">
         <CodeEditor
           className="h-full"
@@ -29,6 +29,6 @@ export default function DiagramEditor({ value, onChange, children }: DiagramEdit
         />
       </div>
       {children}
-    </div>
+    </>
   )
 }

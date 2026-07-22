@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import CollapsiblePanel from '@/components/ui/CollapsiblePanel'
 import DiagramToolbar from './components/DiagramToolbar'
 import DiagramEditor from './components/DiagramEditor'
 import DiagramPreview from './components/DiagramPreview'
@@ -37,17 +38,21 @@ export default function DiagramStudioPage() {
       />
 
       <div className="flex flex-1 min-h-0">
-        {!editorCollapsed && (
+        <CollapsiblePanel
+          collapsed={editorCollapsed}
+          onToggle={() => setEditorCollapsed(v => !v)}
+          width="50%"
+          labelExpand="Show editor"
+          labelCollapse="Hide editor"
+        >
           <DiagramEditor value={code} onChange={updateCode}>
             <DiagramAIPrompt onGenerate={generate} isGenerating={isGenerating} status={status} error={error} />
           </DiagramEditor>
-        )}
+        </CollapsiblePanel>
         <DiagramPreview
           code={code}
           mermaidTheme={mermaidTheme}
           svgRef={svgRef}
-          editorCollapsed={editorCollapsed}
-          onToggleEditor={() => setEditorCollapsed(v => !v)}
         />
         {filesOpen && (
           <DiagramFilesPanel

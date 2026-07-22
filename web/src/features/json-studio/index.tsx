@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback } from 'react'
 import { CheckCircle, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import CollapsiblePanel from '@/components/ui/CollapsiblePanel'
 import { useJsonStudio } from './hooks/useJsonStudio'
 import JsonToolbar from './components/JsonToolbar'
 import JsonEditor from './components/JsonEditor'
@@ -31,6 +32,7 @@ const SHARED_EDITOR_WIDTH = '45%'
 export default function JsonStudioPage() {
   const state = useJsonStudio()
   const [filesOpen, setFilesOpen] = useState(false)
+  const [editorCollapsed, setEditorCollapsed] = useState(false)
 
   const isDiff = state.mode === 'diff'
 
@@ -75,12 +77,23 @@ export default function JsonStudioPage() {
       <div className="flex flex-1 min-h-0">
         {/* Shared left editor — hidden for diff which owns its own layout */}
         {!isDiff && (
-          <JsonEditor
-            value={state.input}
-            onChange={state.setInput}
+          <CollapsiblePanel
+            collapsed={editorCollapsed}
+            onToggle={() => setEditorCollapsed(v => !v)}
             width={SHARED_EDITOR_WIDTH}
-            toolbar
-          />
+            bordered={false}
+            labelExpand="Show editor"
+            labelCollapse="Hide editor"
+          >
+            <div className="flex-1 min-h-0 flex">
+              <JsonEditor
+                value={state.input}
+                onChange={state.setInput}
+                width="100%"
+                toolbar
+              />
+            </div>
+          </CollapsiblePanel>
         )}
 
         {/* Right panel — switches per mode */}

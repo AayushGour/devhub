@@ -222,6 +222,7 @@ main.devhub-main {
   line-height: 1.75;
   color: var(--md-text);
   max-width: 780px;
+  margin-inline: auto;
   background-color: var(--md-bg);
 }
 .markdown-preview h1,

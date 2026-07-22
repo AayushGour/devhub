@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback } from 'react'
+import CollapsiblePanel from '@/components/ui/CollapsiblePanel'
 import Toolbar from './components/Toolbar'
 import EditorPane from './components/EditorPane'
 import PreviewPane from './components/PreviewPane'
@@ -33,6 +34,7 @@ export default function MarkdownStudioPage() {
   const [deckMode, setDeckMode] = useState(false)
   const [exportModalOpen, setExportModalOpen] = useState(false)
   const [deckGuideOpen, setDeckGuideOpen] = useState(false)
+  const [editorCollapsed, setEditorCollapsed] = useState(false)
 
   const setDoc = useCallback((key: string, val: string) =>
     setStyleSettings(s => ({ ...s, document: { ...s.document, [key]: val } })), [])
@@ -92,7 +94,15 @@ export default function MarkdownStudioPage() {
       />
 
       <div className="flex flex-1 min-h-0">
-        <EditorPane defaultValue={DEFAULT_CONTENT} onChange={updateContent} onMount={onEditorMount} />
+        <CollapsiblePanel
+          collapsed={editorCollapsed}
+          onToggle={() => setEditorCollapsed(v => !v)}
+          width="50%"
+          labelExpand="Show editor"
+          labelCollapse="Hide editor"
+        >
+          <EditorPane defaultValue={DEFAULT_CONTENT} onChange={updateContent} onMount={onEditorMount} />
+        </CollapsiblePanel>
         <PreviewPane
           content={content}
           themeId={themeId}
