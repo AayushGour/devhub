@@ -1,0 +1,36 @@
+.collapsible-panel {
+  position: relative;
+  width: var(--panel-w, 50%);
+  flex-shrink: 0;
+}
+
+/* Static collapsed state — holds width:0 after the collapse animation ends */
+.collapsible-panel--collapsed {
+  width: 0;
+}
+
+.collapsible-panel--anim-collapse {
+  animation: collapsible-panel-collapse 200ms ease-in-out;
+}
+
+.collapsible-panel--anim-expand {
+  animation: collapsible-panel-expand 200ms ease-in-out;
+}
+
+@keyframes collapsible-panel-collapse {
+  from {
+    width: var(--panel-w, 50%);
+  }
+  to {
+    width: 0;
+  }
+}
+
+@keyframes collapsible-panel-expand {
+  from {
+    width: 0;
+  }
+  to {
+    width: var(--panel-w, 50%);
+  }
+}

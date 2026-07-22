@@ -24,7 +24,7 @@ const EDITOR_OPTIONS = {
 export default function EditorPane({ defaultValue, onChange, onMount }: EditorPaneProps) {
   return (
     <CodeEditor
-      className="flex-1 min-w-0 border-r border-border overflow-hidden"
+      className="flex-1 min-h-0 overflow-hidden"
       language="markdown"
       defaultValue={defaultValue}
       onChange={onChange}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import mermaid from 'mermaid'
-import { ZoomIn, ZoomOut, Maximize2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip } from '@/components/ui/Tooltip'
 import type { MermaidTheme } from '../hooks/useDiagramEditor'
@@ -9,8 +9,6 @@ interface DiagramPreviewProps {
   code: string
   mermaidTheme: MermaidTheme
   svgRef: React.RefObject<SVGSVGElement | null>
-  editorCollapsed: boolean
-  onToggleEditor: () => void
 }
 
 let renderId = 0
@@ -19,7 +17,7 @@ const ZOOM_STEP = 1.25
 const ZOOM_MIN = 0.01
 const ZOOM_MAX = 8
 
-export default function DiagramPreview({ code, mermaidTheme, svgRef, editorCollapsed, onToggleEditor }: DiagramPreviewProps) {
+export default function DiagramPreview({ code, mermaidTheme, svgRef }: DiagramPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const naturalDims = useRef<{ w: number; h: number } | null>(null)
@@ -171,15 +169,6 @@ export default function DiagramPreview({ code, mermaidTheme, svgRef, editorColla
 
   return (
     <div className="flex-1 min-w-0 relative flex flex-col border-l border-border">
-      <Tooltip content={editorCollapsed ? 'Show editor' : 'Hide editor'}>
-        <button
-          onClick={onToggleEditor}
-          aria-label={editorCollapsed ? 'Show editor' : 'Hide editor'}
-          className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-5 h-10 rounded-full bg-surface border border-border text-on-surface-muted cursor-pointer hover:text-on-surface hover:border-on-surface-muted transition-colors duration-150"
-        >
-          {editorCollapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
-        </button>
-      </Tooltip>
       <div
         ref={viewportRef}
         className={cn(
