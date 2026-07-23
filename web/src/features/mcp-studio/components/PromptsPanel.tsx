@@ -10,9 +10,9 @@ import { useActiveRuntime } from '../store/mcpStudioStore'
 import SchemaForm from './SchemaForm'
 import ResultView from './ResultView'
 import PanelShell, { SelectorRow } from './PanelShell'
+import { DiscoveryStateView } from './DiscoveryStateView'
+import { PANEL_ACTION_BTN_CLS } from '../styles'
 import type { McpPrompt, GetPromptResult } from '@/lib/mcp/types'
-
-const GET_BTN_CLS = 'px-3 py-1.5 bg-accent text-accent-text text-xs rounded-lg font-medium hover:bg-accent-hover transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed'
 
 export default function PromptsPanel() {
   const runtime = useActiveRuntime()
@@ -39,35 +39,9 @@ export default function PromptsPanel() {
     )
   }
 
-  // Handle discovery states
-  if (runtime.prompts.status === 'loading') {
-    return <div className="p-4 text-xs text-on-surface-muted">Loading prompts…</div>
-  }
-
-  if (runtime.prompts.status === 'error') {
-    return (
-      <div className="p-4">
-        <p className="text-xs text-red-400 font-medium">Error loading prompts</p>
-        <p className="text-[0.65rem] text-on-surface-muted mt-1">{runtime.prompts.error}</p>
-      </div>
-    )
-  }
-
-  if (runtime.prompts.status === 'unsupported') {
-    return (
-      <div className="p-4 text-xs text-on-surface-muted italic">
-        Server doesn't advertise prompts.
-      </div>
-    )
-  }
-
-  if (runtime.prompts.items.length === 0) {
-    return (
-      <div className="p-4 text-xs text-on-surface-muted italic">
-        No prompts available.
-      </div>
-    )
-  }
+  // Handle discovery states (loading / error / unsupported / empty)
+  const gate = DiscoveryStateView({ state: runtime.prompts, noun: 'prompts' })
+  if (gate) return gate
 
   // Get prompt
   async function handleGetPrompt() {
@@ -130,7 +104,7 @@ export default function PromptsPanel() {
   )
 
   const footer = selectedPrompt ? (
-    <button onClick={handleGetPrompt} disabled={!runtime.session || running} className={GET_BTN_CLS}>
+    <button onClick={handleGetPrompt} disabled={!runtime.session || running} className={PANEL_ACTION_BTN_CLS}>
       {running ? 'Getting…' : 'Get'}
     </button>
   ) : undefined

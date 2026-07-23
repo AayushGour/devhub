@@ -12,6 +12,7 @@ import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { fieldsFromSource, serializeArrayText, arrayValueToText } from '../utils/schemaFormFields'
 import type { SchemaFormSource } from '../utils/schemaFormFields'
+import { FIELD_INPUT_CLS, FIELD_LABEL_CLS } from '../styles'
 
 export type { SchemaFormSource }
 
@@ -22,10 +23,6 @@ export interface SchemaFormProps {
   disabled?: boolean
   className?: string
 }
-
-const FIELD_INPUT_CLS =
-  'w-full bg-surface-raised border border-border rounded-lg px-2.5 py-1.5 text-xs text-on-surface outline-none font-[inherit] focus:border-accent transition-colors duration-150'
-const FIELD_LABEL_CLS = 'text-[0.65rem] text-on-surface-muted'
 
 export default function SchemaForm({ source, value, onChange, disabled, className }: SchemaFormProps) {
   const fields = fieldsFromSource(source)

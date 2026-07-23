@@ -5,10 +5,7 @@ import { cn } from '@/lib/utils'
 import { useMcpConnection } from '../hooks/useMcpConnection'
 import { McpConnectError } from '../types'
 import type { Protocol, AuthMode, CustomHeaderRow } from '../types'
-
-const INPUT_CLS =
-  'w-full bg-surface-raised border border-border rounded-lg px-2.5 py-1.5 text-xs text-on-surface outline-none font-[inherit] focus:border-accent transition-colors duration-150'
-const LABEL_CLS = 'text-[0.65rem] text-on-surface-muted'
+import { FIELD_INPUT_CLS as INPUT_CLS, FIELD_LABEL_CLS as LABEL_CLS } from '../styles'
 
 const PROTOCOL_OPTIONS: { value: Protocol; label: string }[] = [
   { value: 'auto', label: 'Auto (HTTP → SSE fallback)' },
