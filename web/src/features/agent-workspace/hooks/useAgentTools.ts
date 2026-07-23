@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ToolDefinition } from '@/lib/llm/engine'
-import { callTool } from '../mcp/mcpClient'
+import { callTool } from '@/lib/mcp/client'
+import type { CallToolResult } from '@/lib/mcp/types'
 import { useMcpStore } from '../mcp/mcpStore'
 import { executeFetchUrl } from '../tools/fetchUrl'
 import { executeWebSearch } from '../tools/webSearch'
@@ -16,6 +17,24 @@ import {
   FILE_SYSTEM_SCHEMA,
   MEMORY_SCHEMA,
 } from '../utils/toolSchemas'
+
+// `callTool` returns the full raw MCP `CallToolResult` object (mcp-studio needs
+// that shape to render it). The agent tool-calling loop just wants the tool's
+// text output back as a plain string — flatten it the same way the old
+// mcpClient.callTool used to.
+function flattenCallToolResult(result: CallToolResult): string {
+  const content = result.content
+  if (Array.isArray(content) && content.length > 0) {
+    return content.map((c) => (typeof c.text === 'string' ? c.text : '')).join('\n')
+  }
+  return JSON.stringify(result)
+}
+
+// Sanitize a server name into a tool-name-safe prefix. LLM/MCP tool names must
+// match ^[a-zA-Z0-9_-]+$, so collapse any run of other chars to one underscore.
+function mcpNamePrefix(serverName: string): string {
+  return serverName.replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'server'
+}
 
 interface BuiltInTool {
   schema: ToolDefinition
@@ -64,13 +83,19 @@ export function useAgentTools() {
 
   const mcpEntries = servers
     .filter((s) => s.status === 'connected')
-    .flatMap((s) =>
-      s.tools.map((t) => ({
-        schema: t,
-        execute: (args: Record<string, unknown>) => callTool(s.session!, t.function.name, args),
+    .flatMap((s) => {
+      const prefix = mcpNamePrefix(s.name)
+      return s.tools.map((t) => ({
+        // Namespace every MCP tool as `server__tool` so identically-named tools
+        // from different servers stay distinct: the LLM sees unique names and the
+        // correct server's session is invoked. The ORIGINAL tool name is still
+        // what gets sent to the server in `execute`.
+        schema: { ...t, function: { ...t.function, name: `${prefix}__${t.function.name}` } },
+        execute: (args: Record<string, unknown>) =>
+          callTool(s.session!, t.function.name, args).then(flattenCallToolResult),
         source: s.name,
-      })),
-    )
+      }))
+    })
 
   const allTools = [...builtInEntries, ...mcpEntries]
   const allToolSchemas: ToolDefinition[] = allTools.map((t) => t.schema)

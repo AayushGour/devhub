@@ -196,6 +196,34 @@ h6 {
   font-weight: 600;
 }
 
+/* ── Scrollbars — one consistent, themed, thin treatment app-wide ──
+   Without this, scroll areas fall back to the OS default scrollbar, which reads
+   inconsistently across surfaces (e.g. the light "paper" markdown result card
+   vs. the dark app chrome). Theme vars keep the thumb subtle on every surface. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--on-surface-muted);
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 #root {
   height: 100svh;
   display: flex;
@@ -224,6 +252,22 @@ main.devhub-main {
   max-width: 780px;
   margin-inline: auto;
   background-color: var(--md-bg);
+}
+
+/* MCP Studio renders tool results with the shared MarkdownViewer but inside the
+   dark app chrome. Remap the markdown "paper" palette to the app theme so the
+   result follows the current theme instead of a fixed light document. Scoped to
+   `.mcp-result` so markdown-studio's paper preview and other consumers are
+   unaffected. */
+.markdown-preview.mcp-result {
+  --md-bg: var(--surface-raised);
+  --md-text: var(--on-surface);
+  --md-text-muted: var(--on-surface-muted);
+  --md-border: var(--border);
+  --md-accent: var(--accent);
+  --md-code-bg: var(--surface);
+  --md-blockquote-bg: var(--surface);
+  --md-blockquote-border: var(--border);
 }
 .markdown-preview h1,
 .markdown-preview h2,

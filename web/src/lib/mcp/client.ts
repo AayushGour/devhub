@@ -1,16 +1,35 @@
-import type { ToolDefinition } from '@/lib/llm/engine'
+// Shared MCP (Model Context Protocol) transport — streamable-HTTP + legacy SSE
+// client for talking to arbitrary MCP servers directly from the browser.
+//
+// Consumed by:
+//  - agent-workspace (tool-calling only) via a thin `McpTool → ToolDefinition`
+//    adapter living in its own mcpStore.ts.
+//  - mcp-studio (full inspect + manual invoke of tools/prompts/resources/
+//    resource-templates), which uses the raw shapes below directly.
+//
+// This module only knows the wire protocol (see ./types for the raw MCP
+// shapes) — it has no opinion on how a caller presents or gates that data.
 
-export interface McpSession {
-  sessionId: string
-  serverUrl: string
-}
+import type {
+  McpSession,
+  InitializeResult,
+  McpTool,
+  CallToolResult,
+  McpPrompt,
+  GetPromptResult,
+  McpResource,
+  ReadResourceResult,
+  McpResourceTemplate,
+} from './types'
+
+export type { McpSession }
 
 interface SseState {
   es: EventSource
   waiters: Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>
 }
 
-// Keyed by messagesUrl (the POST endpoint derived from SSE endpoint event)
+// Keyed by messagesUrl (the POST endpoint derived from the SSE `endpoint` event)
 const _sseStates = new Map<string, SseState>()
 
 // Monotonic JSON-RPC request id. Every request MUST use a unique id: over SSE the
@@ -28,8 +47,13 @@ export function closeSseSession(serverUrl: string) {
   }
 }
 
-function mcpHeaders(sessionId: string): Record<string, string> {
+// Base MCP protocol headers plus any per-connection custom headers (bearer auth
+// + custom rows from mcp-studio's ConnectionForm). Fixed protocol headers are
+// spread LAST so a user-supplied custom header row can never break the wire
+// protocol (e.g. a row literally named "Accept" or "Content-Type").
+function mcpHeaders(sessionId: string, extra: Record<string, string> = {}): Record<string, string> {
   const h: Record<string, string> = {
+    ...extra,
     'Content-Type': 'application/json',
     'Accept': 'application/json, text/event-stream',
   }
@@ -41,9 +65,17 @@ function mcpHeaders(sessionId: string): Record<string, string> {
 // most-likely-correct first. The conventional MCP/SSE endpoint is `/sse` (root or
 // in place of the last path segment); appending `/sse` to the full path (e.g.
 // `/mcp` → `/mcp/sse`) is rarely correct, so it is the LAST resort.
-export function sseUrlCandidates(mcpUrl: string): string[] {
+//
+// `accessToken` — native EventSource cannot set request headers, so a bearer
+// token that needs to ride the SSE handshake is appended as `?access_token=`
+// on every candidate (see design doc, "Hard browser constraints").
+export function sseUrlCandidates(mcpUrl: string, accessToken?: string): string[] {
   const seen = new Set<string>()
-  const add = (u: URL) => { u.search = ''; seen.add(u.href) }
+  const add = (u: URL) => {
+    u.search = ''
+    if (accessToken) u.searchParams.set('access_token', accessToken)
+    seen.add(u.href)
+  }
   try {
     const base = new URL(mcpUrl)
     const stripped = base.pathname.replace(/\/$/, '')
@@ -72,9 +104,11 @@ export function sseUrlCandidates(mcpUrl: string): string[] {
     u5.pathname = stripped + '/sse'
     add(u5)
   } catch {
-    seen.add(mcpUrl)
-    seen.add(mcpUrl.replace(/\/[^/]*$/, '/sse'))
-    seen.add(mcpUrl.replace(/\/?$/, '/sse'))
+    const withToken = (u: string) =>
+      accessToken ? `${u}${u.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(accessToken)}` : u
+    seen.add(withToken(mcpUrl))
+    seen.add(withToken(mcpUrl.replace(/\/[^/]*$/, '/sse')))
+    seen.add(withToken(mcpUrl.replace(/\/?$/, '/sse')))
   }
   return [...seen]
 }
@@ -90,7 +124,7 @@ async function readSseResult(res: Response): Promise<unknown> {
   throw new Error('No parseable SSE data line found')
 }
 
-// Unified RPC call: handles both streamable-HTTP and SSE transports
+// Unified RPC call: handles both streamable-HTTP and SSE transports.
 async function rpcCall(session: McpSession, body: Record<string, unknown>): Promise<unknown> {
   const sseState = _sseStates.get(session.serverUrl)
   const id = body.id as number | undefined
@@ -109,7 +143,7 @@ async function rpcCall(session: McpSession, body: Record<string, unknown>): Prom
 
     const res = await fetch(session.serverUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', ...session.headers },
       body: JSON.stringify(body),
     })
     if (!res.ok && res.status !== 202) throw new Error(`MCP request failed: ${res.status}`)
@@ -127,7 +161,7 @@ async function rpcCall(session: McpSession, body: Record<string, unknown>): Prom
   // Streamable HTTP transport
   const res = await fetch(session.serverUrl, {
     method: 'POST',
-    headers: mcpHeaders(session.sessionId),
+    headers: mcpHeaders(session.sessionId, session.headers),
     body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error(`MCP request failed: ${res.status}`)
@@ -135,10 +169,31 @@ async function rpcCall(session: McpSession, body: Record<string, unknown>): Prom
   return ct.includes('text/event-stream') ? readSseResult(res) : res.json()
 }
 
-export async function initSession(serverUrl: string): Promise<McpSession> {
+interface JsonRpcResponse<T> {
+  jsonrpc?: '2.0'
+  id?: number
+  result?: T
+  error?: { code: number; message: string; data?: unknown }
+}
+
+// Unwrap a JSON-RPC response, throwing on a top-level RPC error or a malformed
+// (missing `result`) response. Tool/prompt-level failure (`CallToolResult.isError`)
+// is NOT handled here — that's a normal, non-throwing result the caller/UI
+// renders inline (see design doc, "Error handling").
+function unwrapResult<T>(data: unknown, method: string): T {
+  const res = data as JsonRpcResponse<T>
+  if (res?.error) throw new Error(`MCP ${method} failed: ${res.error.message}`)
+  if (res?.result === undefined) throw new Error(`MCP ${method}: malformed response (no result)`)
+  return res.result
+}
+
+export async function initSession(
+  serverUrl: string,
+  headers: Record<string, string> = {},
+): Promise<{ session: McpSession; initResult: InitializeResult }> {
   const res = await fetch(serverUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' },
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream', ...headers },
     body: JSON.stringify({
       jsonrpc: '2.0',
       method: 'initialize',
@@ -165,8 +220,7 @@ export async function initSession(serverUrl: string): Promise<McpSession> {
   // wrong endpoint) can answer the POST with HTTP 200 and arbitrary JSON — without
   // this check that bogus success resolves a fake session and the SSE fallback
   // never runs. Require the handshake fields a genuine MCP server returns.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result = (initData as any)?.result
+  const result = (initData as { result?: Partial<InitializeResult> } | undefined)?.result
   if (!result || (!result.protocolVersion && !result.serverInfo && !result.capabilities)) {
     throw new Error('Not a valid MCP initialize response (HTTP transport)')
   }
@@ -175,14 +229,17 @@ export async function initSession(serverUrl: string): Promise<McpSession> {
 
   await fetch(serverUrl, {
     method: 'POST',
-    headers: mcpHeaders(sessionId),
+    headers: mcpHeaders(sessionId, headers),
     body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
   })
 
-  return { sessionId, serverUrl }
+  return { session: { sessionId, serverUrl, headers }, initResult: result as InitializeResult }
 }
 
-export async function initSessionSse(sseUrl: string): Promise<McpSession> {
+export async function initSessionSse(
+  sseUrl: string,
+  headers: Record<string, string> = {},
+): Promise<{ session: McpSession; initResult: InitializeResult }> {
   return new Promise((resolve, reject) => {
     const waiters = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
     const es = new EventSource(sseUrl)
@@ -223,7 +280,7 @@ export async function initSessionSse(sseUrl: string): Promise<McpSession> {
       const sseState: SseState = { es, waiters }
       _sseStates.set(messagesUrl, sseState)
 
-      const session: McpSession = { sessionId: '', serverUrl: messagesUrl }
+      const session: McpSession = { sessionId: '', serverUrl: messagesUrl, headers }
 
       try {
         // Register the initialize waiter BEFORE sending the POST. SSE servers
@@ -242,9 +299,11 @@ export async function initSessionSse(sseUrl: string): Promise<McpSession> {
         })
 
         // Initialize — response may come in the POST body OR over the SSE stream.
+        // These POSTs (unlike the initial EventSource handshake above) are plain
+        // fetch calls, so custom headers DO reach the server here.
         const initRes = await fetch(messagesUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', ...headers },
           body: JSON.stringify({
             jsonrpc: '2.0',
             method: 'initialize',
@@ -259,23 +318,28 @@ export async function initSessionSse(sseUrl: string): Promise<McpSession> {
         if (!initRes.ok && initRes.status !== 202) throw new Error(`SSE MCP init failed: ${initRes.status}`)
 
         const initCt = initRes.headers.get('Content-Type') ?? ''
+        let initResult: InitializeResult | undefined
         if (initRes.status !== 202 && initCt.includes('application/json')) {
           // Response came back in the POST body — drop the SSE waiter and use it.
           waiters.delete(1)
-          await initRes.json()
+          const data = await initRes.json()
+          initResult = (data as { result?: InitializeResult })?.result
         } else {
           // Response is delivered over the SSE stream (waiter registered above).
-          await initWaiter
+          const data = await initWaiter
+          initResult = (data as { result?: InitializeResult })?.result
         }
+
+        if (!initResult) throw new Error('Not a valid MCP initialize response (SSE transport)')
 
         // Notification — no response expected
         await fetch(messagesUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...headers },
           body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
         })
 
-        resolve(session)
+        resolve({ session, initResult })
       } catch (err) {
         es.close()
         _sseStates.delete(messagesUrl)
@@ -291,39 +355,68 @@ export async function initSessionSse(sseUrl: string): Promise<McpSession> {
   })
 }
 
-export async function listTools(session: McpSession): Promise<ToolDefinition[]> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data = await rpcCall(session, { jsonrpc: '2.0', method: 'tools/list', id: nextRpcId() }) as any
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tools = data?.result?.tools ?? []
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return tools.map((t: any): ToolDefinition => ({
-    type: 'function',
-    function: {
-      name: t.name,
-      description: t.description ?? '',
-      parameters: t.inputSchema ?? { type: 'object', properties: {} },
-    },
-  }))
+// --- Raw MCP primitive calls -------------------------------------------------
+// Every function below returns the raw wire shape (see ./types), never an
+// LLM-facing wrapper.
+
+export async function listTools(session: McpSession): Promise<McpTool[]> {
+  const data = await rpcCall(session, { jsonrpc: '2.0', method: 'tools/list', id: nextRpcId() })
+  const result = unwrapResult<{ tools?: McpTool[] }>(data, 'tools/list')
+  return result.tools ?? []
 }
 
 export async function callTool(
   session: McpSession,
   name: string,
   args: Record<string, unknown>,
-): Promise<string> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<CallToolResult> {
   const data = await rpcCall(session, {
     jsonrpc: '2.0',
     method: 'tools/call',
     id: nextRpcId(),
     params: { name, arguments: args },
-  }) as any // eslint-disable-line @typescript-eslint/no-explicit-any
+  })
+  return unwrapResult<CallToolResult>(data, 'tools/call')
+}
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const content = (data as any)?.result?.content
-  if (Array.isArray(content) && content.length > 0) {
-    return content.map((c: { text?: string }) => c.text ?? '').join('\n')
-  }
-  return JSON.stringify(data)
+export async function listPrompts(session: McpSession): Promise<McpPrompt[]> {
+  const data = await rpcCall(session, { jsonrpc: '2.0', method: 'prompts/list', id: nextRpcId() })
+  const result = unwrapResult<{ prompts?: McpPrompt[] }>(data, 'prompts/list')
+  return result.prompts ?? []
+}
+
+export async function getPrompt(
+  session: McpSession,
+  name: string,
+  args: Record<string, string> = {},
+): Promise<GetPromptResult> {
+  const data = await rpcCall(session, {
+    jsonrpc: '2.0',
+    method: 'prompts/get',
+    id: nextRpcId(),
+    params: { name, arguments: args },
+  })
+  return unwrapResult<GetPromptResult>(data, 'prompts/get')
+}
+
+export async function listResources(session: McpSession): Promise<McpResource[]> {
+  const data = await rpcCall(session, { jsonrpc: '2.0', method: 'resources/list', id: nextRpcId() })
+  const result = unwrapResult<{ resources?: McpResource[] }>(data, 'resources/list')
+  return result.resources ?? []
+}
+
+export async function readResource(session: McpSession, uri: string): Promise<ReadResourceResult> {
+  const data = await rpcCall(session, {
+    jsonrpc: '2.0',
+    method: 'resources/read',
+    id: nextRpcId(),
+    params: { uri },
+  })
+  return unwrapResult<ReadResourceResult>(data, 'resources/read')
+}
+
+export async function listResourceTemplates(session: McpSession): Promise<McpResourceTemplate[]> {
+  const data = await rpcCall(session, { jsonrpc: '2.0', method: 'resources/templates/list', id: nextRpcId() })
+  const result = unwrapResult<{ resourceTemplates?: McpResourceTemplate[] }>(data, 'resources/templates/list')
+  return result.resourceTemplates ?? []
 }
