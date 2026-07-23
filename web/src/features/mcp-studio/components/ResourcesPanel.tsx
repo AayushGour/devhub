@@ -8,9 +8,9 @@ import { useActiveRuntime } from '../store/mcpStudioStore'
 import { readResource } from '@/lib/mcp/client'
 import ResultView from './ResultView'
 import PanelShell, { SelectorRow } from './PanelShell'
+import { DiscoveryStateView } from './DiscoveryStateView'
+import { PANEL_ACTION_BTN_CLS } from '../styles'
 import type { ReadResourceResult } from '@/lib/mcp/types'
-
-const READ_BTN_CLS = 'px-3 py-1.5 bg-accent text-accent-text text-xs rounded-lg font-medium hover:bg-accent-hover transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed'
 
 export default function ResourcesPanel() {
   const runtime = useActiveRuntime()
@@ -30,35 +30,9 @@ export default function ResourcesPanel() {
 
   const { resources, session } = runtime
 
-  // Discovery state rendering
-  if (resources.status === 'loading') {
-    return <div className="p-4 text-xs text-on-surface-muted">Loading resources…</div>
-  }
-
-  if (resources.status === 'error') {
-    return (
-      <div className="p-4">
-        <p className="text-xs text-red-400 font-medium">Error loading resources</p>
-        <p className="text-[0.65rem] text-on-surface-muted mt-1">{resources.error || 'Unknown error'}</p>
-      </div>
-    )
-  }
-
-  if (resources.status === 'unsupported') {
-    return (
-      <div className="p-4 text-xs text-on-surface-muted italic">
-        Server doesn&apos;t advertise resources.
-      </div>
-    )
-  }
-
-  if (resources.items.length === 0) {
-    return (
-      <div className="p-4 text-xs text-on-surface-muted italic">
-        No resources available.
-      </div>
-    )
-  }
+  // Discovery state rendering (loading / error / unsupported / empty)
+  const gate = DiscoveryStateView({ state: resources, noun: 'resources' })
+  if (gate) return gate
 
   const selectedResource = resources.items.find((r) => r.uri === selectedUri)
 
@@ -121,7 +95,7 @@ export default function ResourcesPanel() {
   )
 
   const footer = selectedResource ? (
-    <button onClick={handleRead} disabled={!session || running} className={READ_BTN_CLS}>
+    <button onClick={handleRead} disabled={!session || running} className={PANEL_ACTION_BTN_CLS}>
       {running ? 'Reading…' : 'Read'}
     </button>
   ) : undefined

@@ -130,6 +130,7 @@ export function useMcpConnection() {
   const setActiveConnection = useMcpStudioStore((s) => s.setActiveConnection)
   const setRuntime = useMcpStudioStore((s) => s.setRuntime)
   const resetRuntime = useMcpStudioStore((s) => s.resetRuntime)
+  const clearRuntime = useMcpStudioStore((s) => s.clearRuntime)
 
   // Capability-gated discovery: only call `*/list` for primitives the server
   // actually advertised in `initialize`'s capabilities. Resource templates ride
@@ -181,14 +182,16 @@ export function useMcpConnection() {
       try {
         await establish(id, connection)
       } catch (err) {
-        resetRuntime(id)
+        // Discard the runtime entirely — this id was never added to `connections`,
+        // so resetRuntime would leave an orphan runtime nothing can ever clean up.
+        clearRuntime(id)
         throw err
       }
       upsertConnection(connection)
       setActiveConnection(id)
       return id
     },
-    [establish, resetRuntime, upsertConnection, setActiveConnection],
+    [establish, clearRuntime, upsertConnection, setActiveConnection],
   )
 
   // Re-attempts a previously-saved connection (ConnectionRail's retry button,
@@ -198,6 +201,10 @@ export function useMcpConnection() {
     async (id: string) => {
       const conn = useMcpStudioStore.getState().connections.find((c) => c.id === id)
       if (!conn) throw new Error(`Unknown connection: ${id}`)
+      // Close any existing live session first so its EventSource + _sseStates entry
+      // aren't leaked/orphaned when establish() opens a fresh one.
+      const prev = useMcpStudioStore.getState().runtimes[id]
+      if (prev?.session) closeSseSession(prev.session.serverUrl)
       await establish(id, conn)
     },
     [establish],

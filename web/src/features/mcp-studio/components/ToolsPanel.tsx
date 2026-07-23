@@ -10,9 +10,9 @@ import { callTool } from '@/lib/mcp/client'
 import SchemaForm from './SchemaForm'
 import ResultView from './ResultView'
 import PanelShell, { SelectorRow } from './PanelShell'
+import { DiscoveryStateView } from './DiscoveryStateView'
+import { PANEL_ACTION_BTN_CLS } from '../styles'
 import type { CallToolResult } from '@/lib/mcp/types'
-
-const RUN_BTN_CLS = 'px-3 py-1.5 bg-accent text-accent-text text-xs rounded-lg font-medium hover:bg-accent-hover transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed'
 
 export default function ToolsPanel() {
   const runtime = useActiveRuntime()
@@ -41,35 +41,9 @@ export default function ToolsPanel() {
     )
   }
 
-  // Handle discovery states
-  if (runtime.tools.status === 'loading') {
-    return <div className="p-4 text-xs text-on-surface-muted">Loading tools…</div>
-  }
-
-  if (runtime.tools.status === 'error') {
-    return (
-      <div className="p-4">
-        <p className="text-xs text-red-400 font-medium">Error loading tools</p>
-        <p className="text-[0.65rem] text-on-surface-muted mt-1">{runtime.tools.error}</p>
-      </div>
-    )
-  }
-
-  if (runtime.tools.status === 'unsupported') {
-    return (
-      <div className="p-4 text-xs text-on-surface-muted italic">
-        Server doesn't advertise tools.
-      </div>
-    )
-  }
-
-  if (runtime.tools.items.length === 0) {
-    return (
-      <div className="p-4 text-xs text-on-surface-muted italic">
-        No tools available.
-      </div>
-    )
-  }
+  // Handle discovery states (loading / error / unsupported / empty)
+  const gate = DiscoveryStateView({ state: runtime.tools, noun: 'tools' })
+  if (gate) return gate
 
   // Run tool
   async function handleRun() {
@@ -126,7 +100,7 @@ export default function ToolsPanel() {
   )
 
   const footer = selectedTool ? (
-    <button onClick={handleRun} disabled={!runtime.session || running} className={RUN_BTN_CLS}>
+    <button onClick={handleRun} disabled={!runtime.session || running} className={PANEL_ACTION_BTN_CLS}>
       {running ? 'Running…' : 'Run'}
     </button>
   ) : undefined

@@ -9,9 +9,9 @@ import { readResource } from '@/lib/mcp/client'
 import { extractTemplateParams, expandUriTemplate } from '../utils/uriTemplate'
 import ResultView from './ResultView'
 import PanelShell, { SelectorRow } from './PanelShell'
+import { DiscoveryStateView } from './DiscoveryStateView'
+import { PANEL_ACTION_BTN_CLS } from '../styles'
 import type { ReadResourceResult } from '@/lib/mcp/types'
-
-const READ_BTN_CLS = 'px-3 py-1.5 bg-accent text-accent-text text-xs rounded-lg font-medium hover:bg-accent-hover transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed'
 
 export default function TemplatesPanel() {
   const runtime = useActiveRuntime()
@@ -55,35 +55,9 @@ export default function TemplatesPanel() {
     )
   }
 
-  // Handle discovery states
-  if (runtime.templates.status === 'loading') {
-    return <div className="p-4 text-xs text-on-surface-muted">Loading resource templates…</div>
-  }
-
-  if (runtime.templates.status === 'error') {
-    return (
-      <div className="p-4">
-        <p className="text-xs text-red-400 font-medium">Error loading resource templates</p>
-        <p className="text-[0.65rem] text-on-surface-muted mt-1">{runtime.templates.error}</p>
-      </div>
-    )
-  }
-
-  if (runtime.templates.status === 'unsupported') {
-    return (
-      <div className="p-4 text-xs text-on-surface-muted italic">
-        Server doesn't advertise resource templates.
-      </div>
-    )
-  }
-
-  if (runtime.templates.items.length === 0) {
-    return (
-      <div className="p-4 text-xs text-on-surface-muted italic">
-        No resource templates available.
-      </div>
-    )
-  }
+  // Handle discovery states (loading / error / unsupported / empty)
+  const gate = DiscoveryStateView({ state: runtime.templates, noun: 'resource templates' })
+  if (gate) return gate
 
   // Handle read
   async function handleRead() {
@@ -165,7 +139,7 @@ export default function TemplatesPanel() {
   )
 
   const footer = selectedTemplate ? (
-    <button onClick={handleRead} disabled={isReadDisabled} className={READ_BTN_CLS}>
+    <button onClick={handleRead} disabled={isReadDisabled} className={PANEL_ACTION_BTN_CLS}>
       {running ? 'Reading…' : 'Read'}
     </button>
   ) : undefined

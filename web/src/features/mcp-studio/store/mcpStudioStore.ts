@@ -23,6 +23,9 @@ interface McpStudioState {
   /** Shallow-merge a patch into one connection's runtime (creating it if absent). */
   setRuntime: (id: string, patch: Partial<ConnectionRuntime>) => void
   resetRuntime: (id: string) => void
+  /** Delete a runtime entry outright — used to discard a failed brand-new connect
+   *  whose id was never added to `connections` (resetRuntime would leave an orphan). */
+  clearRuntime: (id: string) => void
 }
 
 export function emptyRuntime(): ConnectionRuntime {
@@ -78,6 +81,14 @@ export const useMcpStudioStore = create<McpStudioState>()(
 
       resetRuntime: (id) => {
         set((s) => ({ runtimes: { ...s.runtimes, [id]: emptyRuntime() } }))
+      },
+
+      clearRuntime: (id) => {
+        set((s) => {
+          const rest = { ...s.runtimes }
+          delete rest[id]
+          return { runtimes: rest }
+        })
       },
     }),
     {

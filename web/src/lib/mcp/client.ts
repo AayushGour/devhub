@@ -262,9 +262,14 @@ export async function initSessionSse(
       es.onmessage = (me) => {
         try {
           const data = JSON.parse(me.data)
-          const waiter = waiters.get(data?.id)
+          // Waiters are keyed by our numeric request id. Some servers echo the id
+          // back as a JSON string ("1") rather than a number — coerce so the
+          // response still routes to its waiter instead of timing out.
+          const rawId = data?.id
+          const id = typeof rawId === 'string' ? Number(rawId) : rawId
+          const waiter = waiters.get(id)
           if (waiter) {
-            waiters.delete(data.id)
+            waiters.delete(id)
             waiter.resolve(data)
           }
         } catch { /* ignore non-JSON */ }
