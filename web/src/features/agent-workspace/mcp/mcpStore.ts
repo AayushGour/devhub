@@ -1,7 +1,30 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { ToolDefinition } from '@/lib/llm/engine'
-import { initSession, initSessionSse, sseUrlCandidates, closeSseSession, listTools, type McpSession } from './mcpClient'
+import {
+  initSession,
+  initSessionSse,
+  sseUrlCandidates,
+  closeSseSession,
+  listTools as listMcpTools,
+  type McpSession,
+} from '@/lib/mcp/client'
+import type { McpTool } from '@/lib/mcp/types'
+
+// Adapt the raw MCP tool shape (`@/lib/mcp/types`) to the LLM-facing
+// `ToolDefinition` wrapper this store's consumers (useAgentTools, callWithTools)
+// expect. mcp-studio consumes the raw `McpTool` shape directly — this adapter
+// is agent-workspace-only.
+function toToolDefinition(t: McpTool): ToolDefinition {
+  return {
+    type: 'function',
+    function: {
+      name: t.name,
+      description: t.description ?? '',
+      parameters: t.inputSchema ?? { type: 'object', properties: {} },
+    },
+  }
+}
 
 export interface McpServer {
   id: string
@@ -63,7 +86,7 @@ async function connectServer(set: SetFn, id: string, url: string) {
   for (const a of attempts) {
     try {
       console.log(`[mcp] trying ${a.kind.toUpperCase()} ${a.url}`)
-      session = a.kind === 'http' ? await initSession(a.url) : await initSessionSse(a.url)
+      session = a.kind === 'http' ? (await initSession(a.url)).session : (await initSessionSse(a.url)).session
       console.log(`[mcp] connected via ${a.kind.toUpperCase()} ${a.url}`)
       break
     } catch (err) {
@@ -79,7 +102,17 @@ async function connectServer(set: SetFn, id: string, url: string) {
     throw new Error(errorMsg)
   }
 
-  const tools = await listTools(session)
+  // A server can initialize fine yet answer tools/list with a JSON-RPC error
+  // (e.g. it only advertises prompts/resources). Treat that as "no tools" and
+  // still mark the server connected — otherwise the whole connection is stuck
+  // retrying forever.
+  let mcpTools: McpTool[] = []
+  try {
+    mcpTools = await listMcpTools(session)
+  } catch (err) {
+    console.log(`[mcp] tools/list failed; connecting with no tools: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  const tools = mcpTools.map(toToolDefinition)
   setServerState(set, id, { status: 'connected', tools, session, errorMsg: undefined })
 }
 
