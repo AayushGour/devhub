@@ -41,9 +41,16 @@ function ensureFontsLoaded() {
   }
 }
 
+// This <style> is injected GLOBALLY into <head>, so it targets every
+// `.markdown-preview` on the page — including MCP Studio's result pane, which
+// reuses the shared MarkdownViewer. Scope it to `:not(.mcp-result)` so the fixed
+// light-paper palette (dark #24292e text + per-theme heading colors below) never
+// leaks onto that pane, whose `.mcp-result` rules make it follow the app theme.
+const PREVIEW_SCOPE = '.markdown-preview:not(.mcp-result)'
+
 // Ensures the preview always renders with a light document background regardless of
 // app theme, matching the PDF export appearance. User custom styles override this.
-const BASE_PREVIEW_CSS = `.markdown-preview { color: #24292e; }`
+const BASE_PREVIEW_CSS = `${PREVIEW_SCOPE} { color: #24292e; }`
 
 function injectThemeCss(themeId: string, settings: StyleSettings) {
   let el = document.getElementById(THEME_STYLE_ID) as HTMLStyleElement | null
@@ -55,8 +62,8 @@ function injectThemeCss(themeId: string, settings: StyleSettings) {
   const theme = getTheme(themeId)
   el.textContent = [
     BASE_PREVIEW_CSS,
-    themeToCss(theme, '.markdown-preview'),
-    buildCustomCss(settings, '.markdown-preview'),
+    themeToCss(theme, PREVIEW_SCOPE),
+    buildCustomCss(settings, PREVIEW_SCOPE),
   ].join('\n')
 }
 
