@@ -1,11 +1,11 @@
 import { useState, useRef } from 'react'
 import { Copy, Check, ArrowLeftRight, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Tooltip } from '@/components/ui/Tooltip'
+import { TextAreaField } from '@/components/ui/TextAreaField'
 import { encodeBase64, decodeBase64, encodeFileBase64 } from '../utils/base64'
 import { useCopy } from '../hooks/useCopy'
 
-const TEXTAREA_CLS =
-  'w-full flex-1 bg-surface-raised border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent transition-colors duration-150 resize-none font-mono'
 const TOGGLE_BTN = (active: boolean) =>
   cn(
     'px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors duration-150',
@@ -87,24 +87,26 @@ export function Base64Tool() {
           <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide flex-shrink-0">
             {mode === 'encode' ? 'Plaintext' : 'Base64'}
           </span>
-          <textarea
-            className={TEXTAREA_CLS}
+          <TextAreaField
+            className="flex-1"
             placeholder={mode === 'encode' ? 'Enter text to encode…' : 'Paste base64 to decode…'}
             value={input}
-            onChange={e => { setInput(e.target.value); setError('') }}
+            onChange={val => { setInput(val); setError('') }}
           />
         </div>
 
         {/* Swap */}
         <div className="flex items-center px-2 flex-shrink-0">
-          <button
-            onClick={swap}
-            disabled={!output}
-            className="p-1.5 rounded-lg text-on-surface-muted hover:text-on-surface hover:bg-surface-hover transition-colors duration-150 disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Swap input/output"
-          >
-            <ArrowLeftRight size={14} />
-          </button>
+          <Tooltip content="Swap input/output">
+            <button
+              onClick={swap}
+              disabled={!output}
+              aria-label="Swap input/output"
+              className="p-1.5 rounded-lg text-on-surface-muted hover:text-on-surface hover:bg-surface-hover transition-colors duration-150 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <ArrowLeftRight size={14} />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Right */}
@@ -132,9 +134,9 @@ export function Base64Tool() {
               <span className="text-xs text-red-500 font-mono">{error}</span>
             </div>
           ) : (
-            <textarea
+            <TextAreaField
+              className="flex-1"
               readOnly
-              className={cn(TEXTAREA_CLS, 'cursor-default')}
               value={output}
               placeholder={input ? '' : 'Output appears here…'}
             />

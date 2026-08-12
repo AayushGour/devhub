@@ -32,3 +32,5 @@ extension/dist
 *.njsproj
 *.sln
 *.sw?
+
+.playwright-mcp/

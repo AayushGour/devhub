@@ -1,5 +1,6 @@
 import { GitBranch, Clock, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Tooltip } from '@/components/ui/Tooltip'
 import type { RepoMeta } from '../types'
 
 interface Props {
@@ -32,20 +33,21 @@ export default function RepoHeader({ meta, fetching, onRefetch }: Props) {
         <Clock size={10} />
         indexed {timeAgo(meta.fetchedAt)}
       </span>
-      <button
-        onClick={onRefetch}
-        disabled={fetching}
-        title="Refetch and reindex"
-        className={cn(
-          'flex items-center gap-1 text-[0.65rem] px-1.5 py-0.5 rounded border transition-colors duration-150',
-          fetching
-            ? 'border-border text-on-surface-muted/40 cursor-not-allowed'
-            : 'border-border text-on-surface-muted hover:text-accent hover:border-accent',
-        )}
-      >
-        <RefreshCw size={10} className={cn(fetching && 'animate-spin')} />
-        Refetch
-      </button>
+      <Tooltip content="Refetch and reindex">
+        <button
+          onClick={onRefetch}
+          disabled={fetching}
+          className={cn(
+            'flex items-center gap-1 text-[0.65rem] px-1.5 py-0.5 rounded border transition-colors duration-150',
+            fetching
+              ? 'border-border text-on-surface-muted/40 cursor-not-allowed'
+              : 'border-border text-on-surface-muted hover:text-accent hover:border-accent',
+          )}
+        >
+          <RefreshCw size={10} className={cn(fetching && 'animate-spin')} />
+          Refetch
+        </button>
+      </Tooltip>
     </div>
   )
 }

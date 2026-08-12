@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Copy, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { TextAreaField } from '@/components/ui/TextAreaField'
 import { computeHash } from '../utils/hash'
 import { HASH_ALGORITHMS } from '../utils/constants'
 import type { HashAlgorithm } from '../utils/constants'
 import { useCopy } from '../hooks/useCopy'
 
-const TEXTAREA_CLS =
-  'w-full flex-1 bg-surface-raised border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent transition-colors duration-150 resize-none font-mono'
 const SELECT_CLS =
   'bg-surface-raised border border-border rounded-lg px-3 py-1.5 text-xs text-on-surface outline-none font-[inherit] cursor-pointer focus:border-accent transition-colors duration-150'
 const OUTPUT_CLS =
@@ -38,11 +37,11 @@ export function HashTool() {
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">Input</span>
         </div>
-        <textarea
-          className={TEXTAREA_CLS}
+        <TextAreaField
+          className="flex-1"
           placeholder="Enter text to hash…"
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={setInput}
         />
       </div>
 

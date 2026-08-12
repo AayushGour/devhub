@@ -17,6 +17,12 @@ export interface ExportConfig {
   showFooter: boolean
   footerPageNumbers: boolean
   watermark: string
+  // Deck-level footer text fields (D5) — additive only. Continuous-mode buildPrintDoc
+  // never reads these; they exist so per-slide `footer.left/center/right` overrides
+  // (slideExport.ts) have deck-level values to field-merge over via mergeFooter.
+  footerLeft?: string
+  footerCenter?: string
+  footerRight?: string
 }
 
 export function defaultExportConfig(docTitle = ''): ExportConfig {
@@ -38,6 +44,9 @@ export function defaultExportConfig(docTitle = ''): ExportConfig {
     showFooter: true,
     footerPageNumbers: true,
     watermark: '',
+    footerLeft: '',
+    footerCenter: '',
+    footerRight: '',
   }
 }
 
@@ -61,6 +70,9 @@ const BASE_CONTENT_CSS = `
   }
   h1,h2,h3,h4,h5,h6 { font-weight: 600; line-height: 1.25; margin-top: 1.4em; margin-bottom: 0.5em; }
   h1 { font-size: 2em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }
+  /* First element in the exported document has nothing above it to separate
+     from — drop the shared heading rule's top margin in that case. */
+  .md-content > h1:first-child { margin-top: 0; }
   h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }
   h3 { font-size: 1.25em; }
   p { margin: 0 0 1em; }

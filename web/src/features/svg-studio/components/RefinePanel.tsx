@@ -1,4 +1,4 @@
-import * as Tooltip from '@radix-ui/react-tooltip'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { Info, Loader2, SlidersHorizontal } from 'lucide-react'
 import type { EnginePreset, TraceParams } from '../engines/types'
 
@@ -8,9 +8,6 @@ interface Props {
   refining: boolean
   onChange: (knobId: string, value: number) => void
 }
-
-const TOOLTIP_CONTENT_CLS =
-  'max-w-[12.5rem] bg-surface-raised text-on-surface text-[0.69rem] leading-[1.5] font-normal tracking-[-0.01rem] px-2.5 py-1.5 rounded-lg border border-border shadow-[0_0.12rem_0.5rem_rgba(0,0,0,0.12)] z-50'
 
 export default function RefinePanel({ preset, params, refining, onChange }: Props) {
   return (
@@ -37,23 +34,15 @@ export default function RefinePanel({ preset, params, refining, onChange }: Prop
                   <span className="flex items-center gap-1 text-on-surface">
                     {knob.label}
                     {knob.tooltip && (
-                      <Tooltip.Root>
-                        <Tooltip.Trigger asChild>
-                          <button
-                            type="button"
-                            className="flex items-center text-on-surface-muted hover:text-on-surface transition-colors duration-150 cursor-default outline-none"
-                            tabIndex={-1}
-                          >
-                            <Info size={11} />
-                          </button>
-                        </Tooltip.Trigger>
-                        <Tooltip.Portal>
-                          <Tooltip.Content side="left" sideOffset={8} className={TOOLTIP_CONTENT_CLS}>
-                            {knob.tooltip}
-                            <Tooltip.Arrow className="fill-border" />
-                          </Tooltip.Content>
-                        </Tooltip.Portal>
-                      </Tooltip.Root>
+                      <Tooltip content={knob.tooltip} side="left" sideOffset={8}>
+                        <button
+                          type="button"
+                          className="flex items-center text-on-surface-muted hover:text-on-surface transition-colors duration-150 cursor-default outline-none"
+                          tabIndex={-1}
+                        >
+                          <Info size={11} />
+                        </button>
+                      </Tooltip>
                     )}
                   </span>
                   <span className="font-semibold tabular-nums text-on-surface-muted">{value}</span>

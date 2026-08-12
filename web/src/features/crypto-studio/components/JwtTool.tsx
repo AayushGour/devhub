@@ -1,14 +1,13 @@
 import { useState } from 'react'
 import { Copy, Check, AlertTriangle, ShieldCheck, ShieldOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { TextAreaField } from '@/components/ui/TextAreaField'
 import { decodeToken, encodeToken } from '../utils/jwt'
 import type { JwtDecoded } from '../utils/jwt'
 import { JWT_ALGORITHMS } from '../utils/constants'
 import type { JwtSubMode, JwtAlgorithm } from '../utils/constants'
 import { useCopy } from '../hooks/useCopy'
 
-const TEXTAREA_CLS =
-  'w-full flex-1 bg-surface-raised border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent transition-colors duration-150 resize-none font-mono'
 const INPUT_CLS =
   'w-full bg-surface-raised border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent transition-colors duration-150 font-mono'
 const SELECT_CLS =
@@ -62,11 +61,11 @@ function JwtDecode() {
       {/* Left */}
       <div className="flex flex-col flex-1 min-w-0 border-r border-border p-4 gap-2">
         <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">JWT Token</span>
-        <textarea
-          className={TEXTAREA_CLS}
+        <TextAreaField
+          className="flex-1"
           placeholder="Paste JWT here…"
           value={token}
-          onChange={e => handleChange(e.target.value)}
+          onChange={handleChange}
           spellCheck={false}
         />
         {error && (
@@ -154,10 +153,10 @@ function JwtEncode() {
       {/* Left */}
       <div className="flex flex-col flex-1 min-w-0 border-r border-border p-4 gap-3">
         <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">Payload (JSON)</span>
-        <textarea
-          className={TEXTAREA_CLS}
+        <TextAreaField
+          className="flex-1"
           value={payload}
-          onChange={e => setPayload(e.target.value)}
+          onChange={setPayload}
           spellCheck={false}
         />
         <div className="flex flex-col gap-1.5 flex-shrink-0">

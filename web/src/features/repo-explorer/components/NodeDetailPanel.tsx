@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, BookOpen, Code2, Loader2 } from 'lucide-react'
-import MonacoEditor from '@monaco-editor/react'
+import { CodeEditor } from '@/components/ui/CodeEditor'
 import { cn } from '@/lib/utils'
 import MarkdownViewer from '@/components/MarkdownViewer'
 import type { RepoFile, RepoMeta, WikiPage } from '../types'
@@ -112,19 +112,16 @@ export default function NodeDetailPanel({
             )}
           </div>
         ) : (
-          <MonacoEditor
-            height="100%"
+          <CodeEditor
+            className="h-full"
             language={monacoLang}
             value={file.content}
+            readOnly
             options={{
-              readOnly: true,
-              minimap: { enabled: false },
               fontSize: 12,
               wordWrap: 'on',
-              scrollBeyondLastLine: false,
               lineNumbers: 'on',
             }}
-            theme="vs-dark"
           />
         )}
       </div>

@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "web-search": {
+      "command": "python",
+      "args": [
+        "/Users/aayushgour/Desktop/harness/tools/web_search/mcp_server.py"
+      ],
+      "env": {
+        "SEARXNG_URL": "http://localhost:8081"
+      }
+    },
+    "deepwiki": {
+      "type": "http",
+      "url": "https://mcp.deepwiki.com/mcp"
+    }
+  }
+}

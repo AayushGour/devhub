@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { GitBranch, Key, Search, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Tooltip } from '@/components/ui/Tooltip'
 import type { RepoMeta } from '../types'
 
 interface Props {
@@ -130,15 +131,16 @@ export default function RepoInput({ onFetch, loading, error, repos, onOpen, onDe
                       {` · ${timeAgo(r.fetchedAt)}`}
                     </span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onDelete(r)}
-                    title="Remove from cache"
-                    aria-label={`Remove ${r.owner}/${r.repo}`}
-                    className="shrink-0 text-on-surface-muted hover:text-red-400 transition-colors duration-150 opacity-0 group-hover:opacity-100"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  <Tooltip content="Remove from cache">
+                    <button
+                      type="button"
+                      onClick={() => onDelete(r)}
+                      aria-label={`Remove ${r.owner}/${r.repo}`}
+                      className="shrink-0 text-on-surface-muted hover:text-red-400 transition-colors duration-150 opacity-0 group-hover:opacity-100"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </Tooltip>
                 </div>
               </li>
             ))}

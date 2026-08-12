@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { Files, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Tooltip } from '@/components/ui/Tooltip'
 import type { JsonMode, JsonStudioState } from '../hooks/useJsonStudio'
 
 const MODES: { id: JsonMode; label: string }[] = [
@@ -78,27 +79,30 @@ export default function JsonToolbar({
         className="hidden"
         onChange={handleFileChange}
       />
-      <button
-        onClick={() => fileInputRef.current?.click()}
-        title="Upload .json file"
-        className="flex items-center justify-center w-[1.88rem] h-[1.88rem] rounded-[0.44rem] border border-border bg-transparent text-on-surface-muted cursor-pointer hover:text-on-surface transition-colors duration-150"
-      >
-        <Upload size={13} />
-      </button>
+      <Tooltip content="Upload .json file">
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          aria-label="Upload .json file"
+          className="flex items-center justify-center w-[1.88rem] h-[1.88rem] rounded-[0.44rem] border border-border bg-transparent text-on-surface-muted cursor-pointer hover:text-on-surface transition-colors duration-150"
+        >
+          <Upload size={13} />
+        </button>
+      </Tooltip>
 
-      <button
-        onClick={onToggleFiles}
-        title="Files"
-        className={cn(
-          'flex items-center gap-[0.31rem] px-[0.62rem] py-[0.31rem] rounded-[0.44rem] border text-xs cursor-pointer font-[inherit] transition-all duration-150',
-          filesOpen
-            ? 'border-accent bg-accent text-accent-text'
-            : 'border-border bg-transparent text-on-surface-muted hover:text-on-surface'
-        )}
-      >
-        <Files size={13} />
-        Files
-      </button>
+      <Tooltip content="Files">
+        <button
+          onClick={onToggleFiles}
+          className={cn(
+            'flex items-center gap-[0.31rem] px-[0.62rem] py-[0.31rem] rounded-[0.44rem] border text-xs cursor-pointer font-[inherit] transition-all duration-150',
+            filesOpen
+              ? 'border-accent bg-accent text-accent-text'
+              : 'border-border bg-transparent text-on-surface-muted hover:text-on-surface'
+          )}
+        >
+          <Files size={13} />
+          Files
+        </button>
+      </Tooltip>
     </div>
   )
 }

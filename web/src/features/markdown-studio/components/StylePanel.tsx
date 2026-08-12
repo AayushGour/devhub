@@ -7,6 +7,7 @@ import {
 } from '../utils/styleBuilder'
 import type { MdFile } from '../hooks/useMarkdownEditor'
 import { cn } from '@/lib/utils'
+import { Tooltip } from '@/components/ui/Tooltip'
 
 const PANEL_SELECT_CLS = 'w-full bg-surface-raised border border-border rounded-md px-2 py-[0.31rem] text-[0.69rem] text-on-surface outline-none font-[inherit] cursor-pointer'
 const DASHED_BTN_CLS = 'flex items-center justify-center gap-[0.38rem] py-[0.44rem] px-3 rounded-lg border border-dashed border-border bg-transparent text-on-surface-muted text-xs cursor-pointer font-[inherit] w-full hover:border-accent hover:text-accent transition-colors duration-150'
@@ -182,22 +183,26 @@ function FileRow({ file, active, canRemove, onSelect, onRename, onRemove }: {
         </span>
       )}
 
-      <button
-        onClick={editing ? e => { e.stopPropagation(); commit() } : startEdit}
-        title={editing ? 'Save name' : 'Rename file'}
-        className="text-on-surface-muted bg-transparent border-none cursor-pointer flex p-0.5 shrink-0 hover:text-accent transition-colors duration-150"
-      >
-        {editing ? <Check size={13} /> : <Pencil size={12} />}
-      </button>
+      <Tooltip content={editing ? 'Save name' : 'Rename file'}>
+        <button
+          onClick={editing ? e => { e.stopPropagation(); commit() } : startEdit}
+          aria-label={editing ? 'Save name' : 'Rename file'}
+          className="text-on-surface-muted bg-transparent border-none cursor-pointer flex p-0.5 shrink-0 hover:text-accent transition-colors duration-150"
+        >
+          {editing ? <Check size={13} /> : <Pencil size={12} />}
+        </button>
+      </Tooltip>
 
       {canRemove && !editing && (
-        <button
-          onClick={e => { e.stopPropagation(); onRemove(file.id) }}
-          title="Remove file"
-          className="text-on-surface-muted bg-transparent border-none cursor-pointer flex p-0.5 shrink-0 hover:text-on-surface transition-colors duration-150"
-        >
-          <Trash2 size={12} />
-        </button>
+        <Tooltip content="Remove file">
+          <button
+            onClick={e => { e.stopPropagation(); onRemove(file.id) }}
+            aria-label="Remove file"
+            className="text-on-surface-muted bg-transparent border-none cursor-pointer flex p-0.5 shrink-0 hover:text-on-surface transition-colors duration-150"
+          >
+            <Trash2 size={12} />
+          </button>
+        </Tooltip>
       )}
     </div>
   )

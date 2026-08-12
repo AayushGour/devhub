@@ -1,5 +1,4 @@
-import Editor from '@monaco-editor/react'
-import { useSettingsStore } from '@/store/settingsStore'
+import { CodeEditor } from '@/components/ui/CodeEditor'
 import { svgStats } from '../utils/postprocess'
 
 interface Props {
@@ -7,11 +6,7 @@ interface Props {
   onChange: (svg: string) => void
 }
 
-const DARK_THEMES = new Set(['dark', 'github', 'nord', 'dracula'])
-
 export default function SvgCodePanel({ svg, onChange }: Props) {
-  const { theme } = useSettingsStore()
-  const isDark = DARK_THEMES.has(theme)
   const stats = svgStats(svg)
 
   function formatBytes(n: number) {
@@ -31,27 +26,21 @@ export default function SvgCodePanel({ svg, onChange }: Props) {
       </div>
 
       <div className="flex-1 min-h-0">
-        <Editor
+        <CodeEditor
+          className="h-full"
           value={svg}
           language="xml"
-          theme={isDark ? 'vs-dark' : 'vs'}
           onChange={v => { if (v !== undefined) onChange(v) }}
           options={{
-            readOnly: false,
-            minimap: { enabled: false },
             fontSize: 11,
             lineNumbers: 'on',
-            scrollBeyondLastLine: false,
             wordWrap: 'off',
             renderLineHighlight: 'line',
-            overviewRulerLanes: 0,
-            hideCursorInOverviewRuler: true,
             scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
             fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
             tabSize: 2,
             formatOnPaste: true,
           }}
-          height="100%"
         />
       </div>
     </div>

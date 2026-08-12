@@ -1,13 +1,12 @@
 import { useState } from 'react'
 import { Copy, Check, RefreshCw, Lock, Unlock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { TextAreaField } from '@/components/ui/TextAreaField'
 import { encryptText, decryptText, generatePassword } from '../utils/cipher'
 import { CIPHER_ALGORITHMS } from '../utils/constants'
 import type { CipherAlgorithm, CipherMode, CipherInputFormat } from '../utils/constants'
 import { useCopy } from '../hooks/useCopy'
 
-const TEXTAREA_CLS =
-  'w-full flex-1 bg-surface-raised border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent transition-colors duration-150 resize-none font-mono'
 const INPUT_CLS =
   'w-full bg-surface-raised border border-border rounded-lg px-3 py-2 text-sm text-on-surface outline-none focus:border-accent transition-colors duration-150 font-mono'
 const SELECT_CLS =
@@ -129,11 +128,11 @@ export function CipherTool() {
         <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide flex-shrink-0">
           {cipherMode === 'encrypt' ? 'Plaintext' : 'Ciphertext'}
         </span>
-        <textarea
-          className={TEXTAREA_CLS}
+        <TextAreaField
+          className="flex-1"
           placeholder={cipherMode === 'encrypt' ? 'Enter text to encrypt…' : 'Paste ciphertext to decrypt…'}
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={setInput}
         />
 
         <button

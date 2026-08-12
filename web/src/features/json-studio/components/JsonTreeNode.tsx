@@ -12,13 +12,9 @@ function ValueToken({ value }: { value: unknown }) {
   if (typeof value === 'boolean') return <span className="text-json-bool text-[0.75rem]">{String(value)}</span>
   if (typeof value === 'number') return <span className="text-json-number text-[0.75rem]">{value}</span>
   if (typeof value === 'string') {
-    const truncated = value.length > 100
     return (
-      <span
-        className="text-json-string text-[0.75rem]"
-        title={truncated ? value : undefined}
-      >
-        &ldquo;{truncated ? value.slice(0, 100) + '…' : value}&rdquo;
+      <span className="text-json-string text-[0.75rem] break-words whitespace-pre-wrap">
+        &ldquo;{value}&rdquo;
       </span>
     )
   }
@@ -45,7 +41,7 @@ export default function JsonTreeNode({ value, keyLabel, depth }: Props) {
 
   if (!isObject) {
     return (
-      <div className="flex items-baseline py-[0.12rem] pl-[0.12rem]">
+      <div className="flex items-baseline flex-wrap py-[0.12rem] pl-[0.12rem]">
         <KeyLabel label={keyLabel} />
         <ValueToken value={value} />
       </div>

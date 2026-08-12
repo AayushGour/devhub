@@ -1,0 +1,63 @@
+/* ── Container-relative sizing ───────────────────────────────────────────────
+   A slide must look proportionally IDENTICAL whether it's the small on-screen
+   preview card or the 13.333in export page. Fixed units (px, and even rem — which
+   is tied to the fixed :root font-size) don't achieve that: the same absolute size
+   renders against differently-sized boxes, so proportions break between preview and
+   export. The fix: make .slide-card a container and derive a base font-size from its
+   OWN width (1cqw = 1% of the slide's width). Everything inside then sizes in em/cqw
+   off this base, so it all scales together with the slide box. Layouts and chrome use
+   em/cqw utilities (never px); the author's per-slide style.fontSize should be em too
+   (see the slide-deck skill). */
+.slide-card {
+  container-type: inline-size;
+}
+.slide-card .slide-page__content {
+  /* ~16px when the preview card is at its max width (56rem), scaling up on the export
+     page. All layout/body em sizes are relative to this. */
+  font-size: 1.8cqw;
+}
+
+/* The slide layouts (ContentLayout/TwoColumnLayout/ImageFocusLayout) reuse the shared
+   `.markdown-preview` class on their body-content divs to inherit its typography rules
+   (h1-h6, code, table, blockquote colors — see index.css). But that class is also the
+   app-wide document preview container's class, which additionally carries
+   `background-color: var(--md-bg)`, `max-width: 780px`, a fixed `color: #24292e` (via
+   PreviewPane.tsx's BASE_PREVIEW_CSS), and a fixed `font-size: 15px` — all meant for a
+   full-page preview with a white background. None of that belongs on a region nested
+   inside a slide card that may have its own dark background and must scale with the
+   slide box. Override, scoped to slide cards: neutralize the background/max-width/color
+   and re-root the font-size to `1em` so the body rides the container-relative base
+   above (its own h1/p/li/etc. are already em-relative in index.css, so they scale). */
+.slide-card .markdown-preview {
+  background-color: transparent;
+  max-width: none;
+  color: inherit;
+  font-size: 1em;
+}
+/* Body table cells: em padding (index.css's .markdown-preview rule uses fixed px, which
+   wouldn't scale with the slide). */
+.slide-card .markdown-preview :is(th, td) {
+  padding: 0.3em 0.6em;
+}
+/* Mermaid diagrams render at an intrinsic px size — cap to the slide width so they
+   scale down with the box instead of overflowing. */
+.slide-card .mermaid-block svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Inline markdown images (`![]()` in a slide's body/columns/caption — the shared
+   .markdown-preview typography rule from index.css only caps width, not height) can
+   still overflow a fixed-height slide box: a tall/portrait image has no width limit
+   that would shrink it vertically. max-width alone isn't enough here. Cap height in
+   `em` (not a fixed px/vh) so it scales with the slide the same way everything else
+   does — `.slide-card .markdown-preview`'s font-size is itself 1em off the
+   cqw-derived base above, so an em-based max-height is indirectly container-relative
+   too, without needing full `container-type: size` (cqh) support. This does NOT apply
+   to image-focus's dedicated `image` field (a plain <img>, not wrapped in
+   .markdown-preview) — that one is already correctly bounded by its own flex parent. */
+.slide-card .markdown-preview img {
+  max-height: 18em;
+  object-fit: contain;
+  width: auto;
+}

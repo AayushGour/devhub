@@ -1,4 +1,5 @@
 import './TokenDisplay.css'
+import { Tooltip } from '@/components/ui/Tooltip'
 import type { EncodingResult } from '../utils/tokenizers'
 
 const TOKEN_COLORS = [
@@ -45,13 +46,11 @@ export function TokenDisplay({ result, loading, error }: TokenDisplayProps) {
   return (
     <div className="p-4 bg-surface-raised border border-border rounded-xl leading-7 font-mono text-sm text-on-surface break-all">
       {result.tokenTexts.map((text, i) => (
-        <span
-          key={i}
-          className={`token-chip ${TOKEN_COLORS[result.tokenIds[i] % TOKEN_COLORS.length]}`}
-          title={`Token ID: ${result.tokenIds[i]}`}
-        >
-          {text.replace(/ /g, ' ')}
-        </span>
+        <Tooltip key={i} content={`Token ID: ${result.tokenIds[i]}`}>
+          <span className={`token-chip ${TOKEN_COLORS[result.tokenIds[i] % TOKEN_COLORS.length]}`}>
+            {text.replace(/ /g, ' ')}
+          </span>
+        </Tooltip>
       ))}
     </div>
   )

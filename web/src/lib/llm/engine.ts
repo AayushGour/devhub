@@ -143,8 +143,12 @@ async function logStorage(when: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 // WebLLM resumes from shards already in the cache, so a retry only re-fetches
-// the shard(s) that failed — cheap and fast.
-const MAX_LOAD_ATTEMPTS = 4
+// the shard(s) that failed — cheap and fast. HF's Xet CDN (cas-bridge.xethub.hf.co /
+// us.aws.cdn.hf.co) intermittently drops a shard fetch; its error responses don't
+// carry CORS headers, so the browser reports it as a generic "CORS policy" /
+// "Failed to fetch" TypeError rather than the real transient status. 6 attempts
+// gives a bad run of those blips room to clear without user intervention.
+const MAX_LOAD_ATTEMPTS = 6
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
