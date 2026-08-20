@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react'
-import { streamComplete } from '@/lib/llm/engine'
+import { getEngine, streamComplete } from '@/lib/llm/engine'
+import { getModelById, formatVram } from '@/lib/llm/models'
 import { useSettingsStore } from '@/store/settingsStore'
+import { useIndexingStore } from '@/store/indexingStore'
 import { createLogger } from '@/lib/logger'
 import { retrieveRepo, type ScoredChunk } from '../utils/retrieveRepo'
 import { repoKey } from '../utils/repoDb'
@@ -36,6 +38,10 @@ export function useRepoChat(meta: RepoMeta | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [disabled, setDisabled] = useState(false)
   const ragLlmModel = useSettingsStore((s) => s.ragLlmModel)
+  const indexingStart = useIndexingStore((s) => s.start)
+  const indexingSetProgress = useIndexingStore((s) => s.setProgress)
+  const indexingFinish = useIndexingStore((s) => s.finish)
+  const indexingSetError = useIndexingStore((s) => s.setError)
 
   const sendMessage = useCallback(async (text: string) => {
     if (disabled || !meta) {
@@ -84,6 +90,21 @@ If the answer is not in the context, say so honestly.
 
 ${context.trim()}`
 
+      // Boot the LLM with footer progress feedback (no-op if already loaded) —
+      // without this, a cold model load (hundreds of MB to several GB on first
+      // use) happens silently: the only visible state is a static "…" bubble,
+      // indistinguishable from a hung request.
+      const modelEntry = getModelById(ragLlmModel)
+      const sizeHint = modelEntry ? ` (~${formatVram(modelEntry.vramMB)})` : ''
+      indexingStart(`Loading ${modelEntry?.label ?? 'LLM'}${sizeHint}`, () => {})
+      try {
+        await getEngine(ragLlmModel, (pct) => indexingSetProgress(pct, 100))
+        indexingFinish()
+      } catch (err) {
+        indexingSetError(err instanceof Error ? err.message : 'Failed to load LLM')
+        throw err
+      }
+
       for await (const delta of streamComplete(
         ragLlmModel,
         [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }],
@@ -106,7 +127,7 @@ ${context.trim()}`
       setMessages((prev) => prev.map((m) => m.id === aiId ? { ...m, streaming: false, durationMs } : m))
       setDisabled(false)
     }
-  }, [disabled, meta, ragLlmModel])
+  }, [disabled, meta, ragLlmModel, indexingStart, indexingSetProgress, indexingFinish, indexingSetError])
 
   return { messages, sendMessage, disabled }
 }

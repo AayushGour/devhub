@@ -152,8 +152,11 @@ export async function fetchTreeDir(
 class ConcurrencyLimiter {
   private active = 0
   private readonly waiters: (() => void)[] = []
+  private readonly max: number
 
-  constructor(private readonly max: number) {}
+  constructor(max: number) {
+    this.max = max
+  }
 
   async run<T>(fn: () => Promise<T>): Promise<T> {
     if (this.active >= this.max) {
