@@ -1,4 +1,4 @@
-import { embed } from '@/lib/llm/embed'
+import { embed } from '@/lib/llm/embedRemote'
 import { getAllNodes, type KnowledgeNode } from './vectorDb'
 import { bgeQueryPrefix } from './prompts'
 import { createLogger } from '@/lib/logger'

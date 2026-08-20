@@ -8,7 +8,7 @@ import ChatPanel from './components/ChatPanel'
 
 export default function RepoExplorerPage() {
   const {
-    meta, files, graph, selectedFile,
+    meta, files, graph, selectedFile, revealRange,
     fetching, fetchError,
     wikiPages, generating,
     chat,
@@ -20,6 +20,7 @@ export default function RepoExplorerPage() {
     handleClosePanel,
     handleGenerateWiki,
     handleNodeClick,
+    handleOpenCitation,
   } = useRepoExplorer()
 
   const hasRepo = meta !== null && files.length > 0
@@ -48,6 +49,7 @@ export default function RepoExplorerPage() {
               messages={chat.messages}
               disabled={chat.disabled}
               onSend={chat.sendMessage}
+              onOpenCitation={handleOpenCitation}
             />
 
             {/* Col 2: dependency graph */}
@@ -66,6 +68,7 @@ export default function RepoExplorerPage() {
                 meta={meta}
                 wikiPages={wikiPages}
                 generating={generating}
+                revealRange={revealRange}
                 onGenerateWiki={handleGenerateWiki}
                 onClose={handleClosePanel}
               />

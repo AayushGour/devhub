@@ -1,19 +1,24 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { X, BookOpen, Code2, Loader2 } from 'lucide-react'
 import { CodeEditor } from '@/components/ui/CodeEditor'
+import type { OnMount } from '@monaco-editor/react'
 import { cn } from '@/lib/utils'
 import MarkdownViewer from '@/components/MarkdownViewer'
 import type { RepoFile, RepoMeta, WikiPage } from '../types'
+import type { RevealRange } from '../hooks/useRepoExplorer'
 import type { useWikiGen } from '../hooks/useWikiGen'
 import './NodeDetailPanel.css'
 
 type WikiGenReturn = ReturnType<typeof useWikiGen>
+type EditorInstance = Parameters<OnMount>[0]
+type MonacoNs = Parameters<OnMount>[1]
 
 interface Props {
   file: RepoFile | null
   meta: RepoMeta | null
   wikiPages: WikiGenReturn['wikiPages']
   generating: WikiGenReturn['generating']
+  revealRange?: RevealRange | null
   onGenerateWiki: (file: RepoFile) => void
   onClose: () => void
 }
@@ -27,10 +32,42 @@ export default function NodeDetailPanel({
   meta: _meta,
   wikiPages,
   generating,
+  revealRange,
   onGenerateWiki,
   onClose,
 }: Props) {
   const [tab, setTab] = useState<Tab>('wiki')
+
+  const editorRef = useRef<EditorInstance | null>(null)
+  const monacoRef = useRef<MonacoNs | null>(null)
+  const decoRef = useRef<string[]>([])
+
+  // Scroll to + highlight the cited line range in Monaco (or clear it).
+  const applyReveal = useCallback(() => {
+    const editor = editorRef.current
+    const monaco = monacoRef.current
+    if (!editor || !monaco) return
+    if (!revealRange) {
+      decoRef.current = editor.deltaDecorations(decoRef.current, [])
+      return
+    }
+    const { startLine, endLine } = revealRange
+    editor.revealLineInCenter(startLine)
+    decoRef.current = editor.deltaDecorations(decoRef.current, [{
+      range: new monaco.Range(startLine, 1, endLine, 1),
+      options: { isWholeLine: true, className: 'repo-cite-highlight' },
+    }])
+  }, [revealRange])
+
+  const handleMount: OnMount = useCallback((editor, monaco) => {
+    editorRef.current = editor
+    monacoRef.current = monaco
+    applyReveal()
+  }, [applyReveal])
+
+  // A citation click forces the Code tab; re-apply the highlight when it changes.
+  useEffect(() => { if (revealRange) setTab('code') }, [revealRange])
+  useEffect(() => { if (tab === 'code') applyReveal() }, [tab, file, applyReveal])
 
   const wikiPage: WikiPage | undefined = file ? wikiPages.get(file.path) : undefined
   const isGenerating = file ? generating.has(file.path) : false
@@ -117,6 +154,7 @@ export default function NodeDetailPanel({
             language={monacoLang}
             value={file.content}
             readOnly
+            onMount={handleMount}
             options={{
               fontSize: 12,
               wordWrap: 'on',

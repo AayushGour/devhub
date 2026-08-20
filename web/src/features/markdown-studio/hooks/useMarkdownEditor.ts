@@ -210,32 +210,18 @@ export function useMarkdownEditor() {
     }
   }, [files, setEditorValue, flushPending])
 
-  const handleEditorMount: OnMount = useCallback((editor, monaco) => {
+  // Deliberately does NOT bind Cmd/Ctrl+V. Monaco leaves paste unbound in the
+  // browser on purpose so the native paste event reaches its hidden textarea
+  // and is read from event.clipboardData — the only path that works in every
+  // browser. Registering a Cmd+V command makes Monaco preventDefault the
+  // keydown, killing that native event; the replacement APIs
+  // (navigator.clipboard.readText from a keybinding handler,
+  // document.execCommand('paste')) are both blocked in Safari, so paste breaks
+  // there entirely. See useMarkdownEditor.paste.test.ts.
+  const handleEditorMount: OnMount = useCallback((editor) => {
     editorRef.current = editor
     // Sync editor with whatever file finished loading before mount.
     if (editor.getValue() !== contentRef.current) editor.setValue(contentRef.current)
-
-    // Monaco's built-in Ctrl+V runs clipboardPasteAction which calls
-    // navigator.clipboard.readText() — this can fail silently when clipboard
-    // permission is not granted. Override to call it directly from within the
-    // synchronous user-gesture handler so the browser grants access.
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, async () => {
-      try {
-        const text = await navigator.clipboard.readText()
-        const selection = editor.getSelection()
-        if (selection) {
-          editor.executeEdits('', [{ range: selection, text, forceMoveMarkers: true }])
-          editor.pushUndoStop()
-        }
-      } catch {
-        // Clipboard API unavailable — fall back to native execCommand
-        const textarea = editor.getDomNode()?.querySelector('textarea')
-        if (textarea) {
-          textarea.focus()
-          document.execCommand('paste')
-        }
-      }
-    })
   }, [])
 
   const activeFile = files.find(f => f.id === activeId)

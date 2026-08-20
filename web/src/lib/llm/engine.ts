@@ -156,6 +156,31 @@ const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 // from the HuggingFace CDN) surfaces as a QuotaExceededError when WebLLM tries
 // to cache.put() the aborted response — even with plenty of storage free. These
 // failures are transient: a fresh fetch opens a new connection, so we retry.
+// But QuotaExceededError is also the real error when the browser genuinely
+// doesn't have room (private/incognito windows and profiles without a
+// persistent-storage grant get a much smaller quota ceiling than normal — often
+// only 1-2GB, too small for most local models). Retrying that is pointless:
+// every attempt fails again once cached bytes near the same ceiling. We tell
+// the two apart with the actual storage estimate, not just the error name.
+const LOW_QUOTA_TOTAL_BYTES = 3 * 1024 ** 3 // most local models need more headroom than this
+const LOW_FREE_BYTES = 200 * 1024 ** 2 // too little left for even one more shard
+
+interface QuotaCheck { real: boolean; free: number; quota: number; usage: number }
+
+async function checkQuota(): Promise<QuotaCheck | null> {
+  if (!navigator.storage?.estimate) return null
+  try {
+    const est = await navigator.storage.estimate()
+    const quota = est.quota ?? 0
+    const usage = est.usage ?? 0
+    const free = quota - usage
+    const real = quota > 0 && (quota < LOW_QUOTA_TOTAL_BYTES || free < LOW_FREE_BYTES)
+    return { real, free, quota, usage }
+  } catch {
+    return null
+  }
+}
+
 function isTransientLoadError(err: unknown): boolean {
   const e = err as Error
   const name = e?.name ?? ''
@@ -168,12 +193,19 @@ function isTransientLoadError(err: unknown): boolean {
   )
 }
 
-function describeLoadError(err: unknown): Error {
+function describeLoadError(err: unknown, quotaCheck: QuotaCheck | null): Error {
+  if (quotaCheck?.real) {
+    return new Error(
+      `Out of browser storage — only ${fmtBytes(quotaCheck.free)} free of ${fmtBytes(quotaCheck.quota)} ` +
+        `total (${fmtBytes(quotaCheck.usage)} already used). This model doesn't fit here. Free up space ` +
+        '(clear other site data) or pick a smaller model — retrying won\'t help.',
+    )
+  }
   if (isTransientLoadError(err)) {
     return new Error(
       'Model download was interrupted by a network/CDN error and did not finish ' +
-        `after ${MAX_LOAD_ATTEMPTS} attempts. Your browser storage is fine — please ` +
-        'retry; the download resumes from the shards already fetched.',
+        `after ${MAX_LOAD_ATTEMPTS} attempts. Please retry; the download resumes ` +
+        'from the shards already fetched.',
     )
   }
   return err instanceof Error ? err : new Error(String(err))
@@ -181,6 +213,7 @@ function describeLoadError(err: unknown): Error {
 
 async function loadEngineWithRetry(modelId: string, onProgress?: LLMProgressCallback): Promise<webllm.WebWorkerMLCEngine> {
   let lastErr: unknown
+  let lastQuotaCheck: QuotaCheck | null = null
   for (let attempt = 1; attempt <= MAX_LOAD_ATTEMPTS; attempt++) {
     const startedAt = performance.now()
     let lastPct = -1
@@ -208,6 +241,13 @@ async function loadEngineWithRetry(modelId: string, onProgress?: LLMProgressCall
       log.error(`❌ attempt ${attempt}/${MAX_LOAD_ATTEMPTS} FAILED after ${((performance.now() - startedAt) / 1000).toFixed(1)}s — ${e?.name}: ${e?.message}`, err)
       await logStorage('at failure')
 
+      lastQuotaCheck = e?.name === 'QuotaExceededError' ? await checkQuota() : null
+      if (lastQuotaCheck?.real) {
+        log.warn(`genuine storage shortage (${fmtBytes(lastQuotaCheck.free)} free of ` +
+          `${fmtBytes(lastQuotaCheck.quota)}) — not retrying, it won't help`)
+        break
+      }
+
       if (attempt < MAX_LOAD_ATTEMPTS && isTransientLoadError(err)) {
         const waitMs = 1500 * attempt
         log.warn(`transient error — retrying in ${waitMs}ms (resumes from cached shards)`)
@@ -218,7 +258,7 @@ async function loadEngineWithRetry(modelId: string, onProgress?: LLMProgressCall
       break
     }
   }
-  throw describeLoadError(lastErr)
+  throw describeLoadError(lastErr, lastQuotaCheck)
 }
 
 export async function getEngine(modelId: string, onProgress?: LLMProgressCallback): Promise<webllm.WebWorkerMLCEngine> {
