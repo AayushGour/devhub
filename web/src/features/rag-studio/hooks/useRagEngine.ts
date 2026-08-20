@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { getEmbedder } from '../utils/embed'
+import { getEmbedder } from '@/lib/llm/embedRemote'
 import { getEngine, streamComplete, interruptGenerate, isGpuBackend } from '../utils/llm'
 import { getModelById, formatVram, DEFAULT_MODEL_ID, DEFAULT_CPU_MODEL_ID, getModelsForEnvironment } from '../utils/models'
 import { isWebGpuAvailable } from '../utils/webgpu'

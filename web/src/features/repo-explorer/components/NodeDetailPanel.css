@@ -9,3 +9,8 @@
   --md-accent: var(--accent);
   max-width: 100%;
 }
+
+/* Highlight applied to a chat citation's line range inside Monaco. */
+.repo-cite-highlight {
+  background: rgba(250, 204, 21, 0.18);
+}

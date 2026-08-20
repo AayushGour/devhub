@@ -51,7 +51,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'devhub-settings',
-      version: 2,
+      version: 3,
       migrate: (persisted: unknown, version: number) => {
         const state = (persisted ?? {}) as Record<string, unknown>
         if (version < 1) {
@@ -59,6 +59,17 @@ export const useSettingsStore = create<SettingsState>()(
         }
         if (version < 2) {
           state.reasoningEnabled = state.reasoningEnabled ?? true
+        }
+        if (version < 3) {
+          // The model catalog narrowed to MLC-format ids only (see
+          // lib/llm/models.ts) — a value persisted under an older catalog
+          // (e.g. an onnx-community/transformers.js id) is no longer valid
+          // and makes every LLM feature fail with web-llm's ModelNotFoundError
+          // on every request, silently, with no UI path to reselect it since
+          // the picker only ever writes CURATED_MODELS ids.
+          if (typeof state.ragLlmModel !== 'string' || !getModelById(state.ragLlmModel)) {
+            state.ragLlmModel = DEFAULT_MODEL_ID
+          }
         }
         return state
       },

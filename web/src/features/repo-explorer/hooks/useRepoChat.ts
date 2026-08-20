@@ -1,9 +1,10 @@
 import { useCallback, useState } from 'react'
 import { streamComplete } from '@/lib/llm/engine'
-import { embed } from '@/lib/llm/embed'
 import { useSettingsStore } from '@/store/settingsStore'
 import { createLogger } from '@/lib/logger'
-import type { RepoFile, RepoMeta } from '../types'
+import { retrieveRepo, type ScoredChunk } from '../utils/retrieveRepo'
+import { repoKey } from '../utils/repoDb'
+import type { RepoMeta, Citation } from '../types'
 
 const log = createLogger('repo:chat')
 
@@ -13,51 +14,25 @@ export interface ChatMessage {
   content: string
   streaming?: boolean
   timestamp: number
+  citations?: Citation[]
+  durationMs?: number // wall time from send → stream end (retrieval + generation)
 }
 
-function cosineSim(a: number[], b: number[]): number {
-  let dot = 0, na = 0, nb = 0
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i]
-    na += a[i] * a[i]
-    nb += b[i] * b[i]
-  }
-  if (na === 0 || nb === 0) return 0
-  return dot / (Math.sqrt(na) * Math.sqrt(nb))
-}
-
-function retrieveTopK(
-  queryVec: number[],
-  embeddings: Map<string, number[]>,
-  files: RepoFile[],
-  k = 5,
-): RepoFile[] {
-  const fileMap = new Map(files.map((f) => [f.path, f]))
-  const scored = [...embeddings.entries()]
-    .map(([path, vec]) => ({ path, score: cosineSim(queryVec, vec) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, k)
-
-  return scored.map((s) => fileMap.get(s.path)).filter(Boolean) as RepoFile[]
-}
-
-function buildContext(files: RepoFile[]): string {
-  let budget = 4000
+// Pack retrieved chunks into a context block, tagged with path + line range so
+// the model can cite exact locations.
+function buildContext(hits: ScoredChunk[]): string {
+  let budget = 6000
   let ctx = ''
-  for (const f of files) {
-    const snippet = `=== ${f.path} ===\n${f.content.slice(0, 800)}`
-    if (snippet.length > budget) break
-    ctx += snippet + '\n\n'
-    budget -= snippet.length
+  for (const h of hits) {
+    const block = `=== ${h.path} (L${h.startLine}-${h.endLine}) ===\n${h.text}`
+    if (block.length > budget) break
+    ctx += block + '\n\n'
+    budget -= block.length
   }
   return ctx
 }
 
-export function useRepoChat(
-  meta: RepoMeta | null,
-  files: RepoFile[],
-  embeddings: Map<string, number[]>,
-) {
+export function useRepoChat(meta: RepoMeta | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [disabled, setDisabled] = useState(false)
   const ragLlmModel = useSettingsStore((s) => s.ragLlmModel)
@@ -67,7 +42,7 @@ export function useRepoChat(
       log.warn(`send blocked (disabled=${disabled}, hasMeta=${!!meta})`)
       return
     }
-    log.log(`send: "${text.slice(0, 80)}" (${embeddings.size} embeddings, ${files.length} files)`)
+    log.log(`send: "${text.slice(0, 80)}"`)
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -86,16 +61,25 @@ export function useRepoChat(
 
     setMessages((prev) => [...prev, userMsg, aiMsg])
     setDisabled(true)
+    const startedAt = performance.now()
 
     try {
-      const queryVec = await embed(text)
-      const topFiles = retrieveTopK(queryVec, embeddings, files)
-      const context = buildContext(topFiles)
-      log.log(`retrieved ${topFiles.length} files: ${topFiles.map((f) => f.path).join(', ')}`)
-      log.log(`context: ${context.length} chars, streaming with ${ragLlmModel}`)
+      const hits = await retrieveRepo(repoKey(meta.owner, meta.repo), text)
+      const citations: Citation[] = hits.map((h) => ({
+        path: h.path,
+        startLine: h.startLine,
+        endLine: h.endLine,
+        score: h.score,
+      }))
+      const context = buildContext(hits)
+      log.log(`retrieved ${hits.length} chunks, context ${context.length} chars, model ${ragLlmModel}`)
+
+      // Surface citations on the AI message immediately (before tokens stream).
+      setMessages((prev) => prev.map((m) => m.id === aiId ? { ...m, citations } : m))
 
       const systemPrompt = `You are a code assistant for the ${meta.owner}/${meta.repo} repository.
-Answer questions about the codebase using the file excerpts below.
+Answer questions about the codebase using the file excerpts below. Each excerpt is
+tagged with its file path and line range — cite them when relevant.
 If the answer is not in the context, say so honestly.
 
 ${context.trim()}`
@@ -117,10 +101,12 @@ ${context.trim()}`
       )
       log.error('chat error', err)
     } finally {
-      setMessages((prev) => prev.map((m) => m.id === aiId ? { ...m, streaming: false } : m))
+      const durationMs = Math.round(performance.now() - startedAt)
+      log.log(`response complete in ${durationMs}ms`)
+      setMessages((prev) => prev.map((m) => m.id === aiId ? { ...m, streaming: false, durationMs } : m))
       setDisabled(false)
     }
-  }, [disabled, meta, files, embeddings, ragLlmModel])
+  }, [disabled, meta, ragLlmModel])
 
   return { messages, sendMessage, disabled }
 }

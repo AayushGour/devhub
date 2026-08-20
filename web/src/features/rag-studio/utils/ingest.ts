@@ -1,5 +1,5 @@
 import { complete, isGpuBackend } from './llm'
-import { embedBatch } from './embed'
+import { embedBatch } from '@/lib/llm/embedRemote'
 import { putNode } from './vectorDb'
 import { extractText } from './extractText'
 import { chunkSummarisationSystemPrompt } from './prompts'

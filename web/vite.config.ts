@@ -16,7 +16,11 @@ export default defineConfig({
     // Do NOT exclude @xenova/transformers: excluding it while onnxruntime-web
     // still gets pre-bundled splits them into two module instances, leaving
     // ort's backend registry undefined ("Cannot read ... 'registerBackend'").
-    exclude: ['pdfjs-dist', 'tiktoken'],
+    //
+    // web-tree-sitter is an emscripten ES module; letting esbuild pre-bundle its
+    // glue mangles the wasm path logic. We locate the core wasm ourselves via a
+    // Vite `?url` asset + Parser.init({ locateFile }), so keep it unbundled.
+    exclude: ['pdfjs-dist', 'tiktoken', 'web-tree-sitter'],
   },
   worker: {
     format: 'es',
