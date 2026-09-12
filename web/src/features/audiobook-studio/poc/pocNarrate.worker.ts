@@ -70,6 +70,15 @@ function hasWebGpu(): boolean {
 }
 
 async function load(dtype: Dtype, device: Device): Promise<void> {
+  // WebGPU only produces correct audio at fp32. The quantized dtypes do not
+  // error there — they emit corrupted phonemes that sound like another
+  // language, so this has to be refused rather than merely discouraged.
+  if (device === 'webgpu' && dtype !== 'fp32') {
+    throw new Error(
+      `Kokoro requires fp32 on WebGPU; ${dtype} produces corrupted audio. Use fp32, or switch to the WASM device.`,
+    )
+  }
+
   if (tts && loadedWith?.dtype === dtype && loadedWith?.device === device) return
 
   const startedAt = performance.now()

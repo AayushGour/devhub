@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
 import { buildSentences, type SentenceSpan } from '../utils/sentences'
 import { findSentenceAt, tokenizeWords, wordSpanAt, type TimedSentence } from '../utils/timeline'
-import { ALL_VOICES, DEFAULT_VOICE_ID, SAMPLE_SENTENCE } from '../utils/voices'
+import { DEFAULT_VOICE_ID, SAMPLE_SENTENCE, VOICE_PACKS, describeVoice } from '../utils/voices'
 import { buildEpubFiles, type ChapterInput } from '../utils/epubWrite'
 import { sealEpub } from '../utils/zip'
 import { readEpub, readPlainText, type PocBook } from './pocEpubRead'
@@ -29,6 +29,23 @@ const CHARS_PER_PAGE = 1800
 const PROJECTION_PAGES = 300
 
 const MP3_KBPS = 48
+
+// Precision is not a free choice: kokoro-js requires fp32 on WebGPU, and the
+// quantized dtypes there produce corrupted audio rather than failing loudly —
+// it sounds like a foreign language. WASM accepts every dtype, so that is where
+// the small downloads live.
+const DTYPES_BY_DEVICE: Record<Device, { value: Dtype; label: string }[]> = {
+  webgpu: [{ value: 'fp32', label: 'fp32 — 326 MB (required on WebGPU)' }],
+  wasm: [
+    { value: 'q8', label: 'q8 — 86 MB' },
+    { value: 'q4f16', label: 'q4f16 — 154 MB' },
+    { value: 'fp16', label: 'fp16 — 163 MB' },
+    { value: 'q4', label: 'q4 — 305 MB' },
+    { value: 'fp32', label: 'fp32 — 326 MB' },
+  ],
+}
+
+const DEFAULT_DTYPE: Record<Device, Dtype> = { webgpu: 'fp32', wasm: 'q8' }
 
 interface NarratedChapter {
   index: number
@@ -86,7 +103,7 @@ export default function PocPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [device, setDevice] = useState<Device>('webgpu')
-  const [dtype, setDtype] = useState<Dtype>('q8')
+  const [dtype, setDtype] = useState<Dtype>(DEFAULT_DTYPE.webgpu)
   const [voice, setVoice] = useState(DEFAULT_VOICE_ID)
   const [speed, setSpeed] = useState(1)
 
@@ -470,7 +487,16 @@ export default function PocPage() {
             <Field label="Device">
               <select
                 value={device}
-                onChange={(e) => setDevice(e.target.value as Device)}
+                onChange={(e) => {
+                  const next = e.target.value as Device
+                  setDevice(next)
+                  // Carry the dtype over only if the new device supports it.
+                  setDtype((current) =>
+                    DTYPES_BY_DEVICE[next].some((d) => d.value === current)
+                      ? current
+                      : DEFAULT_DTYPE[next],
+                  )
+                }}
                 className={FIELD}
               >
                 <option value="webgpu">WebGPU</option>
@@ -482,37 +508,42 @@ export default function PocPage() {
               <select
                 value={dtype}
                 onChange={(e) => setDtype(e.target.value as Dtype)}
+                disabled={DTYPES_BY_DEVICE[device].length === 1}
                 className={FIELD}
               >
-                <option value="fp32">fp32 — 326 MB</option>
-                <option value="fp16">fp16 — 163 MB</option>
-                <option value="q8">q8 — 86 MB</option>
-                <option value="q4">q4 — 305 MB</option>
-                <option value="q4f16">q4f16 — 154 MB</option>
+                {DTYPES_BY_DEVICE[device].map((d) => (
+                  <option key={d.value} value={d.value}>
+                    {d.label}
+                  </option>
+                ))}
               </select>
             </Field>
 
             <Field label="Voice">
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2">
                 <select
                   value={voice}
                   onChange={(e) => setVoice(e.target.value)}
                   className={FIELD}
                 >
-                  {ALL_VOICES.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.label} · {v.accent} · {v.gender} · {v.grade}
-                    </option>
+                  {Object.values(VOICE_PACKS).map((pack) => (
+                    <optgroup key={pack.lang} label={pack.label}>
+                      {pack.voices.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {describeVoice(v)}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
                 <button
                   type="button"
                   onClick={() => void previewVoice()}
                   disabled={busy}
-                  title="Preview this voice"
-                  className={cn(BUTTON, 'border-border text-on-surface hover:bg-surface-hover shrink-0')}
+                  className={cn(BUTTON, 'border-border text-on-surface hover:bg-surface-hover')}
                 >
                   <Play size={12} />
+                  Preview voice
                 </button>
               </div>
             </Field>
