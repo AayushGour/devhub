@@ -50,72 +50,105 @@ export function clearBookCache(bookId: string): void {
   }
 }
 
-const BLOCK_TAGS = ['h1', 'h2', 'h3', 'p', 'blockquote'] as const
+const BLOCK_TAGS = ['h1', 'h2', 'h3', 'p', 'blockquote', 'li'] as const
 
 const TAG_TO_BLOCK: Record<string, Block['type']> = {
-  h1: 'h1', h2: 'h2', h3: 'h3', p: 'p', blockquote: 'quote',
+  h1: 'h1', h2: 'h2', h3: 'h3', p: 'p', blockquote: 'quote', li: 'list',
+}
+
+/** Elements an overlay may point at as a single spoken phrase. */
+const SPOKEN_TAGS = ['span', 'phrase', 'sent', 'a', 'em', 'strong']
+
+function stripMarkup(markup: string): string {
+  return markup.replace(/<[^>]*>/g, ' ')
 }
 
 /**
- * Rebuild a chapter from the XHTML and SMIL we wrote.
+ * Rebuild a chapter from its XHTML and SMIL.
  *
- * The span ids are the contract between the two documents: a `<par>` whose text
- * reference names a span that is not present would mean a silent gap, so
- * anything unmatched is dropped rather than rendered without timing.
+ * Driven by the SMIL rather than by the markup, because the overlay is the only
+ * thing that knows which elements are spoken units. Our own output puts them on
+ * `<span class="s">`; a book narrated elsewhere may put them on the paragraph
+ * itself. Anything the overlay does not reference is rendered as plain text —
+ * visible, but not clickable and never highlighted, which is honest about the
+ * fact that it has no timing.
  */
 export function parseSealedChapter(
   index: number,
   xhtml: string,
   smil: string,
 ): Omit<ReadableChapter, 'title'> {
-  const blocks: Block[] = []
-  const sentences: SentenceSpan[] = []
+  const clips = new Map<string, { clipBegin: number; clipEnd: number; order: number }>()
 
-  findElements(xhtml, [...BLOCK_TAGS]).forEach((element) => {
-    const blockIdx = blocks.length
-    const spans = findElements(element.inner, ['span'])
-    const type = TAG_TO_BLOCK[element.name] ?? 'p'
+  findElements(smil, ['par']).forEach((par, order) => {
+    const textRef = findElements(par.inner, ['text'])[0]
+    const audioRef = findElements(par.inner, ['audio'])[0]
+    if (!textRef || !audioRef) return
 
-    const spoken = spans.filter((span) => getAttr(span.attrs, 'id'))
-    if (spoken.length === 0) {
-      const text = normalizeText(element.inner.replace(/<[^>]*>/g, ''))
-      if (text) blocks.push({ type, text })
-      return
-    }
+    const id = getAttr(textRef.attrs, 'src')?.split('#')[1]
+    if (!id) return
 
-    const texts = spoken.map((span) => normalizeText(span.inner))
-    blocks.push({ type, text: texts.join(' ') })
-
-    spoken.forEach((span, i) => {
-      sentences.push({
-        id: getAttr(span.attrs, 'id')!,
-        blockIdx,
-        blockType: type,
-        text: texts[i],
-        chunks: [texts[i]],
-        endsBlock: i === spoken.length - 1,
-      })
+    clips.set(id, {
+      clipBegin: parseClock(getAttr(audioRef.attrs, 'clipBegin') ?? '0'),
+      clipEnd: parseClock(getAttr(audioRef.attrs, 'clipEnd') ?? '0'),
+      order,
     })
   })
 
-  const known = new Set(sentences.map((s) => s.id))
-  const timeline: TimedSentence[] = []
+  const blocks: Block[] = []
+  const sentences: SentenceSpan[] = []
 
-  for (const par of findElements(smil, ['par'])) {
-    const textRef = findElements(par.inner, ['text'])[0]
-    const audioRef = findElements(par.inner, ['audio'])[0]
-    if (!textRef || !audioRef) continue
+  for (const element of findElements(xhtml, [...BLOCK_TAGS])) {
+    const type = TAG_TO_BLOCK[element.name] ?? 'p'
+    const blockIdx = blocks.length
 
-    const id = getAttr(textRef.attrs, 'src')?.split('#')[1]
-    if (!id || !known.has(id)) continue
+    // Spoken units inside this block, in document order.
+    const inner = findElements(element.inner, SPOKEN_TAGS).filter((child) => {
+      const id = getAttr(child.attrs, 'id')
+      return id !== undefined && clips.has(id)
+    })
 
-    timeline.push({
-      id,
-      text: sentences.find((s) => s.id === id)?.text ?? '',
-      clipBegin: parseClock(getAttr(audioRef.attrs, 'clipBegin') ?? '0'),
-      clipEnd: parseClock(getAttr(audioRef.attrs, 'clipEnd') ?? '0'),
+    const ownId = getAttr(element.attrs, 'id')
+    const blockIsOwnUnit = inner.length === 0 && ownId !== undefined && clips.has(ownId)
+
+    if (inner.length === 0 && !blockIsOwnUnit) {
+      const text = normalizeText(stripMarkup(element.inner))
+      if (text) blocks.push({ type, text })
+      continue
+    }
+
+    const units = blockIsOwnUnit
+      ? [{ id: ownId!, text: normalizeText(stripMarkup(element.inner)) }]
+      : inner.map((child) => ({
+          id: getAttr(child.attrs, 'id')!,
+          text: normalizeText(stripMarkup(child.inner)),
+        }))
+
+    blocks.push({ type, text: units.map((unit) => unit.text).join(' ') })
+
+    units.forEach((unit, i) => {
+      sentences.push({
+        id: unit.id,
+        blockIdx,
+        blockType: type,
+        text: unit.text,
+        chunks: [unit.text],
+        endsBlock: i === units.length - 1,
+      })
     })
   }
+
+  const byId = new Map(sentences.map((sentence) => [sentence.id, sentence]))
+
+  const timeline: TimedSentence[] = [...clips.entries()]
+    .filter(([id]) => byId.has(id))
+    .sort((a, b) => a[1].order - b[1].order)
+    .map(([id, clip]) => ({
+      id,
+      text: byId.get(id)!.text,
+      clipBegin: clip.clipBegin,
+      clipEnd: clip.clipEnd,
+    }))
 
   return { index, blocks, sentences, timeline }
 }
@@ -127,9 +160,10 @@ async function loadFromArtifact(
   const artifact = await db.getArtifact(bookId)
   if (!artifact) return null
 
+  const overlay = (await db.getBook(bookId))?.overlays?.[index]
   const id = chapterId(index + 1)
-  const textPath = `OEBPS/text/${id}.xhtml`
-  const smilPath = `OEBPS/smil/${id}.smil`
+  const textPath = overlay?.text ?? `OEBPS/text/${id}.xhtml`
+  const smilPath = overlay?.smil ?? `OEBPS/smil/${id}.smil`
 
   const files = await extractEntries(
     artifact.epub,
@@ -198,7 +232,7 @@ export async function loadChapterAudio(
   if (book.status === 'ready') {
     const artifact = await db.getArtifact(book.id)
     if (artifact) {
-      const path = `OEBPS/audio/${chapterId(index + 1)}.mp3`
+      const path = book.overlays?.[index]?.audio ?? `OEBPS/audio/${chapterId(index + 1)}.mp3`
       const files = await extractEntries(artifact.epub, (name) => name === path)
       bytes = files[path] ?? null
     }

@@ -189,6 +189,7 @@ function requestParse(request: ParseRequest): Promise<ParseResponse> {
  * Read a file into the library. Narration is queued separately so the book
  * becomes visible — and its text readable — before any audio exists.
  */
+/** Audio type suffixes an EPUB 3 overlay may reference. */
 export async function importFile(file: File, options: ImportOptions): Promise<string> {
   const bookId = crypto.randomUUID()
   const now = Date.now()
@@ -215,10 +216,19 @@ export async function importFile(file: File, options: ImportOptions): Promise<st
 
   try {
     const bytes = new Uint8Array(await file.arrayBuffer())
+    // Keep a copy: a source that already carries overlays becomes the artifact
+    // verbatim, so it must survive the transfer to the parse worker.
+    const original = file.name.toLowerCase().endsWith('.epub') ? bytes.slice() : null
+
     const response = await requestParse({ bookId, fileName: file.name, bytes })
     if (response.type !== 'parsed') throw new Error('parser returned no book')
 
-    await storeParsedBook(bookId, response.book, response.sourceType, options)
+    if (response.sourceType === 'epub3-narrated' && original) {
+      await adoptNarratedEpub(bookId, response.book, original)
+      return bookId
+    }
+
+    await storeParsedBook(bookId, response.book, response.sourceType, options, response.ocrUsed)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     log.error(`[${bookId}] parse failed:`, message)
@@ -233,6 +243,7 @@ async function storeParsedBook(
   parsed: ParsedBook,
   sourceType: SourceType,
   options: ImportOptions,
+  ocrUsed = false,
 ): Promise<void> {
   for (let i = 0; i < parsed.chapters.length; i++) {
     const chapter = parsed.chapters[i]
@@ -267,6 +278,7 @@ async function storeParsedBook(
     author: parsed.author,
     language: parsed.language,
     sourceType,
+    ocrUsed,
     chapterCount: parsed.chapters.length,
     status,
     coverBlob: parsed.cover
@@ -277,6 +289,51 @@ async function storeParsedBook(
   if (options.mode === 'narrated') {
     void startNarration(bookId, options.voiceId, options.speed)
   }
+}
+
+/**
+ * Register a book that arrived already narrated.
+ *
+ * Nothing is generated and nothing is re-sealed — the uploaded file becomes the
+ * artifact as-is, and the manifest's own asset paths are stored so the reader
+ * can find chapters that do not follow our naming. Re-narrating a book that
+ * already has audio would waste hours and lose the original narrator.
+ */
+async function adoptNarratedEpub(
+  bookId: string,
+  parsed: ParsedBook,
+  epub: Uint8Array,
+): Promise<void> {
+  await db.putArtifact(bookId, epub)
+
+  const overlays = parsed.overlays ?? []
+  await publishBook(bookId, {
+    title: parsed.title,
+    author: parsed.author,
+    language: parsed.language,
+    sourceType: 'epub3-narrated',
+    mode: 'narrated',
+    chapterCount: Math.min(parsed.chapters.length, overlays.length || parsed.chapters.length),
+    overlays,
+    status: 'ready',
+    coverBlob: parsed.cover
+      ? new Blob([parsed.cover.bytes as unknown as BlobPart], { type: parsed.cover.mime })
+      : undefined,
+  })
+
+  // Duration comes from the overlays themselves, read back through the same
+  // path the reader uses — no second parser to keep in step.
+  const { loadOutline } = await import('./bookSource')
+  const record = await db.getBook(bookId)
+  if (!record) return
+
+  const outline = await loadOutline(record)
+  await publishBook(bookId, {
+    chapterCount: outline.length,
+    durationSec: outline.reduce((sum, entry) => sum + entry.durationSec, 0),
+  })
+
+  log.log(`[${bookId}] adopted a narrated EPUB — ${outline.length} chapters`)
 }
 
 // ── narration ─────────────────────────────────────────────────────

@@ -12,7 +12,7 @@ interface Props {
   onImport: (file: File, mode: BookMode, voiceId: string) => void
 }
 
-const ACCEPT = '.epub,.txt,.md,.markdown,.docx'
+const ACCEPT = '.epub,.pdf,.txt,.md,.markdown,.docx'
 
 const CARD = 'bg-surface-raised border border-border rounded-xl'
 
@@ -49,7 +49,7 @@ export default function UploadDialog({ defaultVoiceId, speed, onCancel, onImport
           <div>
             <h2 className="text-lg font-semibold text-on-surface">Add a book</h2>
             <p className="text-xs text-on-surface-muted mt-1">
-              EPUB, Word, Markdown or plain text. Everything stays on this device.
+              EPUB, PDF, Word, Markdown or plain text. Everything stays on this device.
             </p>
           </div>
           <button

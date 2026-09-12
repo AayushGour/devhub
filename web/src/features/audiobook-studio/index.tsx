@@ -17,7 +17,7 @@ import ModelOverlay from './components/ModelOverlay'
 import Reader from './components/Reader'
 import TransportBar from './components/TransportBar'
 import UploadDialog from './components/UploadDialog'
-import { usePlaybackEngine } from './hooks/usePlaybackEngine'
+import { usePlaybackEngine, type StoredPosition } from './hooks/usePlaybackEngine'
 import { useAudiobookStore, useActiveBook, useJob } from './store/audiobookStore'
 import {
   clearBookCache,
@@ -39,12 +39,7 @@ const PROGRESS_SAVE_MS = 2000
 export default function AudiobookStudioPage() {
   // Created here, in the non-suspending half, so the promise survives the
   // inner component's suspension rather than being recreated on every retry.
-  const [boot] = useState(() =>
-    Promise.all([
-      useAudiobookStore.getState().refreshBooks(),
-      useAudiobookStore.getState().loadSettings(),
-    ]).then(() => resumeInterrupted()),
-  )
+  const [boot] = useState(() => openLibrary())
 
   return (
     <Suspense
@@ -59,8 +54,55 @@ export default function AudiobookStudioPage() {
   )
 }
 
-function StudioInner({ boot }: { boot: Promise<void> }) {
-  use(boot)
+/**
+ * Load the library and reopen whatever was last being read.
+ *
+ * Done before the first render rather than in an effect so the reader appears
+ * already on the right chapter, at the right sentence — returning to a book
+ * should not look like opening it for the first time.
+ */
+async function openLibrary(): Promise<BootState> {
+  const state = useAudiobookStore.getState()
+  await Promise.all([state.refreshBooks(), state.loadSettings()])
+  void resumeInterrupted()
+
+  const recent = useAudiobookStore.getState().books[0]
+  if (!recent) return null
+
+  useAudiobookStore.getState().setActiveBook(recent.id)
+
+  const [outline, progress] = await Promise.all([
+    loadOutline(recent),
+    db.getProgress(recent.id),
+  ])
+  const index = progress?.chapterIndex ?? 0
+
+  const [chapter, audioUrl] = await Promise.all([
+    loadChapter(recent, index),
+    loadChapterAudio(recent, index),
+  ])
+
+  return {
+    outline,
+    index,
+    chapter,
+    audioUrl,
+    position: progress
+      ? { sentenceId: progress.sentenceId, audioTime: progress.audioTime }
+      : null,
+  }
+}
+
+type BootState = {
+  outline: ChapterOutline[]
+  index: number
+  chapter: ReadableChapter | null
+  audioUrl: string | null
+  position: StoredPosition | null
+} | null
+
+function StudioInner({ boot }: { boot: Promise<BootState> }) {
+  const initial = use(boot)
 
   const books = useAudiobookStore((s) => s.books)
   const settings = useAudiobookStore((s) => s.settings)
@@ -74,10 +116,10 @@ function StudioInner({ boot }: { boot: Promise<void> }) {
   const job = useJob(book?.id)
 
   const [showUpload, setShowUpload] = useState(books.length === 0)
-  const [outline, setOutline] = useState<ChapterOutline[]>([])
-  const [chapterIndex, setChapterIndex] = useState(0)
-  const [chapter, setChapter] = useState<ReadableChapter | null>(null)
-  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const [outline, setOutline] = useState<ChapterOutline[]>(initial?.outline ?? [])
+  const [chapterIndex, setChapterIndex] = useState(initial?.index ?? 0)
+  const [chapter, setChapter] = useState<ReadableChapter | null>(initial?.chapter ?? null)
+  const [audioUrl, setAudioUrl] = useState<string | null>(initial?.audioUrl ?? null)
   const [rate, setRate] = useState(settings.playbackRate)
 
   const lastSavedRef = useRef(0)
@@ -88,6 +130,7 @@ function StudioInner({ boot }: { boot: Promise<void> }) {
     chapter,
     audioUrl,
     rate,
+    initialPosition: initial?.position,
     onChapterEnd: () => {
       if (chapterIndex < outline.length - 1) goToChapter(chapterIndex + 1)
     },

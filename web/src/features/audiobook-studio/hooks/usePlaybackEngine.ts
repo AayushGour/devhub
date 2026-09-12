@@ -27,11 +27,22 @@ export interface PlaybackState {
   live: boolean
 }
 
+export interface StoredPosition {
+  sentenceId: string
+  audioTime: number
+}
+
 interface Options {
   mode: BookMode
   chapter: ReadableChapter | null
   audioUrl: string | null
   rate: number
+  /**
+   * Where reading stopped last session. Applied once, to the audio element as
+   * it is created — seeding the element directly rather than seeking after the
+   * fact avoids a frame of playback from the top of the chapter.
+   */
+  initialPosition?: StoredPosition | null
   onChapterEnd?: () => void
 }
 
@@ -45,13 +56,26 @@ const IDLE: PlaybackState = {
   live: false,
 }
 
-export function usePlaybackEngine({ mode, chapter, audioUrl, rate, onChapterEnd }: Options) {
-  const [state, setState] = useState<PlaybackState>(IDLE)
+export function usePlaybackEngine({
+  mode,
+  chapter,
+  audioUrl,
+  rate,
+  initialPosition,
+  onChapterEnd,
+}: Options) {
+  const [state, setState] = useState<PlaybackState>(() =>
+    initialPosition
+      ? { ...IDLE, activeSentenceId: initialPosition.sentenceId, currentTime: initialPosition.audioTime }
+      : IDLE,
+  )
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const frameRef = useRef(0)
   const liveIndexRef = useRef(0)
   const onEndRef = useRef(onChapterEnd)
+  // The stored position is consumed once; later chapters start at zero.
+  const pendingRestore = useRef(initialPosition ?? null)
 
   // Written in an effect rather than during render — a ref is not readable or
   // writable while rendering.
@@ -107,6 +131,15 @@ export function usePlaybackEngine({ mode, chapter, audioUrl, rate, onChapterEnd 
     audio.preload = 'metadata'
     audio.playbackRate = rate
     audioRef.current = audio
+
+    const resume = pendingRestore.current
+    pendingRestore.current = null
+    if (resume) {
+      // currentTime is only settable once metadata has arrived.
+      const seek = () => { audio.currentTime = resume.audioTime }
+      if (audio.readyState >= 1) seek()
+      else audio.addEventListener('loadedmetadata', seek, { once: true })
+    }
 
     const onEnded = () => {
       cancelAnimationFrame(frameRef.current)

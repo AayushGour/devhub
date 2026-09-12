@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { buildSentences, splitSentences, subSplit } from './utils/sentences'
-import { findSentenceAt, wordSpanAt, type TimedSentence } from './utils/timeline'
-import { buildEpubFiles, formatClock, type ChapterInput } from './utils/epubWrite'
-import { sealEpubBytes, listEntries, readTextEntry } from './utils/zip'
+import { buildSentences, splitSentences, subSplit } from './sentences'
+import { findSentenceAt, wordSpanAt, type TimedSentence } from './timeline'
+import { buildEpubFiles, formatClock, type ChapterInput } from './epubWrite'
+import { sealEpubBytes, listEntries, readTextEntry } from './zip'
 
 describe('sentences', () => {
   it('does not break on abbreviations or initials', () => {

@@ -5,6 +5,7 @@
 // DOM — see utils/markup.ts for why that matters in a worker.
 
 import { readEpub, type ParsedBook } from '../utils/epubRead'
+import { readPdf } from '../utils/pdfRead'
 import { asBook, readDocx, readMarkdown, readPlainText } from '../utils/textRead'
 import type { SourceType } from '../types'
 
@@ -16,7 +17,14 @@ export interface ParseRequest {
 
 export type ParseResponse =
   | { type: 'status'; bookId: string; label: string }
-  | { type: 'parsed'; bookId: string; sourceType: SourceType; book: ParsedBook }
+  | {
+      type: 'parsed'
+      bookId: string
+      sourceType: SourceType
+      book: ParsedBook
+      /** True when a scanned source had to go through OCR. */
+      ocrUsed?: boolean
+    }
   | { type: 'error'; bookId: string; message: string }
 
 const post = (message: ParseResponse) => (self as unknown as Worker).postMessage(message)
@@ -70,7 +78,11 @@ async function parse(request: ParseRequest): Promise<void> {
   }
 
   if (sourceType === 'pdf') {
-    throw new Error('PDF support is not built yet.')
+    const book = await readPdf(bytes, title, (stage, done, total) => {
+      post({ type: 'status', bookId, label: `${stage} page ${done}/${total}…` })
+    })
+    post({ type: 'parsed', bookId, sourceType, book, ocrUsed: book.ocrUsed })
+    return
   }
 
   const text = () => new TextDecoder().decode(bytes)

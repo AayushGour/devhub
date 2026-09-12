@@ -50,6 +50,7 @@
     "react-router-dom": "^7.17.0",
     "smol-toml": "^1.7.0",
     "svgo": "^4.0.1",
+    "tesseract.js": "^7.0.0",
     "tiktoken": "^1.0.22",
     "tree-sitter-wasms": "^0.1.13",
     "utif": "^3.1.0",

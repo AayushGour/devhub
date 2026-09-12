@@ -16,6 +16,13 @@ export interface ParsedChapter {
   href: string
 }
 
+/** Where a narrated source keeps a chapter's three documents. */
+export interface OverlayAssets {
+  text: string
+  smil: string
+  audio: string
+}
+
 export interface ParsedBook {
   title: string
   author: string
@@ -24,6 +31,11 @@ export interface ParsedBook {
   cover?: { bytes: Uint8Array; mime: string }
   /** True when the source already contains SMIL overlays — skip narration. */
   hasMediaOverlays: boolean
+  /**
+   * Asset paths per chapter, present only for narrated sources. A foreign EPUB
+   * does not use our naming, so the reader needs the manifest's own paths.
+   */
+  overlays?: OverlayAssets[]
 }
 
 export class DrmProtectedError extends Error {
@@ -151,6 +163,8 @@ export async function readEpub(bytes: Uint8Array, fallbackTitle: string): Promis
   const tocTitles = readTocTitles(files, manifest)
 
   const chapters: ParsedChapter[] = []
+  const overlays: OverlayAssets[] = []
+
   for (const ref of findElements(opf, ['itemref'])) {
     const item = byId.get(getAttr(ref.attrs, 'idref') ?? '')
     if (!item) continue
@@ -161,6 +175,18 @@ export async function readEpub(bytes: Uint8Array, fallbackTitle: string): Promis
     const body = findElement(source, 'body')
     const blocks = extractBlocks(body?.inner ?? source)
     if (blocks.length === 0) continue
+
+    const overlayItem = item.mediaOverlay ? byId.get(item.mediaOverlay) : undefined
+    if (overlayItem) {
+      const smil = readText(files, overlayItem.path) ?? ''
+      const audioRef = findElements(smil, ['audio'])[0]
+      const audioSrc = audioRef && getAttr(audioRef.attrs, 'src')
+      overlays.push({
+        text: item.path,
+        smil: overlayItem.path,
+        audio: audioSrc ? resolveHref(overlayItem.path, audioSrc) : '',
+      })
+    }
 
     const heading = blocks.find((b) => b.type.startsWith('h'))
     chapters.push({
@@ -184,6 +210,7 @@ export async function readEpub(bytes: Uint8Array, fallbackTitle: string): Promis
     language: meta('language') || 'en',
     chapters,
     cover: findCover(files, manifest, opf),
-    hasMediaOverlays: manifest.some((item) => item.mediaOverlay),
+    hasMediaOverlays: overlays.length > 0,
+    overlays: overlays.length > 0 ? overlays : undefined,
   }
 }

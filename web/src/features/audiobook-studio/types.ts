@@ -38,6 +38,11 @@ export interface BookRecord {
   durationSec: number
   /** True when the source was scanned and went through OCR — quality varies. */
   ocrUsed?: boolean
+  /**
+   * Asset paths inside the artifact, for books imported already narrated.
+   * Absent for books we produced — those use our own chNNN layout.
+   */
+  overlays?: { text: string; smil: string; audio: string }[]
   coverBlob?: Blob
   createdAt: number
   updatedAt: number
