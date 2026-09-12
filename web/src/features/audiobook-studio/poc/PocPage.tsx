@@ -9,10 +9,11 @@
 //
 // Everything here is scaffolding. The utils/ modules it calls are not.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookAudio, Download, Loader2, Play, Square, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
+import { isWebGpuAvailable } from '@/lib/webgpu'
 import { buildSentences, type SentenceSpan } from '../utils/sentences'
 import { findSentenceAt, tokenizeWords, wordSpanAt, type TimedSentence } from '../utils/timeline'
 import { DEFAULT_VOICE_ID, SAMPLE_SENTENCE, VOICE_PACKS, describeVoice } from '../utils/voices'
@@ -30,22 +31,17 @@ const PROJECTION_PAGES = 300
 
 const MP3_KBPS = 48
 
-// Precision is not a free choice: kokoro-js requires fp32 on WebGPU, and the
-// quantized dtypes there produce corrupted audio rather than failing loudly —
-// it sounds like a foreign language. WASM accepts every dtype, so that is where
-// the small downloads live.
-const DTYPES_BY_DEVICE: Record<Device, { value: Dtype; label: string }[]> = {
-  webgpu: [{ value: 'fp32', label: 'fp32 — 326 MB (required on WebGPU)' }],
-  wasm: [
-    { value: 'q8', label: 'q8 — 86 MB' },
-    { value: 'q4f16', label: 'q4f16 — 154 MB' },
-    { value: 'fp16', label: 'fp16 — 163 MB' },
-    { value: 'q4', label: 'q4 — 305 MB' },
-    { value: 'fp32', label: 'fp32 — 326 MB' },
-  ],
+// Precision is not a user choice — exactly one dtype is correct per device, so
+// exposing it only creates a way to get it wrong. WebGPU requires fp32; the
+// quantized dtypes there emit corrupted audio rather than failing loudly. WASM
+// has no such constraint, so it takes the smallest build that sounds right.
+const BUILD_FOR_DEVICE: Record<Device, { dtype: Dtype; label: string; downloadMB: number }> = {
+  webgpu: { dtype: 'fp32', label: 'WebGPU', downloadMB: 326 },
+  wasm: { dtype: 'q8', label: 'WASM (CPU)', downloadMB: 86 },
 }
 
-const DEFAULT_DTYPE: Record<Device, Dtype> = { webgpu: 'fp32', wasm: 'q8' }
+/** What the user asks for; 'auto' is resolved against the actual hardware. */
+type DevicePreference = 'auto' | Device
 
 interface NarratedChapter {
   index: number
@@ -95,15 +91,23 @@ function playPcm(pcm: Float32Array, sampleRate: number): void {
   source.start()
 }
 
-export default function PocPage() {
+/**
+ * Probe the hardware once per session. `use()` suspends until it resolves, so
+ * the device is DERIVED from the preference rather than stored — no effect, no
+ * state to fall out of sync with the dropdown.
+ */
+function PocPageInner({ detection }: { detection: Promise<Device> }) {
+  const detected = use(detection)
+
   const [book, setBook] = useState<PocBook | null>(null)
   const [phase, setPhase] = useState<Phase>('idle')
   const [status, setStatus] = useState('')
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
-  const [device, setDevice] = useState<Device>('webgpu')
-  const [dtype, setDtype] = useState<Dtype>(DEFAULT_DTYPE.webgpu)
+  const [devicePreference, setDevicePreference] = useState<DevicePreference>('auto')
+  const device: Device = devicePreference === 'auto' ? detected : devicePreference
+  const build = BUILD_FOR_DEVICE[device]
   const [voice, setVoice] = useState(DEFAULT_VOICE_ID)
   const [speed, setSpeed] = useState(1)
 
@@ -216,14 +220,12 @@ export default function PocPage() {
   )
 
   const ensureModel = useCallback(async () => {
-    const ready = await askNarrate({ type: 'load', dtype, device }, 'ready')
-    if (ready.type === 'ready') {
-      setLoadMs(ready.loadMs)
-      if (!ready.webgpuAvailable && device === 'webgpu') {
-        log.warn('WebGPU requested but navigator.gpu is absent')
-      }
-    }
-  }, [askNarrate, device, dtype])
+    const ready = await askNarrate(
+      { type: 'load', dtype: BUILD_FOR_DEVICE[device].dtype, device },
+      'ready',
+    )
+    if (ready.type === 'ready') setLoadMs(ready.loadMs)
+  }, [askNarrate, device])
 
   const handleFile = useCallback(async (file: File) => {
     setError(null)
@@ -486,37 +488,18 @@ export default function PocPage() {
           <div className={cn(PANEL, 'p-3 flex flex-col gap-3')}>
             <Field label="Device">
               <select
-                value={device}
-                onChange={(e) => {
-                  const next = e.target.value as Device
-                  setDevice(next)
-                  // Carry the dtype over only if the new device supports it.
-                  setDtype((current) =>
-                    DTYPES_BY_DEVICE[next].some((d) => d.value === current)
-                      ? current
-                      : DEFAULT_DTYPE[next],
-                  )
-                }}
+                value={devicePreference}
+                onChange={(e) => setDevicePreference(e.target.value as DevicePreference)}
                 className={FIELD}
               >
+                <option value="auto">Auto-detect</option>
                 <option value="webgpu">WebGPU</option>
                 <option value="wasm">WASM (CPU)</option>
               </select>
-            </Field>
-
-            <Field label="Precision">
-              <select
-                value={dtype}
-                onChange={(e) => setDtype(e.target.value as Dtype)}
-                disabled={DTYPES_BY_DEVICE[device].length === 1}
-                className={FIELD}
-              >
-                {DTYPES_BY_DEVICE[device].map((d) => (
-                  <option key={d.value} value={d.value}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
+              <p className="text-xs text-on-surface-muted">
+                {`${build.label} · ${build.dtype} · ${build.downloadMB} MB download`}
+                {devicePreference === 'auto' && detected === 'wasm' && ' · no WebGPU found'}
+              </p>
             </Field>
 
             <Field label="Voice">
@@ -710,6 +693,28 @@ export default function PocPage() {
         </section>
       </div>
     </div>
+  )
+}
+
+/**
+ * Owns the detection promise. Kept outside the suspending component so the
+ * promise is created once rather than on every retry of the inner render.
+ */
+export default function PocPage() {
+  const [detection] = useState(() =>
+    isWebGpuAvailable().then((available): Device => (available ? 'webgpu' : 'wasm')),
+  )
+
+  return (
+    <Suspense
+      fallback={
+        <div className="studio-root items-center justify-center">
+          <p className="text-sm text-on-surface-muted">Detecting the best device…</p>
+        </div>
+      }
+    >
+      <PocPageInner detection={detection} />
+    </Suspense>
   )
 }
 

@@ -11,7 +11,7 @@ import {
   modelSupportsReasoning,
   formatVram,
 } from '@/features/rag-studio/utils/models'
-import { isWebGpuAvailable } from '@/features/rag-studio/utils/webgpu'
+import { isWebGpuAvailable } from '@/lib/webgpu'
 import { listRepos, deleteRepo } from '@/features/repo-explorer/utils/repoDb'
 import { getSourceFiles, countNodes, clearAll as clearRagVectors } from '@/features/rag-studio/utils/vectorDb'
 import { getAllMemoryKeys, clearAllMemory } from '@/features/agent-workspace/tools/memory'
