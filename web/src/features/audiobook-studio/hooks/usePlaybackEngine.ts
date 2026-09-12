@@ -10,7 +10,13 @@
 // which, because a live book has no seekable duration to draw.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { findSentenceAt, tokenizeWords, wordSpanAt, type WordSpan } from '../utils/timeline'
+import {
+  findSentenceAt,
+  timelineDuration,
+  tokenizeWords,
+  wordSpanAt,
+  type WordSpan,
+} from '../utils/timeline'
 import type { ReadableChapter } from '../utils/bookSource'
 import type { BookMode } from '../types'
 
@@ -83,6 +89,20 @@ export function usePlaybackEngine({
     onEndRef.current = onChapterEnd
   }, [onChapterEnd])
 
+  // Playback position belongs to one chapter. Without clearing it when the
+  // chapter changes, the old position survives into the new one — and because
+  // the page writes progress under whichever book is active, switching books
+  // saves the previous book's position onto the new book's record.
+  //
+  // Adjusting state during render (rather than in an effect) is the documented
+  // way to reset state on a prop change, and avoids a frame that highlights a
+  // sentence belonging to the chapter just left.
+  const [trackedChapter, setTrackedChapter] = useState(chapter)
+  if (chapter !== trackedChapter) {
+    setTrackedChapter(chapter)
+    setState(IDLE)
+  }
+
   const live = mode === 'live'
   // Stable identity, so the callbacks below are not rebuilt on every render.
   const timeline = useMemo(() => chapter?.timeline ?? [], [chapter])
@@ -99,28 +119,45 @@ export function usePlaybackEngine({
 
   const stopTracking = useCallback(() => cancelAnimationFrame(frameRef.current), [])
 
+  /**
+   * Resolve a playback time to a highlight position.
+   *
+   * Shared by the animation loop and by seeking, because the highlight has to
+   * follow the clock whether or not anything is playing — scrubbing a paused
+   * book must move the highlight too, not just the scrubber.
+   */
+  const positionAt = useCallback(
+    (time: number): Pick<PlaybackState, 'activeIndex' | 'activeSentenceId' | 'wordRange'> => {
+      if (timeline.length === 0) {
+        return { activeIndex: -1, activeSentenceId: null, wordRange: null }
+      }
+      const index = findSentenceAt(timeline, time)
+      const entry = index >= 0 ? timeline[index] : null
+      return {
+        activeIndex: index,
+        activeSentenceId: entry?.id ?? null,
+        wordRange: entry ? wordSpanAt(entry, time, wordsBySentence.get(entry.id)) : null,
+      }
+    },
+    [timeline, wordsBySentence],
+  )
+
   const track = useCallback(() => {
     const tick = () => {
       const audio = audioRef.current
       if (audio && timeline.length > 0) {
-        const index = findSentenceAt(timeline, audio.currentTime)
-        const entry = index >= 0 ? timeline[index] : null
         setState((prev) => ({
           ...prev,
           currentTime: audio.currentTime,
           duration: Number.isFinite(audio.duration) ? audio.duration : prev.duration,
-          activeIndex: index,
-          activeSentenceId: entry?.id ?? null,
-          wordRange: entry
-            ? wordSpanAt(entry, audio.currentTime, wordsBySentence.get(entry.id))
-            : null,
+          ...positionAt(audio.currentTime),
         }))
       }
       frameRef.current = requestAnimationFrame(tick)
     }
     cancelAnimationFrame(frameRef.current)
     frameRef.current = requestAnimationFrame(tick)
-  }, [timeline, wordsBySentence])
+  }, [positionAt, timeline])
 
   // Build the element for the current chapter. Recreated per chapter so seeking
   // and duration always refer to the audio actually on screen.
@@ -141,6 +178,16 @@ export function usePlaybackEngine({
       else audio.addEventListener('loadedmetadata', seek, { once: true })
     }
 
+    // Duration is otherwise only learned inside the animation loop, which runs
+    // only while playing — leaving the scrubber pinned to zero, and clamping
+    // every seek, until something has played at least once.
+    const onMetadata = () => {
+      if (Number.isFinite(audio.duration)) {
+        setState((prev) => ({ ...prev, duration: audio.duration }))
+      }
+    }
+    audio.addEventListener('loadedmetadata', onMetadata)
+
     const onEnded = () => {
       cancelAnimationFrame(frameRef.current)
       setState((prev) => ({ ...prev, playing: false }))
@@ -149,6 +196,7 @@ export function usePlaybackEngine({
     audio.addEventListener('ended', onEnded)
 
     return () => {
+      audio.removeEventListener('loadedmetadata', onMetadata)
       audio.removeEventListener('ended', onEnded)
       audio.pause()
       cancelAnimationFrame(frameRef.current)
@@ -163,8 +211,11 @@ export function usePlaybackEngine({
   }, [rate])
 
   // Stop any speech when the chapter changes or the component unmounts —
-  // speechSynthesis is global and outlives React otherwise.
+  // speechSynthesis is global and outlives React otherwise. The live cursor is
+  // reset here rather than during render, where refs are off limits; the stored
+  // restore position is consumed by the audio element and cleared there.
   useEffect(() => {
+    liveIndexRef.current = 0
     return () => {
       if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
       cancelAnimationFrame(frameRef.current)
@@ -243,22 +294,23 @@ export function usePlaybackEngine({
     setState((prev) => ({ ...prev, playing: false }))
   }, [live, stopTracking])
 
+  // Read the flag, do not mutate state to read it: a setState updater must be
+  // pure, and play()/pause() set state themselves — nesting an update inside an
+  // update makes playback fire twice under StrictMode.
   const toggle = useCallback(() => {
-    setState((prev) => {
-      if (prev.playing) pause()
-      else play()
-      return prev
-    })
-  }, [pause, play])
+    if (state.playing) pause()
+    else play()
+  }, [pause, play, state.playing])
 
   const seekTo = useCallback(
     (seconds: number) => {
       const audio = audioRef.current
       if (!audio) return
-      audio.currentTime = Math.max(0, seconds)
-      setState((prev) => ({ ...prev, currentTime: audio.currentTime }))
+      const time = Math.max(0, seconds)
+      audio.currentTime = time
+      setState((prev) => ({ ...prev, currentTime: time, ...positionAt(time) }))
     },
-    [],
+    [positionAt],
   )
 
   const seekToSentence = useCallback(
@@ -288,16 +340,28 @@ export function usePlaybackEngine({
       const audio = audioRef.current
       if (!audio) return
       audio.currentTime = audioTime
-      const index = findSentenceAt(timeline, audioTime)
+      const position = positionAt(audioTime)
       setState((prev) => ({
         ...prev,
         currentTime: audioTime,
-        activeIndex: index,
-        activeSentenceId: index >= 0 ? timeline[index].id : sentenceId,
+        ...position,
+        activeSentenceId: position.activeSentenceId ?? sentenceId,
       }))
     },
-    [chapter, live, timeline],
+    [chapter, live, positionAt],
   )
 
-  return { state: { ...state, live }, play, pause, toggle, seekTo, seekToSentence, restore }
+  // The overlay's own timings give an authoritative length before any audio is
+  // fetched, so the transport is usable from the moment a chapter is open.
+  const duration = state.duration || timelineDuration(timeline)
+
+  return {
+    state: { ...state, live, duration },
+    play,
+    pause,
+    toggle,
+    seekTo,
+    seekToSentence,
+    restore,
+  }
 }

@@ -13,13 +13,18 @@ interface Props {
   onSeekToSentence: (sentenceId: string) => void
 }
 
+/** Block type -> element. 'list' never reaches here; it is wrapped in a <ul>. */
+const BLOCK_TAG: Record<Block['type'], 'h1' | 'h2' | 'h3' | 'p' | 'blockquote' | 'li'> = {
+  h1: 'h1', h2: 'h2', h3: 'h3', p: 'p', quote: 'blockquote', list: 'li',
+}
+
 const BLOCK_CLASS: Record<Block['type'], string> = {
   h1: 'text-2xl font-semibold mt-10 mb-4 first:mt-0',
   h2: 'text-xl font-semibold mt-8 mb-3',
   h3: 'text-lg font-semibold mt-6 mb-2',
   p: 'mb-5',
   quote: 'mb-5 pl-4 border-l-2 border-border italic',
-  list: 'mb-2 pl-4',
+  list: 'mb-2',
 }
 
 export default function Reader({
@@ -43,6 +48,35 @@ export default function Reader({
     return map
   }, [chapter])
 
+  // List items must sit inside a list element. Runs of them are gathered here
+  // rather than each being emitted as a stray <li>, which is invalid markup and
+  // renders without its marker.
+  const groups = useMemo(() => {
+    const out: { list: boolean; blocks: { block: Block; blockIdx: number }[] }[] = []
+    chapter.blocks.forEach((block, blockIdx) => {
+      const list = block.type === 'list'
+      const tail = out[out.length - 1]
+      if (tail && tail.list === list) tail.blocks.push({ block, blockIdx })
+      else out.push({ list, blocks: [{ block, blockIdx }] })
+    })
+    return out
+  }, [chapter])
+
+  const renderBlock = (block: Block, blockIdx: number) => {
+    const spans = sentencesByBlock.get(blockIdx) ?? []
+    if (spans.length === 0) return block.text
+    return spans.map((span) => (
+      <Sentence
+        key={span.id}
+        span={span}
+        active={span.id === activeSentenceId}
+        wordRange={span.id === activeSentenceId ? wordRange : null}
+        activeRef={span.id === activeSentenceId ? activeRef : undefined}
+        onSeek={onSeekToSentence}
+      />
+    ))
+  }
+
   // Keep the spoken line in view. `nearest` rather than `center` so short jumps
   // within a visible paragraph do not yank the page around.
   useEffect(() => {
@@ -57,27 +91,26 @@ export default function Reader({
         // Reader-controlled type size — a runtime value, not a fixed utility.
         style={{ fontSize: `${fontSizeRem}rem` }}
       >
-        {chapter.blocks.map((block, blockIdx) => {
-          const spans = sentencesByBlock.get(blockIdx) ?? []
-          const Tag = block.type === 'quote' ? 'blockquote' : block.type === 'list' ? 'li' : block.type === 'p' ? 'p' : block.type
-
-          return (
-            <Tag key={blockIdx} className={BLOCK_CLASS[block.type]}>
-              {spans.length === 0
-                ? block.text
-                : spans.map((span) => (
-                    <Sentence
-                      key={span.id}
-                      span={span}
-                      active={span.id === activeSentenceId}
-                      wordRange={span.id === activeSentenceId ? wordRange : null}
-                      activeRef={span.id === activeSentenceId ? activeRef : undefined}
-                      onSeek={onSeekToSentence}
-                    />
-                  ))}
-            </Tag>
-          )
-        })}
+        {groups.map((group, groupIdx) =>
+          group.list ? (
+            <ul key={groupIdx} className="mb-5 list-disc pl-6">
+              {group.blocks.map(({ block, blockIdx }) => (
+                <li key={blockIdx} className={BLOCK_CLASS[block.type]}>
+                  {renderBlock(block, blockIdx)}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            group.blocks.map(({ block, blockIdx }) => {
+              const Tag = BLOCK_TAG[block.type]
+              return (
+                <Tag key={blockIdx} className={BLOCK_CLASS[block.type]}>
+                  {renderBlock(block, blockIdx)}
+                </Tag>
+              )
+            })
+          ),
+        )}
       </article>
     </div>
   )

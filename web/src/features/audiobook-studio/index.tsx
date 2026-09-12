@@ -83,6 +83,7 @@ async function openLibrary(): Promise<BootState> {
   ])
 
   return {
+    bookId: recent.id,
     outline,
     index,
     chapter,
@@ -94,6 +95,7 @@ async function openLibrary(): Promise<BootState> {
 }
 
 type BootState = {
+  bookId: string
   outline: ChapterOutline[]
   index: number
   chapter: ReadableChapter | null
@@ -120,6 +122,11 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
   const [chapterIndex, setChapterIndex] = useState(initial?.index ?? 0)
   const [chapter, setChapter] = useState<ReadableChapter | null>(initial?.chapter ?? null)
   const [audioUrl, setAudioUrl] = useState<string | null>(initial?.audioUrl ?? null)
+  // Which book the loaded chapter and the current playback position belong to.
+  // `book` flips the instant the rail is clicked, but the chapter loads
+  // asynchronously — writing progress in that gap would file the outgoing
+  // book's position under the incoming book's id.
+  const [openedBookId, setOpenedBookId] = useState<string | null>(initial?.bookId ?? null)
   const [rate, setRate] = useState(settings.playbackRate)
 
   const lastSavedRef = useRef(0)
@@ -157,6 +164,7 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
       setChapterIndex(index)
       setChapter(content)
       setAudioUrl(url)
+      setOpenedBookId(record.id)
 
       if (resumeAt && content) {
         const separator = resumeAt.lastIndexOf(':')
@@ -205,19 +213,38 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
     [openBook, setActiveBook],
   )
 
-  // A chapter that finishes narrating while it is on screen has no audio URL
-  // yet; pick it up when the book record updates.
+  // A chapter narrated while it is on screen arrives in two pieces: the audio,
+  // and the timings that make it a read-along. Both have to be picked up, or
+  // the chapter plays as a bare audio file beside text that never highlights.
+  const showingCurrentBook = !!book && book.id === openedBookId
+
+  const incomplete =
+    showingCurrentBook &&
+    book.mode !== 'live' &&
+    (!audioUrl || (chapter?.timeline.length ?? 0) === 0)
+
   useEffect(() => {
-    if (audioUrl || !book || book.mode === 'live') return
-    void loadChapterAudio(book, chapterIndex).then((url) => {
+    if (!book || !incomplete) return
+    let cancelled = false
+
+    void Promise.all([
+      loadChapter(book, chapterIndex),
+      loadChapterAudio(book, chapterIndex),
+    ]).then(([content, url]) => {
+      if (cancelled) return
+      // Only replace the chapter once it actually gained timings — swapping in
+      // another timing-less copy would just restart this cycle.
+      if (content && content.timeline.length > 0) setChapter(content)
       if (url) setAudioUrl(url)
     })
-  }, [audioUrl, book, book?.status, chapterIndex])
+
+    return () => { cancelled = true }
+  }, [book, book?.status, book?.updatedAt, chapterIndex, incomplete])
 
   // Persist the reading position, debounced while playing and once on the way
   // out so closing the tab mid-sentence still resumes correctly.
   useEffect(() => {
-    if (!book || !state.activeSentenceId) return
+    if (!book || book.id !== openedBookId || !state.activeSentenceId) return
 
     const save = () => {
       void db.putProgress({
@@ -237,7 +264,7 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
     const onHide = () => { if (document.visibilityState === 'hidden') save() }
     document.addEventListener('visibilitychange', onHide)
     return () => document.removeEventListener('visibilitychange', onHide)
-  }, [book, chapterIndex, state.activeSentenceId, state.currentTime])
+  }, [book, chapterIndex, openedBookId, state.activeSentenceId, state.currentTime])
 
   const handleImport = useCallback(
     (file: File, mode: BookMode, voiceId: string) => {

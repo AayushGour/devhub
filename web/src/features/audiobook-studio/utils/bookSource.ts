@@ -36,7 +36,39 @@ export interface ChapterOutline {
 
 /** Session-lifetime cache of inflated chapters, keyed `${bookId}:${index}`. */
 const chapterCache = new Map<string, ReadableChapter>()
+
+/**
+ * Whether a chapter's content is final and therefore safe to cache.
+ *
+ * A chapter parsed but not yet narrated has an empty timeline, and narration
+ * fills it in later. Caching that version pins the reader to a chapter that can
+ * never highlight: the audio arrives, the timings never do, and playback looks
+ * like a plain audio file with dead text beside it.
+ */
+export function isCacheable(book: BookRecord, chapter: ReadableChapter): boolean {
+  if (book.mode === 'live') return true
+  return chapter.timeline.length > 0
+}
+/**
+ * Object URLs hold their blob in memory for as long as they live. A forty
+ * chapter book at ~5 MB a chapter would pin hundreds of megabytes if every
+ * chapter stayed resident, so only the neighbourhood of the current chapter is
+ * kept — enough for the next-chapter preload and a step backwards.
+ */
+const AUDIO_CACHE_LIMIT = 3
 const audioCache = new Map<string, string>()
+
+function rememberAudio(key: string, url: string): void {
+  audioCache.set(key, url)
+  while (audioCache.size > AUDIO_CACHE_LIMIT) {
+    // Map preserves insertion order, so the first key is the oldest.
+    const oldest = audioCache.keys().next()
+    if (oldest.done) break
+    const stale = audioCache.get(oldest.value)
+    if (stale) URL.revokeObjectURL(stale)
+    audioCache.delete(oldest.value)
+  }
+}
 
 export function clearBookCache(bookId: string): void {
   for (const key of [...chapterCache.keys()]) {
@@ -212,7 +244,7 @@ export async function loadChapter(
     }
   }
 
-  if (chapter) chapterCache.set(key, chapter)
+  if (chapter && isCacheable(book, chapter)) chapterCache.set(key, chapter)
   return chapter
 }
 
@@ -248,7 +280,7 @@ export async function loadChapterAudio(
   const url = URL.createObjectURL(
     new Blob([bytes as unknown as BlobPart], { type: 'audio/mpeg' }),
   )
-  audioCache.set(key, url)
+  rememberAudio(key, url)
   return url
 }
 

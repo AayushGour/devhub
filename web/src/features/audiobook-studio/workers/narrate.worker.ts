@@ -148,6 +148,7 @@ async function load(dtype: Dtype, device: Device, requestId: number): Promise<vo
   })
   loadedWith = { dtype, device }
 
+  post({ type: 'status', label: 'ready' })
   post({
     type: 'ready',
     requestId,

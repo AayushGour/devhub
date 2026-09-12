@@ -13,6 +13,7 @@
 import { createLogger } from '@/lib/logger'
 import { isWebGpuAvailable } from '@/lib/webgpu'
 import * as db from './db'
+import { clearBookCache, loadOutline } from './bookSource'
 import { buildSentences } from './sentences'
 import { chapterId } from './epubWrite'
 import type { ChapterInput } from './epubWrite'
@@ -34,6 +35,15 @@ import type { SealRequest, SealResponse } from '../workers/seal.worker'
 const log = createLogger('audiobook:engine')
 
 const MP3_KBPS = 48
+
+/** Bytes per second of narration at MP3_KBPS, used to project a book's size. */
+const BYTES_PER_AUDIO_SECOND = (MP3_KBPS * 1000) / 8
+
+/** Characters of prose a narrator gets through in a second, roughly. */
+const CHARS_PER_AUDIO_SECOND = 14
+
+/** Refuse to start if the projection would consume more than this of what is left. */
+const QUOTA_HEADROOM = 0.8
 
 /** Exactly one dtype is correct per device — see the narrate worker's guard. */
 const DTYPE_FOR_DEVICE: Record<Device, Dtype> = { webgpu: 'fp32', wasm: 'q8' }
@@ -332,7 +342,6 @@ async function adoptNarratedEpub(
 
   // Duration comes from the overlays themselves, read back through the same
   // path the reader uses — no second parser to keep in step.
-  const { loadOutline } = await import('./bookSource')
   const record = await db.getBook(bookId)
   if (!record) return
 
@@ -428,6 +437,7 @@ async function narrateBook(bookId: string, voiceId: string, speed: number): Prom
   })
 
   try {
+    await assertRoomFor(chapters)
     await ensureModel()
 
     for (; cursor < chapters.length; cursor++) {
@@ -486,6 +496,10 @@ async function narrateBook(bookId: string, voiceId: string, speed: number): Prom
         durationSec: narrated.stats.audioSec,
       })
 
+      // The reader may be holding this chapter from before it had timings.
+      // Without dropping it, the audio arrives and the highlight never does.
+      clearBookCache(bookId)
+
       // Checkpoint AFTER the audio is durable, so a crash re-runs at most this
       // chapter rather than skipping it.
       await publishJob({
@@ -523,6 +537,35 @@ async function narrateBook(bookId: string, voiceId: string, speed: number): Prom
       speed,
       error: message,
     })
+  }
+}
+
+/**
+ * Refuse a conversion that cannot finish.
+ *
+ * Running out of storage two hours into a book leaves a half-narrated mess and
+ * wastes the whole run, so the size is projected from the prose up front and
+ * checked against what the browser will actually give us. Persistence is
+ * requested at the same time: without it the origin can be evicted wholesale
+ * under disk pressure.
+ */
+async function assertRoomFor(chapters: { sentences: { text: string }[] }[]): Promise<void> {
+  const chars = chapters.reduce(
+    (sum, chapter) => sum + chapter.sentences.reduce((n, s) => n + s.text.length, 0),
+    0,
+  )
+  const projectedBytes = (chars / CHARS_PER_AUDIO_SECOND) * BYTES_PER_AUDIO_SECOND
+
+  const { available, quota } = await db.estimateQuota()
+  // A browser that reports no quota tells us nothing; do not block on silence.
+  if (quota === 0 || available === 0) return
+
+  if (projectedBytes > available * QUOTA_HEADROOM) {
+    const need = Math.ceil(projectedBytes / 1024 ** 2)
+    const have = Math.floor(available / 1024 ** 2)
+    throw new Error(
+      `This book needs roughly ${need} MB of audio but only ${have} MB of browser storage is available. Free some space, or delete a converted book, and try again.`,
+    )
   }
 }
 
@@ -582,6 +625,8 @@ async function sealBook(bookId: string): Promise<void> {
   // Order matters: the artifact must exist before staging is dropped.
   await db.putArtifact(bookId, response.epub)
   await db.clearStaging(bookId)
+  // Chapters are served from the zip from here on, not from staging.
+  clearBookCache(bookId)
   await db.deleteJob(bookId)
   store().clearJob(bookId)
 
