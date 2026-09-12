@@ -1,14 +1,12 @@
-// Narration worker — the POC's core risk probe.
+// Narration worker.
 //
-// Answers three questions the design rests on:
-//   R1  does kokoro-js load and run inside a Vite ES worker, on WebGPU?
-//   R2  what is the real throughput, in characters of prose per second?
-//   R3  are per-sentence durations exact enough to drive a read-along highlight?
+// Synthesises one chapter at a time so the engine can checkpoint between them:
+// a closed tab loses at most the chapter in flight.
 //
-// R3's answer comes from HOW the audio is produced: each sentence is
-// synthesised on its own, so its duration is a real sample count. The running
-// offset across sentences is therefore exact, not estimated — no alignment
-// pass, no drift accumulation.
+// Sentence timings are exact rather than estimated. Each sentence is generated
+// on its own, so its duration is a real sample count and the running offset
+// across the chapter accumulates no drift. That is what lets the SMIL overlay
+// carry true clipBegin/clipEnd values without a forced-alignment pass.
 
 import { KokoroTTS } from 'kokoro-js'
 import type { SentenceSpan } from '../utils/sentences'
@@ -29,7 +27,7 @@ const SILENCE = {
 export type NarrateRequest =
   | { type: 'load'; dtype: Dtype; device: Device }
   | { type: 'sample'; voice: string; text: string; speed: number }
-  | { type: 'narrate'; voice: string; speed: number; sentences: SentenceSpan[] }
+  | { type: 'narrate'; chapterIndex: number; voice: string; speed: number; sentences: SentenceSpan[] }
 
 export type Dtype = 'fp32' | 'fp16' | 'q8' | 'q4' | 'q4f16'
 export type Device = 'wasm' | 'webgpu'
@@ -49,9 +47,10 @@ export type NarrateResponse =
   | { type: 'status'; label: string; progress?: number }
   | { type: 'ready'; device: Device; dtype: Dtype; loadMs: number; webgpuAvailable: boolean }
   | { type: 'sample'; pcm: Float32Array; sampleRate: number; generateMs: number }
-  | { type: 'sentence'; index: number; total: number; audioSec: number; generateMs: number }
+  | { type: 'sentence'; chapterIndex: number; index: number; total: number; audioSec: number; generateMs: number }
   | {
       type: 'chapter'
+      chapterIndex: number
       pcm: Float32Array
       sampleRate: number
       timeline: TimedSentence[]
@@ -131,6 +130,7 @@ function silenceFor(sentence: SentenceSpan): number {
 }
 
 async function narrate(
+  chapterIndex: number,
   sentences: SentenceSpan[],
   voice: string,
   speed: number,
@@ -188,6 +188,7 @@ async function narrate(
 
     post({
       type: 'sentence',
+      chapterIndex,
       index: i + 1,
       total: sentences.length,
       audioSec: samples / sampleRate,
@@ -202,6 +203,7 @@ async function narrate(
   post(
     {
       type: 'chapter',
+      chapterIndex,
       pcm,
       sampleRate,
       timeline,
@@ -246,7 +248,7 @@ self.onmessage = async (event: MessageEvent<NarrateRequest>) => {
     }
 
     if (request.type === 'narrate') {
-      await narrate(request.sentences, request.voice, request.speed)
+      await narrate(request.chapterIndex, request.sentences, request.voice, request.speed)
     }
   } catch (err) {
     post({ type: 'error', message: err instanceof Error ? err.message : String(err) })

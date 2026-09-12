@@ -68,6 +68,17 @@ export function formatClock(seconds: number): string {
   return `${h}:${pad2(m)}:${pad2(s)}.${String(ms).padStart(3, '0')}`
 }
 
+/** Inverse of `formatClock`. Accepts `H:MM:SS.mmm`, `MM:SS`, and bare seconds. */
+export function parseClock(value: string): number {
+  const trimmed = value.trim().replace(/s$/, '')
+  const parts = trimmed.split(':').map(Number)
+  if (parts.some((n) => !Number.isFinite(n))) return 0
+
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]
+  if (parts.length === 2) return parts[0] * 60 + parts[1]
+  return parts[0] ?? 0
+}
+
 export function buildContainerXml(): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
