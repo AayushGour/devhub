@@ -76,6 +76,36 @@ let nextRequestId = 1
 let encodeWaiter: Waiter<EncodeResponse> | null = null
 let sealWaiter: Waiter<SealResponse> | null = null
 
+/**
+ * Wire up the two ways a worker can die without answering.
+ *
+ * Every request here is a promise waiting on a message. If the worker crashes,
+ * or posts something that cannot be structured-cloned, that message never
+ * arrives and the promise never settles — the import or conversion simply hangs
+ * with no error to show. Both paths must reject whatever is outstanding.
+ */
+function onWorkerFailure(worker: Worker, label: string, fail: (reason: Error) => void): void {
+  worker.onerror = (event) => {
+    const reason = new Error(event.message || `the ${label} worker stopped unexpectedly`)
+    log.error(`${label} worker crashed:`, reason.message)
+    fail(reason)
+  }
+  worker.onmessageerror = () => {
+    const reason = new Error(`the ${label} worker sent a result that could not be read`)
+    log.error(reason.message)
+    fail(reason)
+  }
+}
+
+/** Reject and drop every waiter in a keyed registry. */
+function failAll<K, W extends { reject: (reason: Error) => void }>(
+  waiters: Map<K, W>,
+  reason: Error,
+): void {
+  for (const waiter of waiters.values()) waiter.reject(reason)
+  waiters.clear()
+}
+
 function getParseWorker(): Worker {
   if (parseWorker) return parseWorker
   parseWorker = new Worker(new URL('../workers/parse.worker.ts', import.meta.url), {
@@ -93,6 +123,11 @@ function getParseWorker(): Worker {
     if (message.type === 'error') waiter.reject(new Error(message.message))
     else waiter.resolve(message)
   }
+  onWorkerFailure(parseWorker, 'parsing', (reason) => {
+    failAll(parseWaiters, reason)
+    // Drop the dead instance: reusing it would hang every later request too.
+    parseWorker = null
+  })
   return parseWorker
 }
 
@@ -120,12 +155,13 @@ function getNarrateWorker(): Worker {
     else if (waiter.want === message.type) waiter.resolve(message)
     else waiter.reject(new Error(`expected ${waiter.want}, received ${message.type}`))
   }
-  narrateWorker.onerror = (event) => {
-    // A crash takes down everything in flight, not just the newest request.
-    const reason = new Error(event.message || 'narration worker crashed')
-    for (const waiter of narrateWaiters.values()) waiter.reject(reason)
-    narrateWaiters.clear()
-  }
+  // A crash takes down everything in flight, not just the newest request.
+  onWorkerFailure(narrateWorker, 'narration', (reason) => {
+    failAll(narrateWaiters, reason)
+    // The replacement worker starts with no model resident; ensureModel() on
+    // the next request loads one into it.
+    narrateWorker = null
+  })
   return narrateWorker
 }
 
@@ -140,6 +176,11 @@ function getEncodeWorker(): Worker {
     else encodeWaiter?.resolve(message)
     encodeWaiter = null
   }
+  onWorkerFailure(encodeWorker, 'audio encoding', (reason) => {
+    encodeWaiter?.reject(reason)
+    encodeWaiter = null
+    encodeWorker = null
+  })
   return encodeWorker
 }
 
@@ -154,6 +195,11 @@ function getSealWorker(): Worker {
     else sealWaiter?.resolve(message)
     sealWaiter = null
   }
+  onWorkerFailure(sealWorker, 'packaging', (reason) => {
+    sealWaiter?.reject(reason)
+    sealWaiter = null
+    sealWorker = null
+  })
   return sealWorker
 }
 
