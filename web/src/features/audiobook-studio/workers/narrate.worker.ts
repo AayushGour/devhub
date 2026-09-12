@@ -24,10 +24,28 @@ const SILENCE = {
   heading: 0.7,
 } as const
 
-export type NarrateRequest =
-  | { type: 'load'; dtype: Dtype; device: Device }
-  | { type: 'sample'; voice: string; text: string; speed: number }
-  | { type: 'narrate'; chapterIndex: number; voice: string; speed: number; sentences: SentenceSpan[] }
+/**
+ * Every request carries an id, and every terminal response echoes it. Matching
+ * responses by type alone cannot tell two concurrent requests apart — a voice
+ * preview fired during a conversion would be mistaken for the chapter the
+ * conversion is waiting on, and the book would stall.
+ */
+export interface RequestEnvelope {
+  requestId: number
+}
+
+export type NarrateRequest = RequestEnvelope &
+  (
+    | { type: 'load'; dtype: Dtype; device: Device }
+    | { type: 'sample'; voice: string; text: string; speed: number }
+    | {
+        type: 'narrate'
+        chapterIndex: number
+        voice: string
+        speed: number
+        sentences: SentenceSpan[]
+      }
+  )
 
 export type Dtype = 'fp32' | 'fp16' | 'q8' | 'q4' | 'q4f16'
 export type Device = 'wasm' | 'webgpu'
@@ -43,20 +61,46 @@ export interface NarrateStats {
   realtimeFactor: number
 }
 
-export type NarrateResponse =
+/** Progress updates carry no id — they belong to whatever is running. */
+/**
+ * A request before its id is assigned. Distributive by design — a plain
+ * `Omit` over a union collapses it to the keys every member shares, which
+ * would erase every field that makes a request what it is.
+ */
+export type NarrateCommand = NarrateRequest extends infer T
+  ? T extends NarrateRequest
+    ? Omit<T, 'requestId'>
+    : never
+  : never
+
+export type NarrateProgress =
   | { type: 'status'; label: string; progress?: number }
-  | { type: 'ready'; device: Device; dtype: Dtype; loadMs: number; webgpuAvailable: boolean }
-  | { type: 'sample'; pcm: Float32Array; sampleRate: number; generateMs: number }
-  | { type: 'sentence'; chapterIndex: number; index: number; total: number; audioSec: number; generateMs: number }
   | {
-      type: 'chapter'
+      type: 'sentence'
       chapterIndex: number
-      pcm: Float32Array
-      sampleRate: number
-      timeline: TimedSentence[]
-      stats: NarrateStats
+      index: number
+      total: number
+      audioSec: number
+      generateMs: number
     }
-  | { type: 'error'; message: string }
+
+/** Terminal responses settle exactly one request. */
+export type NarrateResult = RequestEnvelope &
+  (
+    | { type: 'ready'; device: Device; dtype: Dtype; loadMs: number; webgpuAvailable: boolean }
+    | { type: 'sample'; pcm: Float32Array; sampleRate: number; generateMs: number }
+    | {
+        type: 'chapter'
+        chapterIndex: number
+        pcm: Float32Array
+        sampleRate: number
+        timeline: TimedSentence[]
+        stats: NarrateStats
+      }
+    | { type: 'error'; message: string }
+  )
+
+export type NarrateResponse = NarrateProgress | NarrateResult
 
 const post = (message: NarrateResponse, transfer?: Transferable[]) =>
   (self as unknown as Worker).postMessage(message, transfer ?? [])
@@ -68,7 +112,7 @@ function hasWebGpu(): boolean {
   return typeof navigator !== 'undefined' && 'gpu' in navigator
 }
 
-async function load(dtype: Dtype, device: Device): Promise<void> {
+async function load(dtype: Dtype, device: Device, requestId: number): Promise<void> {
   // WebGPU only produces correct audio at fp32. The quantized dtypes do not
   // error there — they emit corrupted phonemes that sound like another
   // language, so this has to be refused rather than merely discouraged.
@@ -78,7 +122,13 @@ async function load(dtype: Dtype, device: Device): Promise<void> {
     )
   }
 
-  if (tts && loadedWith?.dtype === dtype && loadedWith?.device === device) return
+  // Already resident: still answer. Every request owes exactly one terminal
+  // response — returning silently here leaves the caller awaiting a message
+  // that will never arrive, which surfaces as a preview that spins forever.
+  if (tts && loadedWith?.dtype === dtype && loadedWith?.device === device) {
+    post({ type: 'ready', requestId, device, dtype, loadMs: 0, webgpuAvailable: hasWebGpu() })
+    return
+  }
 
   const startedAt = performance.now()
   post({ type: 'status', label: `loading Kokoro (${dtype}, ${device})…`, progress: 0 })
@@ -100,6 +150,7 @@ async function load(dtype: Dtype, device: Device): Promise<void> {
 
   post({
     type: 'ready',
+    requestId,
     device,
     dtype,
     loadMs: Math.round(performance.now() - startedAt),
@@ -134,6 +185,7 @@ async function narrate(
   sentences: SentenceSpan[],
   voice: string,
   speed: number,
+  requestId: number,
 ): Promise<void> {
   const model = requireModel()
   const segments: Float32Array[] = []
@@ -203,6 +255,7 @@ async function narrate(
   post(
     {
       type: 'chapter',
+      requestId,
       chapterIndex,
       pcm,
       sampleRate,
@@ -222,9 +275,10 @@ async function narrate(
 
 self.onmessage = async (event: MessageEvent<NarrateRequest>) => {
   const request = event.data
+  const { requestId } = request
   try {
     if (request.type === 'load') {
-      await load(request.dtype, request.device)
+      await load(request.dtype, request.device, requestId)
       return
     }
 
@@ -238,6 +292,7 @@ self.onmessage = async (event: MessageEvent<NarrateRequest>) => {
       post(
         {
           type: 'sample',
+          requestId,
           pcm: audio.audio,
           sampleRate: audio.sampling_rate,
           generateMs: Math.round(performance.now() - startedAt),
@@ -248,9 +303,19 @@ self.onmessage = async (event: MessageEvent<NarrateRequest>) => {
     }
 
     if (request.type === 'narrate') {
-      await narrate(request.chapterIndex, request.sentences, request.voice, request.speed)
+      await narrate(
+        request.chapterIndex,
+        request.sentences,
+        request.voice,
+        request.speed,
+        requestId,
+      )
     }
   } catch (err) {
-    post({ type: 'error', message: err instanceof Error ? err.message : String(err) })
+    post({
+      type: 'error',
+      requestId,
+      message: err instanceof Error ? err.message : String(err),
+    })
   }
 }

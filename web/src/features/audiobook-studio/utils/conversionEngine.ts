@@ -23,8 +23,10 @@ import type { ParseRequest, ParseResponse } from '../workers/parse.worker'
 import type {
   Device,
   Dtype,
+  NarrateCommand,
   NarrateRequest,
   NarrateResponse,
+  NarrateResult,
 } from '../workers/narrate.worker'
 import type { EncodeError, EncodeRequest, EncodeResponse } from '../workers/encode.worker'
 import type { SealRequest, SealResponse } from '../workers/seal.worker'
@@ -53,7 +55,14 @@ let sealWorker: Worker | null = null
 type Waiter<T> = { resolve: (value: T) => void; reject: (reason: Error) => void }
 
 const parseWaiters = new Map<string, Waiter<ParseResponse>>()
-let narrateWaiter: (Waiter<NarrateResponse> & { want: NarrateResponse['type'] }) | null = null
+
+/**
+ * Keyed by request id rather than held in a single slot: a voice preview and a
+ * running conversion share this worker, and matching on response type alone
+ * would let one settle the other's promise and strand the book.
+ */
+const narrateWaiters = new Map<number, Waiter<NarrateResult> & { want: NarrateResult['type'] }>()
+let nextRequestId = 1
 let encodeWaiter: Waiter<EncodeResponse> | null = null
 let sealWaiter: Waiter<SealResponse> | null = null
 
@@ -93,19 +102,19 @@ function getNarrateWorker(): Worker {
       onSentenceProgress?.(message.chapterIndex, message.index, message.total)
       return
     }
-    if (message.type === 'error') {
-      narrateWaiter?.reject(new Error(message.message))
-      narrateWaiter = null
-      return
-    }
-    if (narrateWaiter?.want === message.type) {
-      narrateWaiter.resolve(message)
-      narrateWaiter = null
-    }
+    const waiter = narrateWaiters.get(message.requestId)
+    if (!waiter) return
+    narrateWaiters.delete(message.requestId)
+
+    if (message.type === 'error') waiter.reject(new Error(message.message))
+    else if (waiter.want === message.type) waiter.resolve(message)
+    else waiter.reject(new Error(`expected ${waiter.want}, received ${message.type}`))
   }
   narrateWorker.onerror = (event) => {
-    narrateWaiter?.reject(new Error(event.message || 'narration worker crashed'))
-    narrateWaiter = null
+    // A crash takes down everything in flight, not just the newest request.
+    const reason = new Error(event.message || 'narration worker crashed')
+    for (const waiter of narrateWaiters.values()) waiter.reject(reason)
+    narrateWaiters.clear()
   }
   return narrateWorker
 }
@@ -338,13 +347,18 @@ async function adoptNarratedEpub(
 
 // ── narration ─────────────────────────────────────────────────────
 
-function requestNarrate(
-  request: NarrateRequest,
-  want: NarrateResponse['type'],
-): Promise<NarrateResponse> {
+function requestNarrate<T extends NarrateResult['type']>(
+  request: NarrateCommand,
+  want: T,
+): Promise<Extract<NarrateResult, { type: T }>> {
   return new Promise((resolve, reject) => {
-    narrateWaiter = { resolve, reject, want }
-    getNarrateWorker().postMessage(request)
+    const requestId = nextRequestId++
+    narrateWaiters.set(requestId, {
+      resolve: resolve as (value: NarrateResult) => void,
+      reject,
+      want,
+    })
+    getNarrateWorker().postMessage({ ...request, requestId } as NarrateRequest)
   })
 }
 
@@ -373,11 +387,7 @@ export async function previewVoice(
   speed = 1,
 ): Promise<{ pcm: Float32Array; sampleRate: number }> {
   await ensureModel()
-  const response = await requestNarrate(
-    { type: 'sample', voice: voiceId, text, speed },
-    'sample',
-  )
-  if (response.type !== 'sample') throw new Error('preview failed')
+  const response = await requestNarrate({ type: 'sample', voice: voiceId, text, speed }, 'sample')
   return { pcm: response.pcm, sampleRate: response.sampleRate }
 }
 
@@ -453,7 +463,6 @@ async function narrateBook(bookId: string, voiceId: string, speed: number): Prom
         },
         'chapter',
       )
-      if (narrated.type !== 'chapter') throw new Error('narration returned no audio')
 
       const encoded = await requestEncode({
         chapterIndex: cursor,
