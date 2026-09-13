@@ -1,6 +1,6 @@
-import { Download, Loader2, Play, X } from 'lucide-react'
+import { Download, Loader2, Mic, Play, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { cancelNarration, startNarration } from '../utils/conversionEngine'
+import { cancelNarration, startNarration, upgradeToNarrated } from '../utils/conversionEngine'
 import { loadArtifactBlob } from '../utils/bookSource'
 import type { BookRecord, JobRecord } from '../types'
 
@@ -8,6 +8,8 @@ interface Props {
   book: BookRecord
   job: JobRecord | undefined
   speed: number
+  /** Voice to narrate with when a live book is upgraded. */
+  voiceId: string
 }
 
 const BUTTON =
@@ -31,7 +33,7 @@ async function download(book: BookRecord): Promise<void> {
   URL.revokeObjectURL(url)
 }
 
-export default function ConversionPanel({ book, job, speed }: Props) {
+export default function ConversionPanel({ book, job, speed, voiceId }: Props) {
   const converting = book.status === 'narrating' || book.status === 'sealing'
 
   const progress =
@@ -92,6 +94,18 @@ export default function ConversionPanel({ book, job, speed }: Props) {
             {book.status === 'error' ? 'Retry' : 'Narrate'}
           </button>
         )}
+
+      {book.mode === 'live' && !converting && (
+        <button
+          type="button"
+          title="Generate real audio for this book so it can be exported"
+          onClick={() => void upgradeToNarrated(book.id, voiceId, speed)}
+          className={cn(BUTTON, 'border-accent text-accent hover:bg-accent hover:text-accent-text')}
+        >
+          <Mic size={12} />
+          Narrate it
+        </button>
+      )}
 
       {book.status === 'ready' && book.mode === 'narrated' && (
         <button

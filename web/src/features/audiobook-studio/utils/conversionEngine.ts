@@ -446,6 +446,34 @@ export async function previewVoice(
   return { pcm: response.pcm, sampleRate: response.sampleRate }
 }
 
+/**
+ * Turn a live book into a narrated one.
+ *
+ * Live books keep their parsed chapters — nothing is sealed and staging is
+ * never cleared — so this only has to run the narration stage. Re-importing the
+ * file would repeat the parse and lose the reading position.
+ */
+export async function upgradeToNarrated(
+  bookId: string,
+  voiceId: string,
+  speed: number,
+): Promise<void> {
+  const book = await db.getBook(bookId)
+  if (!book || book.mode !== 'live') return
+
+  const chapters = await db.listChapters(bookId)
+  if (chapters.length === 0) {
+    await publishBook(bookId, {
+      status: 'error',
+      error: 'The text for this book is no longer stored. Add the file again to narrate it.',
+    })
+    return
+  }
+
+  await publishBook(bookId, { mode: 'narrated', voiceId, status: 'ready-to-narrate' })
+  await startNarration(bookId, voiceId, speed)
+}
+
 export function cancelNarration(bookId: string): void {
   cancelled.add(bookId)
 }

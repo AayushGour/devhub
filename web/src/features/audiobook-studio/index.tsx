@@ -313,7 +313,12 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
             />
           ) : (
             <>
-              <ConversionPanel book={book} job={job} speed={settings.speed} />
+              <ConversionPanel
+                book={book}
+                job={job}
+                speed={settings.speed}
+                voiceId={settings.voiceId}
+              />
 
               {outline.length > 1 && (
                 <div className="shrink-0 flex items-center gap-2 px-6 py-2 border-b border-border overflow-x-auto">
