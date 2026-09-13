@@ -37,6 +37,7 @@ export interface RequestEnvelope {
 export type NarrateRequest = RequestEnvelope &
   (
     | { type: 'load'; dtype: Dtype; device: Device }
+    | { type: 'cancel' }
     | { type: 'sample'; voice: string; text: string; speed: number }
     | {
         type: 'narrate'
@@ -97,6 +98,7 @@ export type NarrateResult = RequestEnvelope &
         timeline: TimedSentence[]
         stats: NarrateStats
       }
+    | { type: 'cancelled'; chapterIndex: number }
     | { type: 'error'; message: string }
   )
 
@@ -107,6 +109,15 @@ const post = (message: NarrateResponse, transfer?: Transferable[]) =>
 
 let tts: KokoroTTS | null = null
 let loadedWith: { dtype: Dtype; device: Device } | null = null
+
+/**
+ * Set when the reader asks to stop.
+ *
+ * Generation is per sentence, but a chapter is one request, so without a flag
+ * the worker cannot be interrupted until the whole chapter is spoken — which
+ * for a real chapter is minutes of nothing happening after Stop is pressed.
+ */
+let stopRequested = false
 
 function hasWebGpu(): boolean {
   return typeof navigator !== 'undefined' && 'gpu' in navigator
@@ -189,6 +200,7 @@ async function narrate(
   requestId: number,
 ): Promise<void> {
   const model = requireModel()
+  stopRequested = false
   const segments: Float32Array[] = []
   const timeline: TimedSentence[] = []
 
@@ -198,6 +210,13 @@ async function narrate(
   let generateMs = 0
 
   for (let i = 0; i < sentences.length; i++) {
+    // Checked every sentence: this is the finest grain the model offers, and
+    // it bounds how long Stop takes to be felt to one sentence.
+    if (stopRequested) {
+      post({ type: 'cancelled', requestId, chapterIndex })
+      return
+    }
+
     const sentence = sentences[i]
     const clipBeginSamples = samples
     const sentenceStartedAt = performance.now()
@@ -278,6 +297,11 @@ self.onmessage = async (event: MessageEvent<NarrateRequest>) => {
   const request = event.data
   const { requestId } = request
   try {
+    if (request.type === 'cancel') {
+      stopRequested = true
+      return
+    }
+
     if (request.type === 'load') {
       await load(request.dtype, request.device, requestId)
       return

@@ -153,8 +153,11 @@ function getNarrateWorker(): Worker {
     narrateWaiters.delete(message.requestId)
 
     if (message.type === 'error') waiter.reject(new Error(message.message))
-    else if (waiter.want === message.type) waiter.resolve(message)
-    else waiter.reject(new Error(`expected ${waiter.want}, received ${message.type}`))
+    // Stopping is a legitimate end to any request, not a failure: the reader
+    // asked for it, and the chapters already finished are still good.
+    else if (waiter.want === message.type || message.type === 'cancelled') {
+      waiter.resolve(message)
+    } else waiter.reject(new Error(`expected ${waiter.want}, received ${message.type}`))
   }
   // A crash takes down everything in flight, not just the newest request.
   onWorkerFailure(narrateWorker, 'narration', (reason) => {
@@ -490,10 +493,14 @@ export async function reprocess(
 
 // ── narration ─────────────────────────────────────────────────────
 
+/**
+ * A request is answered by what it asked for, or by `cancelled` — stopping is a
+ * legitimate end to any request, not a failure.
+ */
 function requestNarrate<T extends NarrateResult['type']>(
   request: NarrateCommand,
   want: T,
-): Promise<Extract<NarrateResult, { type: T }>> {
+): Promise<Extract<NarrateResult, { type: T | 'cancelled' }>> {
   return new Promise((resolve, reject) => {
     const requestId = nextRequestId++
     narrateWaiters.set(requestId, {
@@ -531,6 +538,8 @@ export async function previewVoice(
 ): Promise<{ pcm: Float32Array; sampleRate: number }> {
   await ensureModel()
   const response = await requestNarrate({ type: 'sample', voice: voiceId, text, speed }, 'sample')
+  // A preview shares the worker with a conversion, so Stop can land on it too.
+  if (response.type !== 'sample') throw new Error('The preview was stopped.')
   return { pcm: response.pcm, sampleRate: response.sampleRate }
 }
 
@@ -564,6 +573,10 @@ export async function upgradeToNarrated(
 
 export function cancelNarration(bookId: string): void {
   cancelled.add(bookId)
+  // The flag alone is only read between chapters, and a chapter is minutes of
+  // generation — so Stop would appear to do nothing. Telling the worker is what
+  // makes it take effect, at the next sentence.
+  narrateWorker?.postMessage({ type: 'cancel', requestId: 0 })
 }
 
 export function startNarration(bookId: string, voiceId: string, speed: number): Promise<void> {
@@ -619,7 +632,7 @@ async function narrateBook(bookId: string, voiceId: string, speed: number): Prom
     for (; cursor < chapters.length; cursor++) {
       if (cancelled.has(bookId)) {
         log.log(`[${bookId}] narration cancelled at chapter ${cursor}`)
-        await publishBook(bookId, { status: 'ready-to-narrate' })
+        await publishBook(bookId, { status: 'ready-to-narrate', error: undefined })
         return
       }
 
@@ -649,6 +662,15 @@ async function narrateBook(bookId: string, voiceId: string, speed: number): Prom
         },
         'chapter',
       )
+
+      // Stopping mid-chapter keeps every chapter already finished: the job
+      // checkpoint still points here, so resuming picks up exactly here.
+      if (narrated.type === 'cancelled') {
+        log.log(`[${bookId}] stopped during chapter ${cursor}`)
+        // Stopping is not a failure, so any earlier error goes with it.
+        await publishBook(bookId, { status: 'ready-to-narrate', error: undefined })
+        return
+      }
 
       const encoded = await requestEncode({
         chapterIndex: cursor,

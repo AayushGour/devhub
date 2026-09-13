@@ -7,10 +7,11 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const generate = vi.fn(async () => ({
-  audio: new Float32Array(2400),
-  sampling_rate: 24000,
-}))
+/** Slow enough that a cancel can arrive between sentences, as it does in life. */
+const generate = vi.fn(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  return { audio: new Float32Array(2400), sampling_rate: 24000 }
+})
 
 const fromPretrained = vi.fn(async () => ({ generate }))
 
@@ -81,5 +82,57 @@ describe('narrate worker protocol', () => {
     const samples = posted.filter((m) => m.type === 'sample')
     expect(samples).toHaveLength(1)
     expect(samples[0].requestId).toBe(42)
+  })
+})
+
+describe('stopping', () => {
+  const sentence = (id: string) => ({
+    id, blockIdx: 0, blockType: 'p' as const, text: 'A sentence to speak.',
+    chunks: ['A sentence to speak.'], endsBlock: false,
+  })
+
+  it('stops within a chapter rather than at the end of it', async () => {
+    await send(LOAD)
+    posted.length = 0
+    generate.mockClear()
+
+    // A chapter long enough that finishing it would be obvious.
+    const sentences = Array.from({ length: 60 }, (_, i) => sentence(`s${i + 1}`))
+    const handler = (self as unknown as { onmessage: (e: MessageEvent) => unknown }).onmessage
+    const running = handler({
+      data: { requestId: 9, type: 'narrate', chapterIndex: 0, voice: 'af_heart', speed: 1, sentences },
+    } as MessageEvent)
+
+    // Let a few sentences go by, then ask it to stop.
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    await send({ requestId: 0, type: 'cancel' })
+    await running
+
+    const cancelled = posted.filter((m) => m.type === 'cancelled')
+    expect(cancelled).toHaveLength(1)
+    expect(cancelled[0].requestId).toBe(9)
+    // No chapter is delivered, and it gave up long before the last sentence.
+    expect(posted.some((m) => m.type === 'chapter')).toBe(false)
+    expect(generate.mock.calls.length).toBeLessThan(sentences.length)
+  })
+
+  it('does not carry a stop over into the next chapter', async () => {
+    await send(LOAD)
+
+    const one = [sentence('s1')]
+    const handler = (self as unknown as { onmessage: (e: MessageEvent) => unknown }).onmessage
+    const first = handler({
+      data: { requestId: 1, type: 'narrate', chapterIndex: 0, voice: 'af_heart', speed: 1, sentences: Array.from({ length: 40 }, (_, i) => sentence(`s${i + 1}`)) },
+    } as MessageEvent)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    await send({ requestId: 0, type: 'cancel' })
+    await first
+
+    posted.length = 0
+    await send({ requestId: 2, type: 'narrate', chapterIndex: 1, voice: 'af_heart', speed: 1, sentences: one })
+
+    // The next request starts clean: a stale flag would cancel it immediately.
+    expect(posted.some((m) => m.type === 'chapter')).toBe(true)
+    expect(posted.some((m) => m.type === 'cancelled')).toBe(false)
   })
 })
