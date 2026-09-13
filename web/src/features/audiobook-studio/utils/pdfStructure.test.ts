@@ -119,10 +119,10 @@ describe('groupParagraphs', () => {
 describe('classifyParagraphs', () => {
   it('ranks distinct large sizes into heading levels', () => {
     const blocks = classifyParagraphs([
-      { text: 'Chapter One', height: 24, x0: 72, pageIndex: 0, continues: false },
-      { text: 'A Section', height: 16, x0: 72, pageIndex: 0, continues: false },
-      { text: 'Ordinary body prose that runs on for a while.', height: 10, x0: 72, pageIndex: 0, continues: false },
-      { text: 'More ordinary body prose.', height: 10, x0: 72, pageIndex: 0, continues: false },
+      { text: 'Chapter One', height: 24, x0: 72, y: 700, pageIndex: 0, continues: false },
+      { text: 'A Section', height: 16, x0: 72, y: 700, pageIndex: 0, continues: false },
+      { text: 'Ordinary body prose that runs on for a while.', height: 10, x0: 72, y: 700, pageIndex: 0, continues: false },
+      { text: 'More ordinary body prose.', height: 10, x0: 72, y: 700, pageIndex: 0, continues: false },
     ])
     expect(blocks.map((b) => b.type)).toEqual(['h1', 'h2', 'p', 'p'])
   })
@@ -130,9 +130,9 @@ describe('classifyParagraphs', () => {
   it('does not promote a long line just because it is set larger', () => {
     const long = 'x'.repeat(200)
     const blocks = classifyParagraphs([
-      { text: long, height: 24, x0: 72, pageIndex: 0, continues: false },
-      { text: 'body', height: 10, x0: 72, pageIndex: 0, continues: false },
-      { text: 'body two', height: 10, x0: 72, pageIndex: 0, continues: false },
+      { text: long, height: 24, x0: 72, y: 700, pageIndex: 0, continues: false },
+      { text: 'body', height: 10, x0: 72, y: 700, pageIndex: 0, continues: false },
+      { text: 'body two', height: 10, x0: 72, y: 700, pageIndex: 0, continues: false },
     ])
     expect(blocks[0].type).toBe('p')
   })
@@ -179,5 +179,78 @@ describe('buildChapters', () => {
     )
     const chapters = buildChapters(flat, [], 2)
     expect(chapters.map((c) => c.title)).toEqual(['Part 1', 'Part 2'])
+  })
+})
+
+describe('sections finer than pages', () => {
+  /** A page holding two sections, each a heading over a body line. */
+  const twoSectionPage = (index: number, a: string, b: string) =>
+    page(index, [
+      { str: a, x: 72, y: 700, width: 200, height: 17 },
+      bodyLine('Body under the first heading.', 660),
+      { str: b, x: 72, y: 560, width: 200, height: 17 },
+      bodyLine('Body under the second heading.', 520),
+    ])
+
+  it('splits two sections that share a page, using the outline position', () => {
+    const pages = [twoSectionPage(0, '1. First Section', '2. Second Section')]
+    const chapters = buildChapters(pages, [
+      { title: '1. First Section', pageIndex: 0, y: 700 },
+      { title: '2. Second Section', pageIndex: 0, y: 560 },
+    ])
+
+    expect(chapters.map((c) => c.title)).toEqual(['1. First Section', '2. Second Section'])
+    // Each section keeps only its own prose — a page-granular split would put
+    // everything in one chapter and label it with the last entry on the page.
+    expect(chapters[0].blocks.some((b) => b.text.includes('second'))).toBe(false)
+    expect(chapters[1].blocks.some((b) => b.text.includes('first'))).toBe(false)
+  })
+
+  it('still works when the outline gives no coordinate', () => {
+    const pages = [twoSectionPage(0, 'Only Section', 'Still The Same Section')]
+    const chapters = buildChapters(pages, [{ title: 'Only Section', pageIndex: 0 }])
+    expect(chapters).toHaveLength(1)
+    expect(chapters[0].blocks.length).toBeGreaterThan(1)
+  })
+
+  it('splits on the heading level that recurs, not the one-off title', () => {
+    // A title set larger than the section headings, used once.
+    const pages = [
+      page(0, [
+        { str: 'Document Title', x: 72, y: 740, width: 200, height: 23 },
+        { str: 'Section One', x: 72, y: 690, width: 150, height: 17 },
+        bodyLine('The caravans moved at night, when the sand was cold and the', 650),
+        bodyLine('stars were a map, and the guides counted forty camels.', 636),
+        { str: 'Section Two', x: 72, y: 560, width: 150, height: 17 },
+        bodyLine('Salt arrived as slabs and left again as coins, recorded by', 520),
+        bodyLine('the scribes of Sankore in a ledger that outlived them.', 506),
+      ]),
+    ]
+    const chapters = buildChapters(pages, [])
+    // The title block before the first section keeps its own name rather than
+    // a generic one, and the recurring level does the splitting.
+    expect(chapters.map((c) => c.title)).toEqual([
+      'Document Title',
+      'Section One',
+      'Section Two',
+    ])
+  })
+})
+
+describe('multi-line headings', () => {
+  it('keeps a heading that wraps onto a second line as one block', () => {
+    // Larger type is set on looser leading, so the gap inside the heading
+    // exceeds the page's median line gap.
+    const pages = [
+      page(0, [
+        { str: '2. Current state (what already exists', x: 72, y: 700, width: 300, height: 17 },
+        { str: 'do not rebuild these)', x: 72, y: 678, width: 200, height: 17 },
+        bodyLine('The attached repo already implements this.', 640),
+        bodyLine('A second line of ordinary prose.', 626),
+      ]),
+    ]
+    const blocks = buildChapters(pages, [])[0].blocks
+    const heading = blocks.find((b) => b.type.startsWith('h'))
+    expect(heading?.text).toBe('2. Current state (what already exists do not rebuild these)')
   })
 })

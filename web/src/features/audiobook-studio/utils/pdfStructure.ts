@@ -41,6 +41,8 @@ export interface Paragraph {
   /** Largest glyph height in the paragraph — the heading signal. */
   height: number
   x0: number
+  /** Baseline of the first line. Larger is higher on the page. */
+  y: number
   pageIndex: number
   /** True when the paragraph ran to the bottom of its column. */
   continues: boolean
@@ -238,6 +240,7 @@ export function groupParagraphs(lines: Line[], pageIndex: number): Paragraph[] {
       text: current.map((line) => line.text).join(' '),
       height: Math.max(...current.map((line) => line.height)),
       x0: current[0].x0,
+      y: current[0].y,
       pageIndex,
       continues,
     })
@@ -248,7 +251,12 @@ export function groupParagraphs(lines: Line[], pageIndex: number): Paragraph[] {
     const line = lines[i]
     const gap = i === 0 ? 0 : lines[i - 1].y - line.y
 
-    const wideGap = typicalGap > 0 && gap > typicalGap * 1.5
+    // Larger type is set on looser leading, so a heading's own line spacing
+    // exceeds the page's median gap and would split the heading in two. Scale
+    // the threshold by the line's height as well.
+    const previousHeight = i > 0 ? lines[i - 1].height : line.height
+    const gapLimit = Math.max(typicalGap * 1.5, previousHeight * 1.8)
+    const wideGap = typicalGap > 0 && gap > gapLimit
     const indented = line.x0 > typicalX + Math.max(4, typicalWidth * 0.02)
 
     // A change of type size ends a block regardless of spacing. Headings are
@@ -282,10 +290,31 @@ const SHORT_ENOUGH_FOR_A_HEADING = 80
  * Assign block types. Headings are set in larger type than the body, short, and
  * standalone; the size clusters found on the page decide h1 vs h2 vs h3.
  */
+/**
+ * The type size most of the document's text is set in.
+ *
+ * Weighted by characters rather than by paragraph count: a one-word heading
+ * should not count as much as a four-hundred-character paragraph. A plain
+ * median over paragraphs drifts upward in documents with many short sections,
+ * until headings stop looking larger than "body" and stop being detected.
+ */
+function bodyTextHeight(paragraphs: Paragraph[]): number {
+  const sorted = [...paragraphs].sort((a, b) => a.height - b.height)
+  const totalChars = sorted.reduce((n, p) => n + p.text.length, 0)
+  if (totalChars === 0) return median(sorted.map((p) => p.height))
+
+  let seen = 0
+  for (const paragraph of sorted) {
+    seen += paragraph.text.length
+    if (seen >= totalChars / 2) return paragraph.height
+  }
+  return sorted[sorted.length - 1].height
+}
+
 export function classifyParagraphs(paragraphs: Paragraph[]): Block[] {
   if (paragraphs.length === 0) return []
 
-  const bodyHeight = median(paragraphs.map((p) => p.height))
+  const bodyHeight = bodyTextHeight(paragraphs)
 
   // Distinct heading sizes, largest first — rank becomes heading level.
   const headingSizes = [
@@ -324,6 +353,12 @@ export function dehyphenate(text: string): string {
 export interface PdfOutlineEntry {
   title: string
   pageIndex: number
+  /**
+   * Vertical position of the destination, when the PDF gives one. Sections are
+   * finer than pages — a five-page brief can hold ten of them — so a page index
+   * alone cannot say where one ends and the next begins.
+   */
+  y?: number
 }
 
 export interface PdfChapter {
@@ -361,9 +396,7 @@ export function buildChapters(
   const paragraphs = stripped.flatMap(pageToParagraphs)
 
   // Join paragraphs split across a page break before anything is classified.
-  const bodyHeight = paragraphs.length
-    ? [...paragraphs.map((p) => p.height)].sort((a, b) => a - b)[paragraphs.length >> 1]
-    : 0
+  const bodyHeight = paragraphs.length > 0 ? bodyTextHeight(paragraphs) : 0
 
   const merged: Paragraph[] = []
   for (const paragraph of paragraphs) {
@@ -390,18 +423,30 @@ export function buildChapters(
   return splitByPageRuns(merged, blocks, pagesPerFallbackChapter)
 }
 
+/** True when the outline entry starts at or above this paragraph. */
+function startsAtOrAbove(entry: PdfOutlineEntry, paragraph: Paragraph): boolean {
+  if (entry.pageIndex !== paragraph.pageIndex) return entry.pageIndex < paragraph.pageIndex
+  // No coordinate means the destination is the top of its page.
+  return (entry.y ?? Number.POSITIVE_INFINITY) >= paragraph.y
+}
+
 function splitByOutline(
   paragraphs: Paragraph[],
   blocks: Block[],
   outline: PdfOutlineEntry[],
 ): PdfChapter[] {
-  const sorted = [...outline].sort((a, b) => a.pageIndex - b.pageIndex)
+  const sorted = [...outline].sort(
+    (a, b) =>
+      a.pageIndex - b.pageIndex ||
+      (b.y ?? Number.POSITIVE_INFINITY) - (a.y ?? Number.POSITIVE_INFINITY),
+  )
   const chapters: PdfChapter[] = sorted.map((entry) => ({ title: entry.title, blocks: [] }))
 
   let cursor = 0
   for (let i = 0; i < blocks.length; i++) {
-    const page = paragraphs[i].pageIndex
-    while (cursor + 1 < sorted.length && page >= sorted[cursor + 1].pageIndex) cursor++
+    while (cursor + 1 < sorted.length && startsAtOrAbove(sorted[cursor + 1], paragraphs[i])) {
+      cursor++
+    }
     chapters[cursor].blocks.push(blocks[i])
   }
 
@@ -409,11 +454,18 @@ function splitByOutline(
 }
 
 function splitByHeadings(blocks: Block[]): PdfChapter[] {
+  // The largest type in a document is often its title, used exactly once —
+  // splitting on that yields one chapter. Split on the most prominent level
+  // that actually recurs.
+  const levels = ['h1', 'h2', 'h3'] as const
+  const splitLevel =
+    levels.find((level) => blocks.filter((b) => b.type === level).length >= 2) ?? 'h1'
+
   const chapters: PdfChapter[] = []
   let current: PdfChapter | null = null
 
   for (const block of blocks) {
-    if (block.type === 'h1') {
+    if (block.type === splitLevel) {
       current = { title: block.text, blocks: [block] }
       chapters.push(current)
       continue
@@ -423,6 +475,14 @@ function splitByHeadings(blocks: Block[]): PdfChapter[] {
       chapters.push(current)
     }
     current.blocks.push(block)
+  }
+
+  // Anything before the first section heading still needs a home. If it opens
+  // with the document's own title, that reads far better than "Opening".
+  const first = chapters[0]
+  if (first && first.title === 'Opening') {
+    const heading = first.blocks.find((block) => block.type.startsWith('h'))
+    if (heading) first.title = heading.text
   }
 
   return chapters.filter((chapter) => chapter.blocks.length > 0)

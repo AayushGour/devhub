@@ -69,7 +69,15 @@ async function readOutline(
           typeof node.dest === 'string' ? await doc.getDestination(node.dest) : node.dest
         const ref = Array.isArray(dest) ? dest[0] : null
         if (ref) {
-          entries.push({ title: node.title.trim(), pageIndex: await doc.getPageIndex(ref) })
+          // An /XYZ destination carries [ref, {name}, left, top, zoom]; `top`
+          // is what separates two sections sharing a page. /Fit and friends
+          // give no coordinate, which means the top of the page.
+          const top = Array.isArray(dest) && typeof dest[3] === 'number' ? dest[3] : undefined
+          entries.push({
+            title: node.title.trim(),
+            pageIndex: await doc.getPageIndex(ref),
+            y: top,
+          })
         }
       } catch {
         // A broken destination is common in the wild; skip that entry only.
