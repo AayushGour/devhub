@@ -49,7 +49,10 @@ export default function ConversionPanel({ book, job, speed, voiceId }: Props) {
   const filePicker = useRef<HTMLInputElement | null>(null)
 
   /**
-   * Read the book again and, if it is narrated, narrate it again.
+   * Read the book again. A narrated book then narrates itself again — that is
+   * part of re-extracting, and starting it here as well would queue the work
+   * twice and hold this button spinning for the whole conversion, when the
+   * progress bar beside it already reports that.
    *
    * Books imported before the source was kept have nothing to re-read, so the
    * reader is asked for the file rather than being told no.
@@ -62,10 +65,6 @@ export default function ConversionPanel({ book, job, speed, voiceId }: Props) {
       if (!result.ok) {
         setNotice(result.reason ?? 'Could not read that book again.')
         if (result.reason?.includes('Choose it again')) filePicker.current?.click()
-        return
-      }
-      if (book.mode === 'narrated') {
-        await startNarration(book.id, book.voiceId, speed)
       }
     } finally {
       setBusy(false)
