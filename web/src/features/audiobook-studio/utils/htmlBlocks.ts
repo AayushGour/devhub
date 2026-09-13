@@ -4,7 +4,7 @@
 // `<blockquote><p>…</p></blockquote>` yields one paragraph rather than the same
 // words twice. A block element holding text directly emits that text itself.
 
-import { SKIPPED_ELEMENTS, normalizeText, tokenize } from './markup'
+import { SKIPPED_ELEMENTS, getAttr, normalizeText, tokenize } from './markup'
 import type { Block } from './sentences'
 
 const BLOCK_TYPES: Record<string, Block['type']> = {
@@ -36,6 +36,39 @@ function impliesClose(openTag: string, incoming: string): boolean {
   return false
 }
 
+/**
+ * `epub:type` values whose text is not prose to be read.
+ *
+ * A page break carries the page number — often in a `title` attribute with no
+ * text at all, but sometimes as content, where it interrupts a sentence with a
+ * bare number. A note reference is the superscript marker, not the note.
+ *
+ * EPUB 3 names footnote, endnote and pagebreak as the structures reading
+ * systems are "most likely to offer the option" of skipping.
+ * https://www.w3.org/TR/epub-33/#sec-skippability
+ */
+const UNSPOKEN_TYPES = ['pagebreak', 'noteref', 'footnote', 'endnote', 'rearnote']
+
+/**
+ * Whether an element's whole subtree is outside the reading order.
+ *
+ * Hidden content is excluded from the accessibility tree, and a narrator is an
+ * assistive presentation — reading what a screen reader would not is wrong for
+ * the same reasons.
+ * https://www.w3.org/TR/wai-aria-1.2/#tree_exclusion
+ */
+function isUnspoken(name: string, attrs: string): boolean {
+  if (SKIPPED_ELEMENTS.has(name)) return true
+  if (getAttr(attrs, 'aria-hidden') === 'true') return true
+  if (/(^|\s)hidden(\s|=|$)/i.test(attrs)) return true
+
+  const type = getAttr(attrs, 'epub:type')?.toLowerCase() ?? ''
+  if (type && UNSPOKEN_TYPES.some((value) => type.split(/\s+/).includes(value))) return true
+
+  const role = getAttr(attrs, 'role')?.toLowerCase() ?? ''
+  return role.startsWith('doc-') && UNSPOKEN_TYPES.includes(role.slice(4))
+}
+
 interface Frame {
   type: Block['type']
   tag: string
@@ -44,7 +77,35 @@ interface Frame {
   childEmitted: boolean
 }
 
-export function extractBlocks(markup: string): Block[] {
+export interface BlocksWithAnchors {
+  blocks: Block[]
+  /** Anchor id -> index of the first block at or after it. */
+  anchorAt: Map<string, number>
+}
+
+/**
+ * Extract blocks, recording where the given anchors fall among them.
+ *
+ * A single content document often holds several chapters, each targeted by its
+ * own fragment in the table of contents. Knowing which block each anchor lands
+ * on is what allows that document to be cut into real chapters.
+ */
+export function extractBlocksWithAnchors(
+  markup: string,
+  anchors: Set<string>,
+): BlocksWithAnchors {
+  const anchorAt = new Map<string, number>()
+  const blocks = extractBlocks(markup, (id, index) => {
+    // The first mention wins: an id repeated later is not a new chapter start.
+    if (anchors.has(id) && !anchorAt.has(id)) anchorAt.set(id, index)
+  })
+  return { blocks, anchorAt }
+}
+
+export function extractBlocks(
+  markup: string,
+  onAnchor?: (id: string, blockIndex: number) => void,
+): Block[] {
   const blocks: Block[] = []
   const stack: Frame[] = []
 
@@ -69,7 +130,10 @@ export function extractBlocks(markup: string): Block[] {
       continue
     }
 
-    if (token.kind === 'open' && SKIPPED_ELEMENTS.has(token.name) && !token.selfClosing) {
+    if (token.kind === 'open' && isUnspoken(token.name, token.attrs)) {
+      // A self-closing marker has no subtree to skip — the common shape for a
+      // page break, whose number lives in an attribute.
+      if (token.selfClosing) continue
       skipDepth = 1
       skipName = token.name
       continue
@@ -79,6 +143,13 @@ export function extractBlocks(markup: string): Block[] {
       const frame = stack[stack.length - 1]
       if (frame) frame.text += token.text
       continue
+    }
+
+    if (token.kind === 'open') {
+      // Reported before the element's own blocks exist, so the anchor points at
+      // the first block inside it — which is what a chapter start means.
+      const id = onAnchor ? getAttr(token.attrs, 'id') : undefined
+      if (id) onAnchor!(id, blocks.length)
     }
 
     if (token.kind === 'open' && !token.selfClosing) {

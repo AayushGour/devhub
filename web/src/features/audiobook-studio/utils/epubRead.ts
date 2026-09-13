@@ -14,7 +14,7 @@ import {
   textContent,
 } from './markup'
 import type { NavNode } from './navTree'
-import { extractBlocks } from './htmlBlocks'
+import { extractBlocksWithAnchors } from './htmlBlocks'
 import type { Block } from './sentences'
 
 export interface ParsedChapter {
@@ -46,6 +46,35 @@ export interface ParsedBook {
   overlays?: OverlayAssets[]
   /** The table of contents' own nesting, for navigation. */
   nav?: NavNode[]
+}
+
+/**
+ * Document semantics that are navigation or apparatus rather than prose.
+ *
+ * Reading a table of contents or an index aloud is useless, and a copyright
+ * page is not part of the book. Matter a listener plausibly wants — dedication,
+ * epigraph, foreword, preface, introduction, prologue, epilogue, afterword,
+ * acknowledgments, appendix — is deliberately NOT here.
+ *
+ * Terms from the EPUB 3 Structural Semantics Vocabulary.
+ * https://www.w3.org/TR/epub-ssv/
+ */
+const NON_NARRATIVE_TYPES = new Set([
+  'toc', 'landmarks', 'page-list', 'pagelist',
+  'cover', 'titlepage', 'halftitlepage', 'copyright-page',
+  'index', 'bibliography', 'glossary', 'colophon',
+  'loa', 'loi', 'lot', 'lov',
+])
+
+/** The document-level semantic of a content document, if it declares one. */
+function documentType(source: string): string | undefined {
+  const body = findElement(source, 'body')
+  const declared =
+    (body && getAttr(body.attrs, 'epub:type')) ??
+    // Some producers put it on the outermost section instead of the body.
+    getAttr(findElement(body?.inner ?? source, 'section')?.attrs ?? '', 'epub:type')
+
+  return declared?.toLowerCase().trim().split(/\s+/)[0]
 }
 
 export class DrmProtectedError extends Error {
@@ -176,6 +205,37 @@ function findCover(
   return bytes ? { bytes, mime: item.mediaType || 'image/jpeg' } : undefined
 }
 
+interface TocTarget {
+  /** Archive path of the document the entry points at. */
+  path: string
+  /** Fragment within it, when the entry targets part of a document. */
+  fragment?: string
+  title: string
+}
+
+/**
+ * Every contents entry, flattened but in document order.
+ *
+ * Read before the chapters are built, because the fragments decide where one
+ * content document has to be cut into several.
+ */
+function readTocTargets(navSource: string, navPath: string): TocTarget[] {
+  const navs = findElements(navSource, ['nav'])
+  const toc = navs.find((nav) => getAttr(nav.attrs, 'epub:type')?.includes('toc'))
+  const scope = toc?.inner ?? (navs.length === 0 ? navSource : undefined)
+  if (scope === undefined) return []
+
+  const targets: TocTarget[] = []
+  for (const anchor of findElements(scope, ['a'])) {
+    const href = getAttr(anchor.attrs, 'href')
+    const title = textContent(anchor.inner)
+    if (!href || !title) continue
+    const [, fragment] = href.split('#')
+    targets.push({ path: resolveHref(navPath, href), fragment, title })
+  }
+  return targets
+}
+
 /**
  * Rebuild the table of contents' nesting as a tree of chapter references.
  *
@@ -186,7 +246,7 @@ function findCover(
 function buildNavTree(
   navSource: string,
   navPath: string,
-  indexByPath: Map<string, number>,
+  indexByTarget: Map<string, number>,
 ): NavNode[] {
   const navs = findElements(navSource, ['nav'])
   const toc = navs.find((nav) => getAttr(nav.attrs, 'epub:type')?.includes('toc'))
@@ -207,9 +267,16 @@ function buildNavTree(
       const nestedList = findChildElements(item.inner, ['ol', 'ul'])[0]
       const children = nestedList ? readList(nestedList.inner) : []
 
+      // Resolved by fragment first: several entries pointing into one document
+      // are several chapters, and matching on path alone collapses them.
       const path = href ? resolveHref(navPath, href) : undefined
-      const index = path !== undefined ? indexByPath.get(path) : undefined
-      // Several entries can point into one document; only the first owns it.
+      const fragment = href?.split('#')[1]
+      const index =
+        path === undefined
+          ? undefined
+          : (fragment !== undefined ? indexByTarget.get(`${path}#${fragment}`) : undefined) ??
+            indexByTarget.get(path)
+
       const owns = index !== undefined && !claimed.has(index)
       if (owns) claimed.add(index)
 
@@ -256,18 +323,48 @@ export async function readEpub(bytes: Uint8Array, fallbackTitle: string): Promis
   const byId = new Map(manifest.map((item) => [item.id, item]))
   const tocTitles = readTocTitles(files, manifest)
 
+  const navItem = manifest.find((item) => item.properties?.includes('nav'))
+  const navSource = navItem ? readText(files, navItem.path) : null
+  const tocTargets = navSource && navItem ? readTocTargets(navSource, navItem.path) : []
+
+  // Fragments the contents points at, per document, in contents order. These
+  // are the cut lines for a file that holds more than one chapter.
+  const fragmentsByPath = new Map<string, TocTarget[]>()
+  for (const target of tocTargets) {
+    if (!target.fragment) continue
+    const list = fragmentsByPath.get(target.path)
+    if (list) list.push(target)
+    else fragmentsByPath.set(target.path, [target])
+  }
+
   const chapters: ParsedChapter[] = []
   const overlays: OverlayAssets[] = []
+  /** `path` and `path#fragment` -> chapter index, for wiring the tree later. */
+  const indexByTarget = new Map<string, number>()
 
   for (const ref of findElements(opf, ['itemref'])) {
+    // Auxiliary content: "a reading system might... omit [it] from an aural
+    // rendering". Answer keys, note collections and the like.
+    // https://www.w3.org/TR/epub-33/#attrdef-itemref-linear
+    if (getAttr(ref.attrs, 'linear') === 'no') continue
+
     const item = byId.get(getAttr(ref.attrs, 'idref') ?? '')
     if (!item) continue
 
     const source = readText(files, item.path)
     if (!source) continue
 
+    const semantic = documentType(source)
+    if (semantic && NON_NARRATIVE_TYPES.has(semantic)) continue
+
     const body = findElement(source, 'body')
-    const blocks = extractBlocks(body?.inner ?? source)
+    const markup = body?.inner ?? source
+
+    const targets = fragmentsByPath.get(item.path) ?? []
+    const { blocks, anchorAt } = extractBlocksWithAnchors(
+      markup,
+      new Set(targets.map((target) => target.fragment!)),
+    )
     if (blocks.length === 0) continue
 
     const overlayItem = item.mediaOverlay ? byId.get(item.mediaOverlay) : undefined
@@ -282,15 +379,46 @@ export async function readEpub(bytes: Uint8Array, fallbackTitle: string): Promis
       })
     }
 
-    const heading = blocks.find((b) => b.type.startsWith('h'))
-    chapters.push({
-      href: item.path,
-      blocks,
-      title:
-        tocTitles.get(item.path) ||
-        heading?.text ||
+    // Cut points found in the document, in the order they appear in it. A
+    // contents entry whose anchor is missing simply contributes no cut.
+    const cuts = targets
+      .map((target) => ({ target, at: anchorAt.get(target.fragment!) }))
+      .filter((cut): cut is { target: TocTarget; at: number } => cut.at !== undefined)
+      .sort((a, b) => a.at - b.at)
+
+    const emit = (from: number, to: number, title: string, fragment?: string) => {
+      const slice = blocks.slice(from, to)
+      if (slice.length === 0) return
+      indexByTarget.set(fragment ? `${item.path}#${fragment}` : item.path, chapters.length)
+      // The first piece also answers to the bare path, for entries that point
+      // at the document rather than into it.
+      if (!indexByTarget.has(item.path)) indexByTarget.set(item.path, chapters.length)
+      chapters.push({ href: item.path, blocks: slice, title })
+    }
+
+    const headingOf = (from: number, to: number) =>
+      blocks.slice(from, to).find((b) => b.type.startsWith('h'))?.text
+
+    const firstCut = cuts[0]?.at ?? blocks.length
+
+    // Anything before the first cut keeps the document's own title.
+    emit(
+      0,
+      firstCut,
+      tocTitles.get(item.path) ||
+        headingOf(0, firstCut) ||
         titleFromHref(item.path) ||
         `Chapter ${chapters.length + 1}`,
+    )
+
+    cuts.forEach((cut, i) => {
+      const end = cuts[i + 1]?.at ?? blocks.length
+      emit(
+        cut.at,
+        end,
+        cut.target.title || headingOf(cut.at, end) || `Chapter ${chapters.length + 1}`,
+        cut.target.fragment,
+      )
     })
   }
 
@@ -298,11 +426,8 @@ export async function readEpub(bytes: Uint8Array, fallbackTitle: string): Promis
 
   const meta = (name: string) => normalizeText(findElement(opf, name)?.inner ?? '')
 
-  const navItem = manifest.find((item) => item.properties?.includes('nav'))
-  const navSource = navItem ? readText(files, navItem.path) : null
-  const indexByPath = new Map(chapters.map((chapter, index) => [chapter.href, index]))
   const nav =
-    navSource && navItem ? buildNavTree(navSource, navItem.path, indexByPath) : []
+    navSource && navItem ? buildNavTree(navSource, navItem.path, indexByTarget) : []
 
   return {
     title: meta('title') || fallbackTitle,

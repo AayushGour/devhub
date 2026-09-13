@@ -10,8 +10,18 @@
 // never re-emitted — text is extracted and re-escaped on the way out — so there
 // is no injection surface to sanitise.
 
-/** Elements whose text is never spoken. */
-export const SKIPPED_ELEMENTS = new Set(['script', 'style', 'head', 'title', 'svg', 'math'])
+/**
+ * Elements whose text is never spoken.
+ *
+ * Beyond the obvious non-content ones, `rt`/`rp`/`rtc` carry ruby annotations —
+ * pronunciation glosses printed above the base text. Reading them speaks every
+ * annotated word twice.
+ */
+export const SKIPPED_ELEMENTS = new Set([
+  'script', 'style', 'head', 'title', 'svg', 'math',
+  'template', 'noscript', 'textarea', 'select', 'datalist', 'iframe',
+  'rt', 'rp', 'rtc',
+])
 
 const VOID_ELEMENTS = new Set([
   'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
