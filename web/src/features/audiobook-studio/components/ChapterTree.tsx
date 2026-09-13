@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Volume2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { leavesOf, type NavNode } from '../utils/navTree'
@@ -52,14 +52,25 @@ interface RowProps extends Omit<Props, 'tree'> {
 }
 
 function TreeRow({ node, depth, selectedId, playingChapter, pendingChapters, onSelect }: RowProps) {
-  const leaves = leavesOf(node)
+  // Walking and sorting the subtree is cheap once, but this runs for every row
+  // on every playback tick — a few hundred rows several times a second.
+  const leaves = useMemo(() => leavesOf(node), [node])
   const holdsPlaying = playingChapter !== null && leaves.includes(playingChapter)
 
   // A branch containing what is playing opens itself, so the reader can always
   // see where it is without hunting through collapsed sections.
   const [expanded, setExpanded] = useState(holdsPlaying)
+
+  // Only on the way IN, though. Deriving `open` from `holdsPlaying` instead
+  // would pin the branch open for as long as playback sat inside it, and the
+  // chevron would silently do nothing.
+  const [heldPlaying, setHeldPlaying] = useState(holdsPlaying)
+  if (holdsPlaying !== heldPlaying) {
+    setHeldPlaying(holdsPlaying)
+    if (holdsPlaying) setExpanded(true)
+  }
+
   const hasChildren = node.children.length > 0
-  const open = expanded || holdsPlaying
 
   const selected = node.id === selectedId
   const pending = leaves.length > 0 && leaves.every((leaf) => pendingChapters.has(leaf))
@@ -77,14 +88,14 @@ function TreeRow({ node, depth, selectedId, playingChapter, pendingChapters, onS
         <button
           type="button"
           tabIndex={hasChildren ? 0 : -1}
-          aria-label={hasChildren ? (open ? 'Collapse' : 'Expand') : undefined}
+          aria-label={hasChildren ? (expanded ? 'Collapse' : 'Expand') : undefined}
           onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v) }}
           className={cn(
             'shrink-0 p-1 rounded text-on-surface-muted transition-colors duration-150',
             hasChildren ? 'hover:text-on-surface' : 'invisible',
           )}
         >
-          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </button>
 
         <button
@@ -104,7 +115,7 @@ function TreeRow({ node, depth, selectedId, playingChapter, pendingChapters, onS
         )}
       </div>
 
-      {hasChildren && open && (
+      {hasChildren && expanded && (
         <ul className="flex flex-col gap-px">
           {node.children.map((child) => (
             <TreeRow

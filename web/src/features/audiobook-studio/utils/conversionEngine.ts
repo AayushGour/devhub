@@ -49,6 +49,27 @@ const QUOTA_HEADROOM = 0.8
 /** Exactly one dtype is correct per device — see the narrate worker's guard. */
 const DTYPE_FOR_DEVICE: Record<Device, Dtype> = { webgpu: 'fp32', wasm: 'q8' }
 
+/**
+ * What a WebGPU device has to be able to give onnxruntime before Kokoro will
+ * run on it.
+ *
+ * The fp32 build — the only one that sounds right on WebGPU — is around 326 MB
+ * of weights, and the runtime binds those as storage buffers. A device created
+ * with no limits asked for gets the spec defaults, 128 MB per storage binding
+ * and 256 MB per buffer, and an adapter that can offer no more still hands one
+ * back happily; the load then dies partway through uploading the weights, after
+ * the whole download has been paid for. Asking up front turns that into a
+ * cheap, early "no" and sends the session to WASM instead.
+ */
+const KOKORO_FP32_BYTES = 326 * 1024 * 1024
+const KOKORO_WEBGPU_LIMITS = {
+  maxStorageBufferBindingSize: 256 * 1024 * 1024,
+  maxBufferSize: KOKORO_FP32_BYTES,
+}
+
+/** How long the per-sentence job checkpoint may go unwritten. Milliseconds. */
+const SENTENCE_CHECKPOINT_MS = 2000
+
 export interface ImportOptions {
   mode: BookMode
   voiceId: string
@@ -218,6 +239,26 @@ export function onModelStatus(listener: ModelStatusListener): () => void {
   return () => modelStatusListeners.delete(listener)
 }
 
+type ModelErrorListener = (message: string) => void
+const modelErrorListeners = new Set<ModelErrorListener>()
+
+/**
+ * Subscribe to a model load that could not be completed.
+ *
+ * A load reports progress on the status channel but has no way to report that
+ * it stopped. Anything watching that channel is left showing a download that
+ * will never finish — and in the overlay's case, covering the screen. This is
+ * the other half of that channel: the failure that ends the wait.
+ */
+export function onModelError(listener: ModelErrorListener): () => void {
+  modelErrorListeners.add(listener)
+  return () => modelErrorListeners.delete(listener)
+}
+
+function emitModelError(message: string): void {
+  modelErrorListeners.forEach((listener) => listener(message))
+}
+
 let onSentenceProgress: ((chapter: number, done: number, total: number) => void) | null = null
 
 // ── state ─────────────────────────────────────────────────────────
@@ -240,9 +281,33 @@ async function publishBook(bookId: string, patch: Partial<BookRecord>): Promise<
   if (next) store().upsertBook(next)
 }
 
+/** When the job row was last actually written, for the throttle below. */
+let lastJobWriteAt = 0
+
 async function publishJob(job: Omit<JobRecord, 'updatedAt'>): Promise<void> {
+  lastJobWriteAt = Date.now()
   await db.putJob(job)
   store().setJob({ ...job, updatedAt: Date.now() })
+}
+
+/**
+ * Publish progress within a chapter.
+ *
+ * The store always gets it — that is what the studio renders, and a progress
+ * bar that only moves every other second looks broken. The database write is
+ * throttled: a 750-sentence chapter is otherwise 750 write transactions, a
+ * 300-chapter book a couple of hundred thousand, all contending with the
+ * multi-megabyte staging writes on the same connection. They buy nothing
+ * either — the checkpoint a resume actually starts from is the per-chapter one,
+ * which is written unthrottled after the audio is durable.
+ */
+function publishSentenceProgress(job: Omit<JobRecord, 'updatedAt'>): void {
+  store().setJob({ ...job, updatedAt: Date.now() })
+
+  const now = Date.now()
+  if (now - lastJobWriteAt < SENTENCE_CHECKPOINT_MS) return
+  lastJobWriteAt = now
+  void db.putJob(job)
 }
 
 // ── import ────────────────────────────────────────────────────────
@@ -519,15 +584,57 @@ function requestEncode(request: EncodeRequest): Promise<EncodeResponse> {
   })
 }
 
+/**
+ * Set once a WebGPU load has actually failed, so the rest of the session goes
+ * straight to WASM. Retrying WebGPU on every chapter would pay for the same
+ * failed load over and over.
+ */
+let webgpuRejected = false
+
 async function resolveDevice(): Promise<Device> {
-  return (await isWebGpuAvailable()) ? 'webgpu' : 'wasm'
+  if (webgpuRejected) return 'wasm'
+  return (await isWebGpuAvailable(KOKORO_WEBGPU_LIMITS)) ? 'webgpu' : 'wasm'
 }
 
-/** Load the model if it is not already resident. Cheap when it is. */
+/**
+ * Load the model if it is not already resident. Cheap when it is.
+ *
+ * Every model load in the app goes through here, so this is also where a load
+ * that cannot be completed is reported — the worker's `error` response and a
+ * worker crash both surface as a rejection of the request below, and neither
+ * writes a book status or tells the overlay anything by itself.
+ */
 export async function ensureModel(): Promise<Device> {
   const device = await resolveDevice()
-  await requestNarrate({ type: 'load', dtype: DTYPE_FOR_DEVICE[device], device }, 'ready')
-  return device
+
+  try {
+    await requestNarrate({ type: 'load', dtype: DTYPE_FOR_DEVICE[device], device }, 'ready')
+    return device
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+
+    // WebGPU can fail for reasons no capability probe can see: an adapter that
+    // reports the limits but cannot allocate the weights, a device lost to
+    // another tab, a driver that gives up partway through. WASM is roughly ten
+    // times slower, but a slow book beats a permanent error — and the dtype
+    // must change with the device, because Kokoro is corrupted by anything but
+    // fp32 on WebGPU and fp32 is far too heavy for WASM.
+    if (device === 'webgpu') {
+      webgpuRejected = true
+      log.error(`WebGPU narration unavailable (${message}) — falling back to WASM`)
+      try {
+        await requestNarrate({ type: 'load', dtype: DTYPE_FOR_DEVICE.wasm, device: 'wasm' }, 'ready')
+        return 'wasm'
+      } catch (fallbackErr) {
+        const reason = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
+        emitModelError(reason)
+        throw fallbackErr
+      }
+    }
+
+    emitModelError(message)
+    throw err
+  }
 }
 
 /** Synthesise one sample sentence, for the voice picker's preview. */
@@ -609,21 +716,36 @@ async function narrateBook(bookId: string, voiceId: string, speed: number): Prom
     return
   }
 
-  // Resume where a previous run stopped, if it left a checkpoint.
-  const existing = await db.getJob(bookId)
-  let cursor = existing?.stage === 'narrate' ? existing.chapterCursor : 0
+  // Resume where a previous run stopped.
+  //
+  // The job's own cursor cannot answer this: it is only meaningful while the
+  // stage is 'narrate', so an interruption during any other stage would read as
+  // "start from the beginning" and re-narrate a whole book — hours of work —
+  // over audio that is already sitting in staging. The staging rows are the
+  // durable record of what is actually finished, so the cursor is the first
+  // chapter that has none.
+  const staged = await db.listStaging(bookId)
+  const narrated = new Set(
+    staged.filter((row) => row.kind === 'audio').map((row) => row.index),
+  )
+  let cursor = 0
+  while (cursor < chapters.length && narrated.has(cursor)) cursor++
+
+  /** Point the job at `at` as the next chapter to narrate. */
+  const checkpoint = (at: number) =>
+    publishJob({
+      bookId,
+      stage: 'narrate',
+      chapterCursor: at,
+      chapterCount: chapters.length,
+      sentenceCursor: 0,
+      sentenceCount: chapters[at]?.sentences.length ?? 0,
+      voiceId,
+      speed,
+    })
 
   await publishBook(bookId, { status: 'narrating', voiceId })
-  await publishJob({
-    bookId,
-    stage: 'narrate',
-    chapterCursor: cursor,
-    chapterCount: chapters.length,
-    sentenceCursor: 0,
-    sentenceCount: chapters[cursor]?.sentences.length ?? 0,
-    voiceId,
-    speed,
-  })
+  await checkpoint(cursor)
 
   try {
     await assertRoomFor(chapters)
@@ -637,10 +759,29 @@ async function narrateBook(bookId: string, voiceId: string, speed: number): Prom
       }
 
       const chapter = chapters[cursor]
-      if (chapter.sentences.length === 0) continue
+
+      // A chapter with nothing to say still has to appear in the package. Every
+      // index downstream — the nav tree, the reader's position, the overlay
+      // list — counts chapters in the order the parser produced them, so
+      // dropping one here shifts all of them and the book silently loses a
+      // section. It gets its prose and a zero-length overlay instead: no audio
+      // bytes, no timings, but a chapter that exists.
+      if (chapter.sentences.length === 0) {
+        await db.putStaging({
+          key: db.stagingKey(bookId, 'audio', cursor),
+          bookId,
+          kind: 'audio',
+          index: cursor,
+          data: new Uint8Array(0),
+          mime: 'audio/mpeg',
+        })
+        await db.putChapter({ ...chapter, timeline: [], durationSec: 0 })
+        await checkpoint(cursor + 1)
+        continue
+      }
 
       onSentenceProgress = (chapterIndex, done, total) => {
-        void publishJob({
+        publishSentenceProgress({
           bookId,
           stage: 'narrate',
           chapterCursor: chapterIndex,
@@ -700,16 +841,7 @@ async function narrateBook(bookId: string, voiceId: string, speed: number): Prom
 
       // Checkpoint AFTER the audio is durable, so a crash re-runs at most this
       // chapter rather than skipping it.
-      await publishJob({
-        bookId,
-        stage: 'narrate',
-        chapterCursor: cursor + 1,
-        chapterCount: chapters.length,
-        sentenceCursor: 0,
-        sentenceCount: chapters[cursor + 1]?.sentences.length ?? 0,
-        voiceId,
-        speed,
-      })
+      await checkpoint(cursor + 1)
 
       // The chapter is readable now — this is what makes reading possible while
       // the rest of the book is still converting.
@@ -753,6 +885,10 @@ async function assertRoomFor(chapters: { sentences: { text: string }[] }[]): Pro
     0,
   )
   const projectedBytes = (chars / CHARS_PER_AUDIO_SECOND) * BYTES_PER_AUDIO_SECOND
+
+  // The user has committed to a conversion, so this is the moment to ask for
+  // durable storage — see requestPersistence.
+  await db.requestPersistence()
 
   const { available, quota } = await db.estimateQuota()
   // A browser that reports no quota tells us nothing; do not block on silence.

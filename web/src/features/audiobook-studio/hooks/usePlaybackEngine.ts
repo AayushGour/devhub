@@ -34,6 +34,12 @@ export interface PlaybackState {
 }
 
 export interface StoredPosition {
+  /**
+   * The chapter the position was saved in. Carried with the position because
+   * sentence ids restart at s1 in every chapter — the id alone does not say
+   * which chapter it belongs to.
+   */
+  chapterIndex: number
   sentenceId: string
   audioTime: number
 }
@@ -49,9 +55,10 @@ interface Options {
   audio: Blob | null
   rate: number
   /**
-   * Where reading stopped last session. Applied once, to the audio element as
-   * it is created — seeding the element directly rather than seeking after the
-   * fact avoids a frame of playback from the top of the chapter.
+   * Where reading stopped last session. Applied to the audio element as it is
+   * created, and only for the chapter it names — seeding the element directly
+   * rather than seeking after the fact avoids a frame of playback from the top
+   * of the chapter.
    */
   initialPosition?: StoredPosition | null
   onChapterEnd?: () => void
@@ -85,8 +92,22 @@ export function usePlaybackEngine({
   const frameRef = useRef(0)
   const liveIndexRef = useRef(0)
   const onEndRef = useRef(onChapterEnd)
-  // The stored position is consumed once; later chapters start at zero.
-  const pendingRestore = useRef(initialPosition ?? null)
+  /**
+   * Where reading stopped, and the chapter it belongs to.
+   *
+   * Matched against the chapter rather than consumed by whichever effect reads
+   * it first. StrictMode builds the element twice — setup, cleanup, setup — so
+   * a position cleared on the first pass leaves the second, the element that
+   * actually survives, starting the chapter at 0:00. Matching is idempotent;
+   * consuming is not.
+   */
+  const pendingRestore = useRef<StoredPosition | null>(initialPosition ?? null)
+  /**
+   * A sentence clicked in a chapter whose audio is not loaded yet. Held for the
+   * same reason and in the same way as the stored position: the element for
+   * that chapter does not exist at the moment of the click.
+   */
+  const pendingSeek = useRef<{ chapterIndex: number; sentenceId: string } | null>(null)
   /**
    * Set when a chapter ended while playing. The next chapter's audio does not
    * exist yet at that moment, so the intent is held here and acted on once the
@@ -99,6 +120,22 @@ export function usePlaybackEngine({
   useEffect(() => {
     onEndRef.current = onChapterEnd
   }, [onChapterEnd])
+
+  // Both held requests name one chapter, and are dropped once the reader has
+  // left it — that, and not the act of reading them, is what makes "the stored
+  // position is used once; later chapters start at zero" true. Clearing here is
+  // safe to repeat, so StrictMode's second pass changes nothing.
+  useEffect(() => {
+    // No chapter at all means nothing has been loaded yet, not that the reader
+    // has moved on — a request made before its chapter is readable still waits.
+    if (!chapter) return
+    if (pendingRestore.current && pendingRestore.current.chapterIndex !== chapter.index) {
+      pendingRestore.current = null
+    }
+    if (pendingSeek.current && pendingSeek.current.chapterIndex !== chapter.index) {
+      pendingSeek.current = null
+    }
+  }, [chapter])
 
   // Playback position belongs to one chapter. Without clearing it when the
   // chapter changes, the old position survives into the new one — and because
@@ -184,14 +221,40 @@ export function usePlaybackEngine({
     element.playbackRate = rate
     audioRef.current = element
 
-    const resume = pendingRestore.current
-    pendingRestore.current = null
-    if (resume) {
+    // Both requests are read, never cleared: this body runs twice when an
+    // element is built under StrictMode, and a request consumed on the first
+    // pass would leave the element that survives sitting at 0:00. They are
+    // matched by chapter and dropped when the reader leaves it instead.
+    const held = pendingSeek.current
+    const clicked =
+      held && chapter && held.chapterIndex === chapter.index
+        ? timeline.find((s) => s.id === held.sentenceId)
+        : undefined
+    const stored =
+      pendingRestore.current && chapter && pendingRestore.current.chapterIndex === chapter.index
+        ? pendingRestore.current
+        : null
+
+    const startAt = clicked ? clicked.clipBegin : stored?.audioTime
+    if (startAt !== undefined) {
       // currentTime is only settable once metadata has arrived.
-      const seek = () => { element.currentTime = resume.audioTime }
+      const seek = () => { element.currentTime = startAt }
       if (element.readyState >= 1) seek()
       else element.addEventListener('loadedmetadata', seek, { once: true })
     }
+
+    // The element is the authority on where it landed. Mirroring its clock back
+    // into state is what puts the scrubber and the highlight on a restored
+    // position before anything has played — the animation loop, which is the
+    // only other thing that reads the clock, runs only while playing.
+    const onSeeked = () => {
+      setState((prev) => ({
+        ...prev,
+        currentTime: element.currentTime,
+        ...positionAt(element.currentTime),
+      }))
+    }
+    element.addEventListener('seeked', onSeeked)
 
     // Duration is otherwise only learned inside the animation loop, which runs
     // only while playing — leaving the scrubber pinned to zero, and clamping
@@ -212,8 +275,10 @@ export function usePlaybackEngine({
     }
     element.addEventListener('ended', onEnded)
 
-    // Carrying on into the next chapter, rather than stopping at every break.
-    if (continuePlaying.current) {
+    // Carrying on into the next chapter, rather than stopping at every break —
+    // or into the chapter whose sentence was just clicked, which is a request
+    // to play from there, not merely to move the cursor.
+    if (continuePlaying.current || clicked) {
       continuePlaying.current = false
       const resume = () => {
         void element.play()
@@ -226,6 +291,7 @@ export function usePlaybackEngine({
 
     return () => {
       element.removeEventListener('loadedmetadata', onMetadata)
+      element.removeEventListener('seeked', onSeeked)
       element.removeEventListener('ended', onEnded)
       element.pause()
       element.removeAttribute('src')
@@ -245,16 +311,31 @@ export function usePlaybackEngine({
 
   // Stop any speech when the chapter changes or the component unmounts —
   // speechSynthesis is global and outlives React otherwise. The live cursor is
-  // reset here rather than during render, where refs are off limits; the stored
-  // restore position is consumed by the audio element and cleared there.
+  // reset here rather than during render, where refs are off limits.
   useEffect(() => {
     liveIndexRef.current = 0
+
+    // A live book has no clock to seek, so a held position is simply where in
+    // the sentence list to pick the reading back up.
+    const stored = pendingRestore.current
+    if (live && chapter && stored && stored.chapterIndex === chapter.index) {
+      const index = chapter.sentences.findIndex((s) => s.id === stored.sentenceId)
+      liveIndexRef.current = Math.max(0, index)
+    }
 
     // Deferred by a microtask so the speech engine is started from outside the
     // effect body — it is an external system, and speaking sets state.
     if (live && chapter && continuePlaying.current) {
       continuePlaying.current = false
       queueMicrotask(() => speakFromRef.current?.(0))
+    }
+
+    // A sentence clicked in a chapter that was not loaded yet. Read, not
+    // consumed, for the same reason the audio element reads it that way.
+    const held = pendingSeek.current
+    if (live && chapter && held && held.chapterIndex === chapter.index) {
+      const index = chapter.sentences.findIndex((s) => s.id === held.sentenceId)
+      if (index >= 0) queueMicrotask(() => speakFromRef.current?.(index))
     }
 
     return () => {
@@ -321,6 +402,9 @@ export function usePlaybackEngine({
   }, [speakFrom])
 
   const play = useCallback(() => {
+    // Reading on from here: a held position must not pull the element back to
+    // where the last session stopped if it is ever rebuilt.
+    pendingRestore.current = null
     if (live) {
       speakFrom(liveIndexRef.current)
       return
@@ -357,6 +441,8 @@ export function usePlaybackEngine({
     (seconds: number) => {
       const audio = audioRef.current
       if (!audio) return
+      // Moved by hand, so the position saved last session no longer applies.
+      pendingRestore.current = null
       const time = Math.max(0, seconds)
       audio.currentTime = time
       setState((prev) => ({ ...prev, currentTime: time, ...positionAt(time) }))
@@ -364,10 +450,27 @@ export function usePlaybackEngine({
     [positionAt],
   )
 
+  /**
+   * Play from a sentence, named by the chapter it belongs to.
+   *
+   * The chapter is half of the key, not decoration: sentence ids restart at s1
+   * in every chapter, and a page can hold several of them at once. Looking an
+   * id up in whatever timeline happens to be loaded finds the sentence with
+   * that id in the WRONG chapter — or, when the chapter loaded is shorter than
+   * the one clicked, finds nothing and the click does nothing at all.
+   */
   const seekToSentence = useCallback(
-    (sentenceId: string) => {
+    (chapterIndex: number, sentenceId: string) => {
+      // Not the chapter in the engine: its audio is still being fetched by the
+      // page, so the request waits for the element that will play it.
+      if (!chapter || chapter.index !== chapterIndex) {
+        pendingSeek.current = { chapterIndex, sentenceId }
+        return
+      }
+      pendingSeek.current = null
+
       if (live) {
-        const index = chapter?.sentences.findIndex((s) => s.id === sentenceId) ?? -1
+        const index = chapter.sentences.findIndex((s) => s.id === sentenceId)
         if (index >= 0) speakFrom(index)
         return
       }
@@ -379,24 +482,34 @@ export function usePlaybackEngine({
     [chapter, live, play, seekTo, speakFrom, timeline],
   )
 
-  /** Resume at a stored position without starting playback. */
+  /**
+   * Resume at a stored position without starting playback.
+   *
+   * The position names its own chapter, which is not always the one loaded:
+   * opening a book from the rail asks for this while the previous book's audio
+   * is still in the element. Held for the chapter it belongs to rather than
+   * written to whatever is on screen.
+   */
   const restore = useCallback(
-    (sentenceId: string, audioTime: number) => {
+    (position: StoredPosition) => {
+      pendingRestore.current = position
+      if (!chapter || chapter.index !== position.chapterIndex) return
+
       if (live) {
-        const index = chapter?.sentences.findIndex((s) => s.id === sentenceId) ?? 0
+        const index = chapter.sentences.findIndex((s) => s.id === position.sentenceId)
         liveIndexRef.current = Math.max(0, index)
-        setState((prev) => ({ ...prev, activeSentenceId: sentenceId }))
+        setState((prev) => ({ ...prev, activeSentenceId: position.sentenceId }))
         return
       }
       const audio = audioRef.current
       if (!audio) return
-      audio.currentTime = audioTime
-      const position = positionAt(audioTime)
+      audio.currentTime = position.audioTime
+      const at = positionAt(position.audioTime)
       setState((prev) => ({
         ...prev,
-        currentTime: audioTime,
-        ...position,
-        activeSentenceId: position.activeSentenceId ?? sentenceId,
+        currentTime: position.audioTime,
+        ...at,
+        activeSentenceId: at.activeSentenceId ?? position.sentenceId,
       }))
     },
     [chapter, live, positionAt],

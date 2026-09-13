@@ -1,7 +1,7 @@
 // IndexedDB access for Audiobook Studio.
 //
-// Seven stores with two distinct lifetimes:
-//   permanent  books, artifacts, progress, settings
+// Eight stores with two distinct lifetimes:
+//   permanent  books, sources, artifacts, outlines, progress, settings
 //   staging    chapters, staging, jobs — dropped when a book is sealed
 //
 // Follows the `idb` wrapper pattern used by rag-studio's vectorDb.ts: one
@@ -11,7 +11,6 @@ import { openDB, type IDBPDatabase, type DBSchema } from 'idb'
 import { createLogger } from '@/lib/logger'
 import {
   DEFAULT_SETTINGS,
-  type ArtifactRecord,
   type BookRecord,
   type BookStatus,
   type ChapterRecord,
@@ -25,7 +24,7 @@ import {
 const log = createLogger('audiobook:db')
 
 const DB_NAME = 'audiobook-studio'
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 /**
  * The file a book was made from.
@@ -42,10 +41,49 @@ export interface SourceRecord {
   bytes: Uint8Array
 }
 
+/**
+ * The sealed publication. Kept out of `books` so listing the library is cheap.
+ *
+ * `epub` is a Blob and not a Uint8Array, and that is the whole point of this
+ * record. IndexedDB deserialises a typed array in full on every read, so a
+ * 216 MB book was allocated again for every chapter turn — which defeated the
+ * one-entry-at-a-time reading the reader was built around. A Blob comes back as
+ * a handle to the stored file: reading the record costs nothing, and the reader
+ * slices out only the entry it wants.
+ */
+export interface ArtifactRecord {
+  bookId: string
+  epub: Blob
+  bytes: number
+  sealedAt: number
+}
+
+/**
+ * What v2 wrote. Rows in this shape are still on disk in every existing
+ * library, so a read has to cope with either — see `getArtifact`.
+ */
+type StoredArtifact = Omit<ArtifactRecord, 'epub'> & { epub: Blob | Uint8Array | ArrayBuffer }
+
+/**
+ * A sealed book's chapter list, so opening it does not mean reading the
+ * publication apart to find out what is in it.
+ *
+ * Structurally the `ChapterOutline` that bookSource hands back; that module
+ * owns the shape and this store is only where it is parked. Derived data with
+ * exactly the artifact's lifetime — `putArtifact` drops it, because a re-sealed
+ * book is a different book with the same id.
+ */
+export interface OutlineRecord {
+  bookId: string
+  chapters: { index: number; title: string; durationSec: number; narrated: boolean }[]
+  builtAt: number
+}
+
 interface AudiobookDB extends DBSchema {
   books: { key: string; value: BookRecord }
   sources: { key: string; value: SourceRecord }
-  artifacts: { key: string; value: ArtifactRecord }
+  artifacts: { key: string; value: StoredArtifact }
+  outlines: { key: string; value: OutlineRecord }
   chapters: { key: string; value: ChapterRecord; indexes: { by_book: string } }
   staging: { key: string; value: StagingRecord; indexes: { by_book: string } }
   progress: { key: string; value: ProgressRecord }
@@ -58,29 +96,41 @@ let _db: Promise<IDBPDatabase<AudiobookDB>> | null = null
 function getDB(): Promise<IDBPDatabase<AudiobookDB>> {
   if (_db) return _db
   _db = openDB<AudiobookDB>(DB_NAME, DB_VERSION, {
+    // Every step is additive, and deliberately so. A versionchange transaction
+    // blocks the whole origin and cannot be resumed if the tab goes away, so
+    // rewriting hundreds of megabytes of artifact in here would risk leaving a
+    // library half-migrated and unopenable. Data that has to change shape is
+    // converted where it is read instead — see `getArtifact`.
+    //
+    // Each step is guarded by name rather than by version alone so a database
+    // that skipped a version (v1 straight to v3) still ends up complete.
     upgrade(db, oldVersion) {
-      // Version 2 adds `sources`. Existing books simply have no entry, and the
-      // reader is asked for the file when one of them is extracted again.
-      if (oldVersion >= 1) {
-        if (!db.objectStoreNames.contains('sources')) {
-          db.createObjectStore('sources', { keyPath: 'bookId' })
-        }
-        return
+      if (oldVersion < 1) {
+        db.createObjectStore('books', { keyPath: 'id' })
+        db.createObjectStore('artifacts', { keyPath: 'bookId' })
+
+        const chapters = db.createObjectStore('chapters', { keyPath: 'key' })
+        chapters.createIndex('by_book', 'bookId')
+
+        const staging = db.createObjectStore('staging', { keyPath: 'key' })
+        staging.createIndex('by_book', 'bookId')
+
+        db.createObjectStore('progress', { keyPath: 'bookId' })
+        db.createObjectStore('jobs', { keyPath: 'bookId' })
+        db.createObjectStore('settings', { keyPath: 'key' })
       }
 
-      db.createObjectStore('books', { keyPath: 'id' })
-      db.createObjectStore('sources', { keyPath: 'bookId' })
-      db.createObjectStore('artifacts', { keyPath: 'bookId' })
+      // Version 2 adds `sources`. Existing books simply have no entry, and the
+      // reader is asked for the file when one of them is extracted again.
+      if (!db.objectStoreNames.contains('sources')) {
+        db.createObjectStore('sources', { keyPath: 'bookId' })
+      }
 
-      const chapters = db.createObjectStore('chapters', { keyPath: 'key' })
-      chapters.createIndex('by_book', 'bookId')
-
-      const staging = db.createObjectStore('staging', { keyPath: 'key' })
-      staging.createIndex('by_book', 'bookId')
-
-      db.createObjectStore('progress', { keyPath: 'bookId' })
-      db.createObjectStore('jobs', { keyPath: 'bookId' })
-      db.createObjectStore('settings', { keyPath: 'key' })
+      // Version 3 adds `outlines`. Existing books simply have no entry, and the
+      // first open of one builds and stores it.
+      if (!db.objectStoreNames.contains('outlines')) {
+        db.createObjectStore('outlines', { keyPath: 'bookId' })
+      }
     },
   })
   return _db
@@ -142,6 +192,7 @@ export async function deleteBook(id: string): Promise<void> {
   await Promise.all([
     db.delete('books', id),
     db.delete('artifacts', id),
+    db.delete('outlines', id),
     db.delete('sources', id),
     db.delete('progress', id),
     db.delete('jobs', id),
@@ -152,21 +203,94 @@ export async function deleteBook(id: string): Promise<void> {
 
 // ── artifacts ─────────────────────────────────────────────────────
 
+export const EPUB_MIME = 'application/epub+zip'
+
+/**
+ * Store a sealed publication.
+ *
+ * Takes bytes because that is what sealing produces; the conversion never has
+ * to know that storage is blob-shaped. The outline goes with it: a re-seal
+ * replaces the archive, and an outline describing the previous one would
+ * survive to name chapters that are no longer there.
+ */
 export async function putArtifact(bookId: string, epub: Uint8Array): Promise<void> {
-  await (await getDB()).put('artifacts', {
+  const record: ArtifactRecord = {
     bookId,
-    epub,
+    epub: new Blob([epub as unknown as BlobPart], { type: EPUB_MIME }),
     bytes: epub.byteLength,
     sealedAt: Date.now(),
-  })
+  }
+
+  const db = await getDB()
+  const tx = db.transaction(['artifacts', 'outlines'], 'readwrite')
+  await Promise.all([
+    tx.objectStore('artifacts').put(record),
+    tx.objectStore('outlines').delete(bookId),
+    tx.done,
+  ])
 }
 
+/** Books whose v2 row this session has already tried to rewrite as a Blob. */
+const rewritten = new Set<string>()
+
+/**
+ * Rewrite a migrated record, once per book per session.
+ *
+ * Best-effort on purpose. The read that triggered it already has its Blob, and
+ * a failed `put` leaves the v2 row untouched — so a full disk costs the book
+ * one more deserialisation, never the book itself.
+ */
+function rewriteAsBlob(record: ArtifactRecord): void {
+  if (rewritten.has(record.bookId)) return
+  rewritten.add(record.bookId)
+
+  void getDB()
+    .then((db) => db.put('artifacts', record))
+    .then(() => log.log(`artifact ${record.bookId} migrated to blob storage`))
+    .catch((error) => {
+      rewritten.delete(record.bookId)
+      log.warn(`artifact ${record.bookId} could not be migrated to blob storage`, error)
+    })
+}
+
+/**
+ * The sealed publication, always Blob-backed.
+ *
+ * v2 wrote `epub` as a Uint8Array. Those rows are converted here rather than in
+ * the upgrade transaction, so a library full of them opens instantly and pays
+ * for each book only when that book is first read — and a book that cannot be
+ * rewritten is still returned, because losing it is far worse than paying the
+ * old cost again.
+ */
 export async function getArtifact(bookId: string): Promise<ArtifactRecord | undefined> {
-  return (await getDB()).get('artifacts', bookId)
+  const stored = await (await getDB()).get('artifacts', bookId)
+  if (!stored) return undefined
+  if (stored.epub instanceof Blob) return stored as ArtifactRecord
+
+  const migrated: ArtifactRecord = {
+    ...stored,
+    epub: new Blob([stored.epub as unknown as BlobPart], { type: EPUB_MIME }),
+  }
+  rewriteAsBlob(migrated)
+  return migrated
 }
 
 export async function deleteArtifact(bookId: string): Promise<void> {
-  await (await getDB()).delete('artifacts', bookId)
+  const db = await getDB()
+  await Promise.all([db.delete('artifacts', bookId), db.delete('outlines', bookId)])
+}
+
+// ── outlines ──────────────────────────────────────────────────────
+
+export async function getOutline(bookId: string): Promise<OutlineRecord | undefined> {
+  return (await getDB()).get('outlines', bookId)
+}
+
+export async function putOutline(
+  bookId: string,
+  chapters: OutlineRecord['chapters'],
+): Promise<void> {
+  await (await getDB()).put('outlines', { bookId, chapters, builtAt: Date.now() })
 }
 
 // ── sources ───────────────────────────────────────────────────────
@@ -308,10 +432,27 @@ export async function estimateQuota(): Promise<QuotaEstimate> {
   let persisted = false
   try {
     persisted = (await navigator.storage.persisted?.()) ?? false
-    if (!persisted) persisted = (await navigator.storage.persist?.()) ?? false
   } catch {
-    // Permission policy can block the request outright — not fatal.
+    // Permission policy can block the query outright — not fatal.
   }
 
   return { usage, quota, available: Math.max(0, quota - usage), persisted }
+}
+
+/**
+ * Ask the browser to stop evicting this origin under disk pressure.
+ *
+ * Kept apart from `estimateQuota` because in Firefox this shows a permission
+ * prompt. Merely looking at a book's size must not put a dialog in front of
+ * someone who has not decided to import it yet — call this only once the user
+ * has committed to storing something.
+ */
+export async function requestPersistence(): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !navigator.storage?.persist) return false
+  try {
+    if (await navigator.storage.persisted?.()) return true
+    return (await navigator.storage.persist()) ?? false
+  } catch {
+    return false
+  }
 }

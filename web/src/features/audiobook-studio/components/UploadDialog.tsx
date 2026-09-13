@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { BookAudio, Radio, Upload, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import VoicePicker from './VoicePicker'
-import { estimateQuota } from '../utils/db'
+import { estimateQuota, requestPersistence } from '../utils/db'
 import type { BookMode } from '../types'
 
 interface Props {
@@ -12,9 +12,23 @@ interface Props {
   onImport: (file: File, mode: BookMode, voiceId: string) => void
 }
 
-const ACCEPT = '.epub,.pdf,.txt,.md,.markdown,.docx'
+const EXTENSIONS = ['.epub', '.pdf', '.txt', '.md', '.markdown', '.docx']
+const ACCEPT = EXTENSIONS.join(',')
 
 const CARD = 'bg-surface-raised border border-border rounded-xl'
+
+/**
+ * The extension filter the picker applies, applied by hand.
+ *
+ * `accept` on a file input constrains only the PICKER. A drop lands whatever
+ * the reader dragged, and the import path writes the book row before it parses
+ * anything — so a stray `.jpg` used to become a permanent failed book that had
+ * to be deleted by hand. Cheaper to refuse it here.
+ */
+function isAcceptedFile(name: string): boolean {
+  const lower = name.toLowerCase()
+  return EXTENSIONS.some((extension) => lower.endsWith(extension))
+}
 
 export default function UploadDialog({ defaultVoiceId, speed, onCancel, onImport }: Props) {
   const [file, setFile] = useState<File | null>(null)
@@ -22,8 +36,17 @@ export default function UploadDialog({ defaultVoiceId, speed, onCancel, onImport
   const [voiceId, setVoiceId] = useState(defaultVoiceId)
   const [dragging, setDragging] = useState(false)
   const [quotaWarning, setQuotaWarning] = useState<string | null>(null)
+  const [rejected, setRejected] = useState<string | null>(null)
 
   const accept = async (picked: File) => {
+    if (!isAcceptedFile(picked.name)) {
+      setRejected(
+        `${picked.name} is not a kind of book this can read. Use EPUB, PDF, Word, Markdown or plain text.`,
+      )
+      return
+    }
+
+    setRejected(null)
     setFile(picked)
 
     // A narrated book runs to hundreds of megabytes. Better to say so now than
@@ -40,6 +63,17 @@ export default function UploadDialog({ defaultVoiceId, speed, onCancel, onImport
     } else {
       setQuotaWarning(null)
     }
+  }
+
+  const commit = () => {
+    if (!file) return
+
+    // This is the first moment the reader has actually asked for something to
+    // be kept, so this is where persistence is worth a permission prompt. A
+    // live book stores no audio and is not worth asking about at all.
+    if (mode === 'narrated') void requestPersistence()
+
+    onImport(file, mode, voiceId)
   }
 
   return (
@@ -98,6 +132,12 @@ export default function UploadDialog({ defaultVoiceId, speed, onCancel, onImport
           />
         </label>
 
+        {rejected && (
+          <p role="alert" className="text-xs text-red-400 leading-relaxed">
+            {rejected}
+          </p>
+        )}
+
         <div className="flex flex-col gap-2">
           <p className="text-xs text-on-surface-muted">How should it be read?</p>
 
@@ -131,7 +171,7 @@ export default function UploadDialog({ defaultVoiceId, speed, onCancel, onImport
         <button
           type="button"
           disabled={!file}
-          onClick={() => file && onImport(file, mode, voiceId)}
+          onClick={commit}
           className={cn(
             'inline-flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-medium rounded-lg',
             'border border-accent bg-accent text-accent-text hover:bg-accent-hover',

@@ -71,6 +71,42 @@ describe('narrate worker protocol', () => {
     expect(errors[0].requestId).toBe(7)
   })
 
+  it('shares one download between callers that ask at the same moment', async () => {
+    // A conversion starting while the voice picker previews a voice. The model
+    // is 326 MB; two sessions of it is twice the wait and twice the memory for
+    // no gain, and `tts` is only assigned once the download has finished — so
+    // there has to be a promise to join before then.
+    let finish: () => void = () => {}
+    fromPretrained.mockImplementationOnce(
+      () => new Promise((resolve) => { finish = () => resolve({ generate }) }),
+    )
+
+    const handler = (self as unknown as { onmessage: (e: MessageEvent) => unknown }).onmessage
+    const first = handler({ data: LOAD } as MessageEvent)
+    const second = handler({ data: { ...LOAD, requestId: 2 } } as MessageEvent)
+    finish()
+    await first
+    await second
+
+    expect(fromPretrained).toHaveBeenCalledTimes(1)
+    // Both requests still get their own terminal response.
+    expect(posted.filter((m) => m.type === 'ready').map((m) => m.requestId)).toEqual([1, 2])
+  })
+
+  it('lets a failed load be retried instead of remembering the failure', async () => {
+    fromPretrained.mockRejectedValueOnce(new Error('network is gone'))
+
+    await send(LOAD)
+    expect(posted.filter((m) => m.type === 'error')).toHaveLength(1)
+
+    posted.length = 0
+    await send({ ...LOAD, requestId: 2 })
+
+    // A rejected in-flight promise left registered would make the model
+    // unloadable for the rest of the tab's life.
+    expect(posted.filter((m) => m.type === 'ready')).toHaveLength(1)
+  })
+
   it('echoes the request id so concurrent callers can tell responses apart', async () => {
     await send(LOAD)
     posted.length = 0

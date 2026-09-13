@@ -145,6 +145,91 @@ export function* tokenize(source: string): Generator<Token> {
   }
 }
 
+/**
+ * Elements that cannot hold a block-level element. A block start inside one is
+ * proof the element was never closed.
+ */
+const INLINE_ELEMENTS = new Set([
+  'a', 'span', 'em', 'strong', 'i', 'b', 'u', 's', 'small', 'sub', 'sup',
+  'abbr', 'cite', 'code', 'q', 'mark', 'time', 'label', 'dfn', 'kbd', 'samp',
+  'var', 'bdi', 'bdo', 'del', 'ins', 'ruby', 'rt', 'rp', 'rtc', 'svg', 'math',
+  'title',
+])
+
+const BLOCK_ELEMENTS = new Set([
+  'address', 'article', 'aside', 'blockquote', 'body', 'dd', 'div', 'dl', 'dt',
+  'figcaption', 'figure', 'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'header', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'pre', 'section', 'table',
+  'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'ul',
+])
+
+export interface SkipTracker {
+  /**
+   * Feed every token, in order. True when the token falls inside a subtree that
+   * is being skipped and the caller should ignore it.
+   */
+  skip(token: Token): boolean
+  /** Skip the subtree of the open token that was just fed. */
+  enter(token: Token): void
+}
+
+/**
+ * Tracks which tokens belong to an element whose subtree is not being read.
+ *
+ * Real books ship unclosed tags, and a skip that can only end on its own close
+ * tag discards everything after one — the rest of the chapter, and with it the
+ * rest of the book. So the skip is bounded two ways: it ends at the close tag
+ * of an element that was already open when it started, since an ancestor
+ * cannot close before its child; and a skipped inline element ends at the first
+ * block-level tag, which it could never have contained. Malformed markup costs
+ * one element, not the remainder.
+ */
+export function createSkipTracker(): SkipTracker {
+  /** Names of the elements currently open, outermost first. */
+  const open: string[] = []
+  let skipAt = -1
+  let skipInline = false
+
+  return {
+    skip(token: Token): boolean {
+      if (token.kind === 'text') return skipAt >= 0
+
+      if (token.kind === 'open') {
+        if (skipAt >= 0 && skipInline && BLOCK_ELEMENTS.has(token.name)) {
+          open.length = skipAt
+          skipAt = -1
+        }
+        if (!token.selfClosing) open.push(token.name)
+        return skipAt >= 0
+      }
+
+      let at = -1
+      for (let i = open.length - 1; i >= 0; i--) {
+        if (open[i] === token.name) {
+          at = i
+          break
+        }
+      }
+      // A close tag matching nothing is stray: it closes nothing and ends nothing.
+      if (at === -1) return skipAt >= 0
+
+      open.length = at
+      if (skipAt < 0 || at > skipAt) return skipAt >= 0
+
+      // At the skipped element this close is its own; above it, the skipped
+      // element was never closed and the caller still needs this tag.
+      const own = at === skipAt
+      skipAt = -1
+      return own
+    },
+
+    enter(token: Token): void {
+      skipAt = open.length - 1
+      skipInline = INLINE_ELEMENTS.has(token.name)
+    },
+  }
+}
+
 export interface ElementMatch {
   name: string
   attrs: string
@@ -244,21 +329,17 @@ export function findElement(source: string, name: string): ElementMatch | undefi
 
 /** All text content of a markup fragment, with skipped elements removed. */
 export function textContent(source: string): string {
+  const skipped = createSkipTracker()
   let out = ''
-  let skipDepth = 0
-  let skipName = ''
 
   for (const token of tokenize(source)) {
+    if (skipped.skip(token)) continue
+
     if (token.kind === 'open' && SKIPPED_ELEMENTS.has(token.name) && !token.selfClosing) {
-      if (skipDepth === 0) skipName = token.name
-      if (token.name === skipName) skipDepth++
+      skipped.enter(token)
       continue
     }
-    if (token.kind === 'close' && token.name === skipName && skipDepth > 0) {
-      skipDepth--
-      continue
-    }
-    if (skipDepth === 0 && token.kind === 'text') out += token.text
+    if (token.kind === 'text') out += token.text
   }
 
   return normalizeText(out)

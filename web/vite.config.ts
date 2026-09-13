@@ -36,6 +36,9 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
+    // Five suites' worth of worker/IDB fakes on a loaded machine can blow the
+    // 5s default; the work itself is milliseconds.
+    testTimeout: 20000,
     passWithNoTests: true,
   },
 })

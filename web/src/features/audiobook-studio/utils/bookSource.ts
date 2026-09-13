@@ -4,16 +4,29 @@
 // zip. One function decides which, so the reader never has to care — that is
 // what lets chapter 1 be readable while chapter 20 is still being narrated.
 //
-// Sealed books are never fully hydrated: `extractEntries` inflates only the
-// entries asked for, so opening a 200 MB publication costs one chapter, not all
-// of it. The parsed package document is memoised per session but not persisted,
-// keeping the zip the single source of truth.
+// Sealed books are never hydrated. The artifact is stored as a Blob, so the
+// archive's central directory is read once per book and every chapter after
+// that is two small slices out of the stored file — opening a 200 MB
+// publication costs one chapter's worth of bytes, not all of it. The directory
+// is memoised per session but not persisted, keeping the zip the single source
+// of truth for content.
+//
+// The one thing that IS persisted is the outline, because it is the only thing
+// the reader needs before it can show anything at all, and deriving it means
+// touching the archive once per chapter.
 
 import { createLogger } from '@/lib/logger'
 import * as db from './db'
+import { resolveHref, titleFromHref } from './epubRead'
 import { chapterId, parseClock } from './epubWrite'
-import { findElements, getAttr, normalizeText } from './markup'
-import { extractEntries } from './zip'
+import { findElement, findElements, getAttr, normalizeText } from './markup'
+import {
+  readZipEntry,
+  readZipIndex,
+  readZipText,
+  sliceStoredEntry,
+  type ZipIndex,
+} from './zip'
 import type { Block, BookRecord, SentenceSpan, TimedSentence } from '../types'
 
 const log = createLogger('audiobook:source')
@@ -36,6 +49,44 @@ export interface ChapterOutline {
 
 /** Session-lifetime cache of inflated chapters, keyed `${bookId}:${index}`. */
 const chapterCache = new Map<string, ReadableChapter>()
+
+/** A sealed book's archive, open for entry-at-a-time reading. */
+interface ArtifactSource {
+  blob: Blob
+  index: ZipIndex
+}
+
+/**
+ * Open archives, keyed by book.
+ *
+ * The central directory is the same for every read of a book, and parsing it
+ * costs a scan of every entry listing — so it is parsed once and kept. Promises
+ * rather than values, so two chapters loading at the same time share one parse
+ * instead of racing to do it twice.
+ */
+const artifactSources = new Map<string, Promise<ArtifactSource | null>>()
+
+function openArtifact(bookId: string): Promise<ArtifactSource | null> {
+  const open = artifactSources.get(bookId)
+  if (open) return open
+
+  const opening = (async () => {
+    const artifact = await db.getArtifact(bookId)
+    if (!artifact) return null
+    return { blob: artifact.epub, index: await readZipIndex(artifact.epub) }
+  })().catch((error: unknown) => {
+    // A truncated or evicted archive must not be remembered as this book's
+    // answer for the rest of the session. Callers treat null as "not in the
+    // zip" and fall back to staging, which is the same path a missing entry
+    // already takes.
+    artifactSources.delete(bookId)
+    log.warn(`[${bookId}] artifact could not be opened`, error)
+    return null
+  })
+
+  artifactSources.set(bookId, opening)
+  return opening
+}
 
 /**
  * Whether a chapter's content is final and therefore safe to cache.
@@ -82,6 +133,10 @@ export function clearBookCache(bookId: string): void {
   for (const key of [...chapterCache.keys()]) {
     if (key.startsWith(`${bookId}:`)) chapterCache.delete(key)
   }
+  // This runs when a book is re-sealed, and the offsets in a directory parsed
+  // from the previous archive point at nothing in the new one. Dropping it is
+  // not an optimisation — keeping it would read garbage.
+  artifactSources.delete(bookId)
   // Only the cached blob is dropped. Whatever is playing holds its own object
   // URL and keeps its blob alive — this runs after every narrated chapter, so
   // revoking here would cut off the chapter being read while the rest converts.
@@ -197,26 +252,21 @@ async function loadFromArtifact(
   bookId: string,
   index: number,
 ): Promise<ReadableChapter | null> {
-  const artifact = await db.getArtifact(bookId)
-  if (!artifact) return null
+  const source = await openArtifact(bookId)
+  if (!source) return null
 
   const overlay = (await db.getBook(bookId))?.overlays?.[index]
   const id = chapterId(index + 1)
   const textPath = overlay?.text ?? `OEBPS/text/${id}.xhtml`
   const smilPath = overlay?.smil ?? `OEBPS/smil/${id}.smil`
 
-  const files = await extractEntries(
-    artifact.epub,
-    (name) => name === textPath || name === smilPath,
-  )
-  if (!files[textPath]) return null
+  const [xhtml, smil] = await Promise.all([
+    readZipText(source.blob, source.index, textPath),
+    readZipText(source.blob, source.index, smilPath),
+  ])
+  if (!xhtml) return null
 
-  const decoder = new TextDecoder()
-  const parsed = parseSealedChapter(
-    index,
-    decoder.decode(files[textPath]),
-    files[smilPath] ? decoder.decode(files[smilPath]) : '',
-  )
+  const parsed = parseSealedChapter(index, xhtml, smil ?? '')
 
   const heading = parsed.blocks.find((b) => b.type.startsWith('h'))
   return { ...parsed, title: heading?.text ?? `Chapter ${index + 1}` }
@@ -267,30 +317,227 @@ export async function loadChapterAudio(
   const cached = audioCache.get(key)
   if (cached) return cached
 
-  let bytes: Uint8Array | null = null
-
   if (book.status === 'ready') {
-    const artifact = await db.getArtifact(book.id)
-    if (artifact) {
+    const source = await openArtifact(book.id)
+    if (source) {
       const path = book.overlays?.[index]?.audio ?? `OEBPS/audio/${chapterId(index + 1)}.mp3`
-      const files = await extractEntries(artifact.epub, (name) => name === path)
-      bytes = files[path] ?? null
+
+      // An MP3 is already compressed, so it goes into the archive STORED and
+      // comes back out as a slice of the stored file — a handle, never a copy.
+      // The chapter being played therefore costs no heap at all. A book zipped
+      // elsewhere may have deflated it, and that one has to be inflated.
+      const stored = await sliceStoredEntry(source.blob, source.index, path, 'audio/mpeg')
+      if (stored) {
+        rememberAudio(key, stored)
+        return stored
+      }
+
+      const inflated = await readZipEntry(source.blob, source.index, path)
+      if (inflated) {
+        const blob = new Blob([inflated as unknown as BlobPart], { type: 'audio/mpeg' })
+        rememberAudio(key, blob)
+        return blob
+      }
     }
   }
 
-  if (!bytes) {
-    const staged = await db.getStaging(book.id, 'audio', index)
-    bytes = staged?.data ?? null
-  }
+  const staged = await db.getStaging(book.id, 'audio', index)
+  if (!staged?.data) return null
 
-  if (!bytes) return null
-
-  const blob = new Blob([bytes as unknown as BlobPart], { type: 'audio/mpeg' })
+  const blob = new Blob([staged.data as unknown as BlobPart], { type: 'audio/mpeg' })
   rememberAudio(key, blob)
   return blob
 }
 
-/** Chapter list for the reader's navigation, including not-yet-narrated ones. */
+/** Chapter titles by the path they point at, from the EPUB 3 nav document. */
+async function navTitles(
+  source: ArtifactSource,
+  opf: string,
+  opfPath: string,
+): Promise<Map<string, string>> {
+  const titles = new Map<string, string>()
+
+  const navItem = findElements(opf, ['item']).find((item) =>
+    getAttr(item.attrs, 'properties')?.includes('nav'),
+  )
+  const href = navItem && getAttr(navItem.attrs, 'href')
+  if (!href) return titles
+
+  const navPath = resolveHref(opfPath, href)
+  const nav = await readZipText(source.blob, source.index, navPath)
+  if (!nav) return titles
+
+  for (const anchor of findElements(nav, ['a'])) {
+    const target = getAttr(anchor.attrs, 'href')
+    if (!target) continue
+    const path = resolveHref(navPath, target)
+    const text = normalizeText(stripMarkup(anchor.inner))
+    // First mention wins: a contents that points into one document several
+    // times is naming sub-sections of it, and the first is the chapter itself.
+    if (text && !titles.has(path)) titles.set(path, text)
+  }
+
+  return titles
+}
+
+/**
+ * Every `media:duration` in a package document, keyed by the overlay it refines.
+ *
+ * Read with a regex rather than with `findElements`, because `<meta>` is a void
+ * element in HTML and the tokenizer treats it as one — so it reports no content
+ * for it. In a package document the content is the whole value, and this is the
+ * only place that needs it.
+ */
+function durationsByOverlay(opf: string): Map<string, number> {
+  const durations = new Map<string, number>()
+
+  for (const [, attrs, value] of opf.matchAll(/<meta\b([^>]*)>([^<]*)<\/meta\s*>/gi)) {
+    if (getAttr(attrs, 'property') !== 'media:duration') continue
+    // The one with no `refines` is the book's total and belongs to no chapter.
+    const refines = getAttr(attrs, 'refines')
+    if (!refines?.startsWith('#')) continue
+    durations.set(refines.slice(1), parseClock(value.trim()))
+  }
+
+  return durations
+}
+
+/** Longest `clipEnd` in an overlay — the length of the chapter it plays. */
+async function durationFromSmil(source: ArtifactSource, path: string | undefined): Promise<number> {
+  if (!path) return 0
+  const smil = await readZipText(source.blob, source.index, path)
+  if (!smil) return 0
+
+  let end = 0
+  for (const audio of findElements(smil, ['audio'])) {
+    end = Math.max(end, parseClock(getAttr(audio.attrs, 'clipEnd') ?? '0'))
+  }
+  return end
+}
+
+/**
+ * The outline read from the package document, in two entry reads.
+ *
+ * An EPUB 3 with media overlays already states everything the outline needs:
+ * the spine gives chapter order, a `media:duration` meta gives each chapter's
+ * length, and the nav document gives the titles. Reading those three is the
+ * difference between two reads and three hundred.
+ *
+ * Returns null when the package cannot be lined up with the book record — a
+ * source whose chapters are fragments of a shared document has more chapters
+ * than documents, and a package with no contents document has no titles to
+ * give. Those books fall back to reading their chapters one at a time.
+ */
+async function outlineFromPackage(book: BookRecord): Promise<ChapterOutline[] | null> {
+  const source = await openArtifact(book.id)
+  if (!source) return null
+
+  const container = await readZipText(source.blob, source.index, 'META-INF/container.xml')
+  const rootfile = container ? findElement(container, 'rootfile') : undefined
+  const opfPath = (rootfile && getAttr(rootfile.attrs, 'full-path')) || 'OEBPS/package.opf'
+
+  const opf = await readZipText(source.blob, source.index, opfPath)
+  if (!opf) return null
+
+  const manifest = new Map<string, { path: string; overlay?: string }>()
+  for (const item of findElements(opf, ['item'])) {
+    const id = getAttr(item.attrs, 'id')
+    const href = getAttr(item.attrs, 'href')
+    if (!id || !href) continue
+    manifest.set(id, {
+      path: resolveHref(opfPath, href),
+      overlay: getAttr(item.attrs, 'media-overlay'),
+    })
+  }
+  const idByPath = new Map([...manifest].map(([id, item]) => [item.path, id]))
+
+  /**
+   * The book's chapters, in the order the rest of the reader indexes them.
+   *
+   * An imported book's chapter `i` is `book.overlays[i]`, not its `i`th spine
+   * item — its spine also carries front matter, which owns no chapter. A book
+   * we sealed ourselves has no overlay list and a spine of nothing but
+   * chapters, so there the spine is the answer.
+   */
+  const entries = book.overlays
+    ? book.overlays.map((overlay) => ({
+        path: overlay.text,
+        smilId: idByPath.get(overlay.smil),
+        smilPath: overlay.smil,
+      }))
+    : findElements(opf, ['itemref'])
+        .map((ref) => manifest.get(getAttr(ref.attrs, 'idref') ?? ''))
+        .filter((item) => item !== undefined)
+        .map((item) => ({
+          path: item.path,
+          smilId: item.overlay,
+          smilPath: item.overlay ? manifest.get(item.overlay)?.path : undefined,
+        }))
+
+  if (entries.length !== book.chapterCount) return null
+
+  const titles = await navTitles(source, opf, opfPath)
+  // Without a contents document there is nothing here worth calling a title —
+  // a filename is not one. Reading the chapters gives real headings.
+  if (titles.size === 0) return null
+
+  const durations = durationsByOverlay(opf)
+
+  const outline: ChapterOutline[] = []
+  for (const [index, entry] of entries.entries()) {
+    // A package that names its overlays but not their lengths still has them
+    // in the overlays themselves; only the missing ones are read.
+    const stated = entry.smilId ? (durations.get(entry.smilId) ?? 0) : 0
+    const durationSec = stated || (await durationFromSmil(source, entry.smilPath))
+
+    outline.push({
+      index,
+      title: titles.get(entry.path) || titleFromHref(entry.path) || `Chapter ${index + 1}`,
+      durationSec,
+      narrated: Boolean(entry.smilPath),
+    })
+  }
+
+  return outline
+}
+
+/**
+ * The outline read chapter by chapter — the fallback when the package does not
+ * line up with the record.
+ *
+ * Still one pass per chapter, but each pass is now two small entries sliced out
+ * of the stored archive rather than a deserialisation of the whole book. The
+ * result is persisted, so this runs once in a book's life rather than on every
+ * open.
+ */
+async function outlineByChapter(book: BookRecord): Promise<ChapterOutline[]> {
+  const outline: ChapterOutline[] = []
+
+  for (let index = 0; index < book.chapterCount; index++) {
+    // Deliberately not `loadChapter`: this walks the whole book, and seeding
+    // the chapter cache with all of it would pin every chapter's prose in
+    // memory to build a list of titles.
+    const chapter = await loadFromArtifact(book.id, index)
+    if (!chapter) break
+    outline.push({
+      index,
+      title: chapter.title,
+      durationSec: chapter.timeline.at(-1)?.clipEnd ?? 0,
+      narrated: chapter.timeline.length > 0,
+    })
+  }
+
+  return outline
+}
+
+/**
+ * Chapter list for the reader's navigation, including not-yet-narrated ones.
+ *
+ * This is on the path to the first paint — the studio waits for it before it
+ * shows anything — so a sealed book's outline is stored once and read back
+ * afterwards. Deriving it is cheap now and was not always, and either way it is
+ * work with a known answer.
+ */
 export async function loadOutline(book: BookRecord): Promise<ChapterOutline[]> {
   const records = await db.listChapters(book.id)
 
@@ -303,28 +550,28 @@ export async function loadOutline(book: BookRecord): Promise<ChapterOutline[]> {
     }))
   }
 
-  // Sealed books have no chapter rows left — derive the outline from the zip.
-  const outline: ChapterOutline[] = []
-  for (let index = 0; index < book.chapterCount; index++) {
-    const chapter = await loadChapter(book, index)
-    if (!chapter) break
-    outline.push({
-      index,
-      title: chapter.title,
-      durationSec: chapter.timeline.at(-1)?.clipEnd ?? 0,
-      narrated: chapter.timeline.length > 0,
-    })
-  }
+  // Sealed books have no chapter rows left. `putArtifact` drops the stored
+  // outline whenever the archive is replaced, so a hit here always describes
+  // the archive currently on disk.
+  const stored = await db.getOutline(book.id)
+  if (stored && stored.chapters.length > 0) return stored.chapters
+
+  const outline = (await outlineFromPackage(book)) ?? (await outlineByChapter(book))
+  if (outline.length > 0) await db.putOutline(book.id, outline)
 
   log.log(`[${book.id}] outline rebuilt from artifact — ${outline.length} chapters`)
   return outline
 }
 
-/** The sealed publication, for download. Null until the book is sealed. */
+/**
+ * The sealed publication, for download. Null until the book is sealed.
+ *
+ * The stored Blob is handed straight out. Copying it would mean pulling the
+ * whole book onto the heap for a download the browser can stream from disk.
+ */
 export async function loadArtifactBlob(bookId: string): Promise<Blob | null> {
   const artifact = await db.getArtifact(bookId)
-  if (!artifact) return null
-  return new Blob([artifact.epub as unknown as BlobPart], { type: 'application/epub+zip' })
+  return artifact?.epub ?? null
 }
 
 /**

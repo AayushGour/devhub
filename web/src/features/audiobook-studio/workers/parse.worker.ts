@@ -6,7 +6,7 @@
 
 import { readEpub, type ParsedBook } from '../utils/epubRead'
 import { readPdf } from '../utils/pdfRead'
-import { asBook, readDocx, readMarkdown, readPlainText } from '../utils/textRead'
+import { asBook, decodeText, readDocx, readMarkdown, readPlainText } from '../utils/textRead'
 import type { SourceType } from '../types'
 
 export interface ParseRequest {
@@ -85,7 +85,11 @@ async function parse(request: ParseRequest): Promise<void> {
     return
   }
 
-  const text = () => new TextDecoder().decode(bytes)
+  // Not `new TextDecoder()`: that is always UTF-8, and a Windows "Unicode"
+  // .txt is UTF-16 — decoded as UTF-8 it becomes prose with a NUL between
+  // every letter, which the narrator reads as garbage and which is not a legal
+  // character in the XHTML the book is written back out as.
+  const text = () => decodeText(bytes)
 
   const chapters =
     sourceType === 'docx'

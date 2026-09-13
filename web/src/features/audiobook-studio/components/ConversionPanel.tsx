@@ -21,9 +21,19 @@ interface Props {
 const BUTTON =
   'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed'
 
+/**
+ * A sealed book can lose its file without losing its row: the upload dialog
+ * warns that an origin without persistent storage may be evicted under disk
+ * pressure, and eviction takes the artifact while the library listing stays.
+ * The book still looks exportable, so the failure has to be said out loud —
+ * a button that does nothing at all reads as a broken app.
+ */
+const MISSING_ARTIFACT =
+  'This book’s file is no longer stored — the browser evicted it. Re-extract the book to rebuild it.'
+
 async function download(book: BookRecord): Promise<void> {
   const blob = await loadArtifactBlob(book.id)
-  if (!blob) return
+  if (!blob) throw new Error(MISSING_ARTIFACT)
 
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -66,6 +76,18 @@ export default function ConversionPanel({ book, job, speed, voiceId }: Props) {
         setNotice(result.reason ?? 'Could not read that book again.')
         if (result.reason?.includes('Choose it again')) filePicker.current?.click()
       }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const exportBook = async () => {
+    setBusy(true)
+    setNotice(null)
+    try {
+      await download(book)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not export this book.')
     } finally {
       setBusy(false)
     }
@@ -175,7 +197,8 @@ export default function ConversionPanel({ book, job, speed, voiceId }: Props) {
       {book.status === 'ready' && book.mode === 'narrated' && (
         <button
           type="button"
-          onClick={() => void download(book)}
+          disabled={busy}
+          onClick={() => void exportBook()}
           className={cn(BUTTON, 'border-border text-on-surface hover:bg-surface-hover')}
         >
           <Download size={12} />

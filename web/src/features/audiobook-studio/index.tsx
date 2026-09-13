@@ -48,7 +48,7 @@ const PROGRESS_SAVE_MS = 2000
 export default function AudiobookStudioPage() {
   // Created here, in the non-suspending half, so the promise survives the
   // inner component's suspension rather than being recreated on every retry.
-  const [boot] = useState(() => openLibrary())
+  const [boot] = useState(bootLibrary)
 
   return (
     <Suspense
@@ -61,6 +61,29 @@ export default function AudiobookStudioPage() {
       <StudioInner boot={boot} />
     </Suspense>
   )
+}
+
+/**
+ * One library open per mount, however many times React asks for it.
+ *
+ * A `useState` initialiser is double-invoked under StrictMode, and this one has
+ * side effects: it picks the active book and queues every interrupted
+ * conversion. Called twice, every interrupted book is queued twice. The promise
+ * is dropped again once it settles, so coming back to the page later still
+ * opens the library fresh rather than replaying a stale snapshot of it.
+ */
+let opening: Promise<BootState> | null = null
+
+function bootLibrary(): Promise<BootState> {
+  if (!opening) {
+    const inFlight = openLibrary()
+    opening = inFlight
+    const settle = () => { if (opening === inFlight) opening = null }
+    // Both arms, so a failed boot clears the slot and is not re-thrown here —
+    // the `use()` in StudioInner is what reports it.
+    inFlight.then(settle, settle)
+  }
+  return opening
 }
 
 /**
@@ -105,7 +128,7 @@ async function openLibrary(): Promise<BootState> {
     pages,
     audio,
     position: progress
-      ? { sentenceId: progress.sentenceId, audioTime: progress.audioTime }
+      ? { chapterIndex: index, sentenceId: progress.sentenceId, audioTime: progress.audioTime }
       : null,
   }
 }
@@ -210,7 +233,7 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
       record: BookRecord,
       nextView: NavView,
       startAt?: number,
-      resumeAt?: string,
+      resumeAt?: StoredPosition,
       nextOutline?: ChapterOutline[],
     ) => {
       const first = startAt ?? nextView.leaves[0]
@@ -227,10 +250,10 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
       setAudio(clip)
       setOpenedBookId(record.id)
 
-      if (resumeAt && content.length > 0) {
-        const separator = resumeAt.lastIndexOf(':')
-        restore(resumeAt.slice(0, separator), Number(resumeAt.slice(separator + 1)) || 0)
-      }
+      // The engine still holds the book being left at this point; the position
+      // names its chapter, so it waits for the element built for that chapter
+      // rather than landing on this one.
+      if (resumeAt && content.length > 0) restore(resumeAt)
     },
     [restore],
   )
@@ -243,6 +266,22 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
       setAudio(clip)
     },
     [],
+  )
+
+  /**
+   * Play from a sentence the reader clicked.
+   *
+   * A branch selection puts a whole section on one page, and sentence ids
+   * restart at s1 in every chapter on it, so the click names its own chapter.
+   * When that is not the chapter in the engine, its audio has to be swapped in
+   * first — the engine holds the request until the element for it exists.
+   */
+  const handleSeekToSentence = useCallback(
+    (targetIndex: number, sentenceId: string) => {
+      seekToSentence(targetIndex, sentenceId)
+      if (book && targetIndex !== chapterIndex) void goToChapterOnPage(book, targetIndex)
+    },
+    [book, chapterIndex, goToChapterOnPage, seekToSentence],
   )
 
   const selectNode = useCallback(
@@ -300,7 +339,9 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
         record,
         target,
         index,
-        progress ? `${progress.sentenceId}:${progress.audioTime}` : undefined,
+        progress
+          ? { chapterIndex: index, sentenceId: progress.sentenceId, audioTime: progress.audioTime }
+          : undefined,
         chapters,
       )
       log.log(`[${bookId}] opened — ${chapters.length} chapters`)
@@ -341,7 +382,13 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
       // timings — swapping in another timing-less copy restarts this cycle.
       const refreshed = content.find((c) => c.index === chapterIndex)
       if (refreshed && refreshed.timeline.length > 0) setPages(content)
-      if (clip) setAudio(clip)
+      // This runs again every time a background chapter finishes converting,
+      // and the cache is cleared between them — so `clip` is a NEW Blob holding
+      // the same bytes. Handing it over would change the audio's identity, and
+      // the engine rebuilds its element for a new blob: the chapter being
+      // listened to would stop and start again from 0:00. A chapter's audio
+      // never changes once it exists, so take a clip only when there is none.
+      setAudio((current) => current ?? clip)
     })
 
     return () => { cancelled = true }
@@ -442,7 +489,10 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
                 <ChapterTree
                   tree={tree}
                   selectedId={view?.id ?? null}
-                  playingChapter={chapterIndex}
+                  // Only while something is actually being spoken: `chapterIndex`
+                  // is 0 when nothing is, which would mark the first chapter of
+                  // the book as playing from the moment the library opens.
+                  playingChapter={state.playing ? chapterIndex : null}
                   pendingChapters={pendingChapters}
                   onSelect={selectNode}
                 />
@@ -477,7 +527,7 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
                   wordRange={state.wordRange}
                   autoFollow={settings.autoFollow}
                   fontSizeRem={settings.fontSizeRem}
-                  onSeekToSentence={seekToSentence}
+                  onSeekToSentence={handleSeekToSentence}
                 />
               ) : (
                 <div className="flex-1 flex items-center justify-center gap-2 text-on-surface-muted">

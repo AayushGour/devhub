@@ -14,8 +14,14 @@ export function formatTime(seconds: number): string {
 
 /** `2h 14m` — a coarse length, for library listings. */
 export function formatLength(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s`
-  const minutes = Math.round(seconds / 60)
+  // A book still being narrated has no duration yet, and the arithmetic that
+  // produces one divides by a chapter count that can be zero.
+  if (!Number.isFinite(seconds) || seconds < 0) return '0s'
+  // Round to whole seconds BEFORE deciding the unit, or 59.6 prints as "60s"
+  // when it should have tipped over into "1m".
+  const whole = Math.round(seconds)
+  if (whole < 60) return `${whole}s`
+  const minutes = Math.round(whole / 60)
   if (minutes < 60) return `${minutes}m`
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
 }

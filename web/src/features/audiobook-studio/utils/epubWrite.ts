@@ -180,6 +180,19 @@ ${body}
 `
 }
 
+/**
+ * True when a chapter carries narration.
+ *
+ * A chapter with no sentences (an empty section, a page of nothing but an
+ * image) still belongs in the spine, but it gets no overlay at all: Media
+ * Overlays requires a `<seq>` to hold at least one `<par>`, so emitting an
+ * empty one produces a book epubcheck rejects. No SMIL, no `media-overlay`
+ * attribute, no `media:duration` refine, and no silent MP3 to go with them.
+ */
+export function hasOverlay(chapter: ChapterInput): boolean {
+  return chapter.timeline.length > 0
+}
+
 /** The overlay: one `<par>` per sentence, in playback order. */
 export function buildSmil(chapter: ChapterInput): string {
   const id = chapterId(chapter.index)
@@ -248,6 +261,7 @@ export function buildPackageOpf(
   const totalDuration = chapters.reduce((sum, c) => sum + c.durationSec, 0)
 
   const durationMetas = chapters
+    .filter(hasOverlay)
     .map(
       (c) =>
         `    <meta property="media:duration" refines="#smil-${chapterId(c.index)}">${formatClock(c.durationSec)}</meta>`,
@@ -257,6 +271,11 @@ export function buildPackageOpf(
   const manifestItems = chapters
     .flatMap((c) => {
       const id = chapterId(c.index)
+      if (!hasOverlay(c)) {
+        return [
+          `    <item id="${id}" href="text/${id}.xhtml" media-type="application/xhtml+xml"/>`,
+        ]
+      }
       return [
         `    <item id="${id}" href="text/${id}.xhtml" media-type="application/xhtml+xml" media-overlay="smil-${id}"/>`,
         `    <item id="audio-${id}" href="audio/${id}.mp3" media-type="audio/mpeg"/>`,
@@ -321,10 +340,14 @@ export function buildEpubFiles(
   for (const chapter of chapters) {
     const id = chapterId(chapter.index)
     text[`OEBPS/text/${id}.xhtml`] = buildChapterXhtml(chapter, meta.language)
+
+    // A silent chapter is spine-only. See hasOverlay.
+    if (!hasOverlay(chapter)) continue
+
     text[`OEBPS/smil/${id}.smil`] = buildSmil(chapter)
 
     const audio = audioByChapter.get(chapter.index)
-    if (!audio) throw new Error(`missing audio for chapter ${chapter.index}`)
+    if (!audio?.length) throw new Error(`missing audio for chapter ${chapter.index}`)
     binary[`OEBPS/audio/${id}.mp3`] = audio
   }
 

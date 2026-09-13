@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
@@ -17,34 +17,68 @@ interface Props {
 const FIELD =
   'w-full bg-surface border border-border rounded-lg px-[0.625rem] py-1.5 text-xs text-on-surface outline-none font-[inherit] cursor-pointer focus:border-accent transition-colors duration-150'
 
+/** Closing a context twice rejects, so the state is checked before asking. */
+function closeContext(ctx: AudioContext | null): void {
+  if (!ctx || ctx.state === 'closed') return
+  void ctx.close().catch(() => {
+    // Already closing, or the context was never started — nothing to recover.
+  })
+}
+
 /** Play PCM straight from the model — no encoding step for a two-second sample. */
-function playPcm(pcm: Float32Array, sampleRate: number): void {
+function playPcm(pcm: Float32Array, sampleRate: number): AudioContext {
   const ctx = new AudioContext({ sampleRate })
   const buffer = ctx.createBuffer(1, pcm.length, sampleRate)
   buffer.getChannelData(0).set(pcm)
   const source = ctx.createBufferSource()
   source.buffer = buffer
   source.connect(ctx.destination)
-  source.onended = () => void ctx.close()
+  source.onended = () => closeContext(ctx)
   source.start()
+  return ctx
 }
 
 export default function VoicePicker({ value, speed, disabled, onChange }: Props) {
   const [previewing, setPreviewing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // The context playing the current sample. A preview outlives the click that
+  // started it, so without a handle on it the only thing that could ever close
+  // it was its own `onended` — and a dialog closed mid-sample leaked it.
+  const contextRef = useRef<AudioContext | null>(null)
+  // Bumped per attempt so synthesis that lands after a newer preview started,
+  // or after unmount, throws its audio away instead of talking over it.
+  const runRef = useRef(0)
+
+  const stop = useCallback(() => {
+    closeContext(contextRef.current)
+    contextRef.current = null
+  }, [])
+
+  useEffect(() => () => {
+    runRef.current++
+    stop()
+  }, [stop])
+
   const preview = async () => {
+    // Supersede whatever is playing or still synthesising. Two clicks used to
+    // mean two contexts and two voices reading the sample at once.
+    const run = ++runRef.current
+    stop()
+
     setPreviewing(true)
     setError(null)
     try {
       const { pcm, sampleRate } = await previewVoice(value, SAMPLE_SENTENCE, speed)
-      playPcm(pcm, sampleRate)
+      if (run !== runRef.current) return
+      contextRef.current = playPcm(pcm, sampleRate)
     } catch (err) {
+      if (run !== runRef.current) return
       const message = err instanceof Error ? err.message : String(err)
       log.error('preview failed:', message)
       setError(message)
     } finally {
-      setPreviewing(false)
+      if (run === runRef.current) setPreviewing(false)
     }
   }
 

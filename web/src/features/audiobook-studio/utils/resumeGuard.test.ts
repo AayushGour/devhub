@@ -35,6 +35,7 @@ vi.mock('./db', () => ({
   clearStaging: async () => {},
   putArtifact: async () => {},
   estimateQuota: async () => ({ usage: 0, quota: 0, available: 0, persisted: true }),
+  requestPersistence: async () => true,
   chapterKey: (b: string, i: number) => `${b}:${i}`,
   stagingKey: (b: string, k: string, i: number) => `${b}:${k}:${i}`,
 }))

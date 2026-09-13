@@ -56,14 +56,6 @@ export interface BookRecord {
   error?: string
 }
 
-/** The sealed publication. Kept out of `books` so listing the library is cheap. */
-export interface ArtifactRecord {
-  bookId: string
-  epub: Uint8Array
-  bytes: number
-  sealedAt: number
-}
-
 /** Parsed chapter text. Staging lifetime — deleted once the book is sealed. */
 export interface ChapterRecord {
   /** `${bookId}:${index}` */

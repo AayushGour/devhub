@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import type { ReadableChapter } from '../utils/bookSource'
 import type { Block, SentenceSpan } from '../types'
@@ -13,7 +13,12 @@ interface Props {
   wordRange: WordSpan | null
   autoFollow: boolean
   fontSizeRem: number
-  onSeekToSentence: (sentenceId: string) => void
+  /**
+   * A sentence is named by its chapter as well as its id. Ids restart at s1 in
+   * every chapter, so the id alone would seek whichever chapter happens to be
+   * loaded — see the note on `byChapter` below.
+   */
+  onSeekToSentence: (chapterIndex: number, sentenceId: string) => void
 }
 
 /** Block type -> element. 'list' never reaches here; it is wrapped in a <ul>. */
@@ -96,7 +101,7 @@ interface ChapterBodyProps {
   activeSentenceId: string | null
   wordRange: WordSpan | null
   activeRef: React.RefObject<HTMLSpanElement | null>
-  onSeekToSentence: (sentenceId: string) => void
+  onSeekToSentence: (chapterIndex: number, sentenceId: string) => void
 }
 
 function ChapterBody({
@@ -121,6 +126,15 @@ function ChapterBody({
     return out
   }, [chapter])
 
+  // Every click leaves here carrying its chapter. Without it the engine looks
+  // the id up in the timeline it happens to have loaded, which on a page of
+  // several chapters is usually a different chapter's sentence — and when that
+  // chapter has no sentence with that id, nothing happens at all.
+  const seek = useCallback(
+    (sentenceId: string) => onSeekToSentence(chapter.index, sentenceId),
+    [chapter.index, onSeekToSentence],
+  )
+
   const renderBlock = (block: Block, blockIdx: number) => {
     const spans = sentencesByBlock.get(blockIdx) ?? []
     if (spans.length === 0) return block.text
@@ -133,7 +147,7 @@ function ChapterBody({
         active={isActive && span.id === activeSentenceId}
         wordRange={isActive && span.id === activeSentenceId ? wordRange : null}
         activeRef={isActive && span.id === activeSentenceId ? activeRef : undefined}
-        onSeek={onSeekToSentence}
+        onSeek={seek}
       />
     ))
   }

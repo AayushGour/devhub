@@ -111,6 +111,17 @@ let tts: KokoroTTS | null = null
 let loadedWith: { dtype: Dtype; device: Device } | null = null
 
 /**
+ * The load currently running, if any, keyed by what it is loading.
+ *
+ * Two callers can ask for the model at the same moment — a conversion starting
+ * while the voice picker previews a voice — and `tts` is only assigned once the
+ * download has finished. Without a promise to join, the second caller starts a
+ * second 326 MB download into a second ONNX session, doubling the wait and the
+ * memory for no gain.
+ */
+let inFlightLoad: { key: string; promise: Promise<KokoroTTS> } | null = null
+
+/**
  * Set when the reader asks to stop.
  *
  * Generation is per sentence, but a chapter is one request, so without a flag
@@ -142,9 +153,42 @@ async function load(dtype: Dtype, device: Device, requestId: number): Promise<vo
   }
 
   const startedAt = performance.now()
+  const key = `${device}:${dtype}`
+
+  if (!inFlightLoad || inFlightLoad.key !== key) {
+    const attempt = { key, promise: fetchModel(dtype, device) }
+    inFlightLoad = attempt
+    // A finished attempt must not stay registered — a failed one especially,
+    // or the next request would join a promise that has already rejected and
+    // the model could never be retried without reloading the tab.
+    void attempt.promise
+      .catch(() => undefined)
+      .then(() => {
+        if (inFlightLoad === attempt) inFlightLoad = null
+      })
+  }
+
+  // Assigned only on success: a failed load must leave whatever was already
+  // resident alone rather than replacing it with null.
+  const model = await inFlightLoad.promise
+  tts = model
+  loadedWith = { dtype, device }
+
+  post({ type: 'status', label: 'ready' })
+  post({
+    type: 'ready',
+    requestId,
+    device,
+    dtype,
+    loadMs: Math.round(performance.now() - startedAt),
+    webgpuAvailable: hasWebGpu(),
+  })
+}
+
+function fetchModel(dtype: Dtype, device: Device): Promise<KokoroTTS> {
   post({ type: 'status', label: `loading Kokoro (${dtype}, ${device})…`, progress: 0 })
 
-  tts = await KokoroTTS.from_pretrained(MODEL_ID, {
+  return KokoroTTS.from_pretrained(MODEL_ID, {
     dtype,
     device,
     progress_callback: (info: { status?: string; progress?: number; file?: string }) => {
@@ -156,17 +200,6 @@ async function load(dtype: Dtype, device: Device, requestId: number): Promise<vo
         })
       }
     },
-  })
-  loadedWith = { dtype, device }
-
-  post({ type: 'status', label: 'ready' })
-  post({
-    type: 'ready',
-    requestId,
-    device,
-    dtype,
-    loadMs: Math.round(performance.now() - startedAt),
-    webgpuAvailable: hasWebGpu(),
   })
 }
 

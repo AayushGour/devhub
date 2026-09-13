@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatTime } from '../utils/format'
@@ -33,6 +34,23 @@ export default function TransportBar({
 }: Props) {
   const iconButton =
     'p-1.5 rounded-lg text-on-surface-muted hover:text-on-surface hover:bg-surface-hover transition-colors duration-150 disabled:opacity-30 disabled:cursor-not-allowed'
+
+  /**
+   * Where the thumb is while it is being dragged.
+   *
+   * The scrubber cannot be driven by the engine's clock alone. That clock is
+   * rewritten every animation frame, and setting `audio.currentTime` does not
+   * land until the element has seeked — so between the drag and the seek the
+   * input is re-rendered with the old time and the thumb jumps back under the
+   * reader's finger. Holding the dragged value locally keeps the thumb where it
+   * was put; the seek still goes out on every change, so the highlight follows
+   * the drag. Released, and the engine's clock takes over again.
+   */
+  const [scrubTime, setScrubTime] = useState<number | null>(null)
+  const releaseScrub = () => setScrubTime(null)
+
+  const clockTime = Math.min(state.currentTime, state.duration || 0)
+  const shownTime = scrubTime ?? clockTime
 
   return (
     <div className="shrink-0 border-t border-border px-6 py-3 flex items-center gap-3">
@@ -81,16 +99,29 @@ export default function TransportBar({
         ) : (
           <>
             <span className="text-xs text-on-surface-muted tabular-nums shrink-0">
-              {formatTime(state.currentTime)}
+              {formatTime(shownTime)}
             </span>
             <input
               type="range"
+              aria-label="Position in chapter"
               min={0}
               max={Math.max(1, state.duration)}
               step={0.1}
-              value={Math.min(state.currentTime, state.duration || 0)}
+              value={shownTime}
               disabled={!ready}
-              onChange={(e) => onSeek(Number(e.target.value))}
+              onChange={(e) => {
+                const next = Number(e.target.value)
+                setScrubTime(next)
+                onSeek(next)
+              }}
+              // Every way a range input can be let go of: a pointer released
+              // anywhere (the thumb keeps capture outside the track), a pointer
+              // cancelled by the browser, an arrow key released, and focus
+              // leaving mid-drag.
+              onPointerUp={releaseScrub}
+              onPointerCancel={releaseScrub}
+              onKeyUp={releaseScrub}
+              onBlur={releaseScrub}
               className="flex-1 accent-accent cursor-pointer disabled:cursor-not-allowed"
             />
             <span className="text-xs text-on-surface-muted tabular-nums shrink-0">

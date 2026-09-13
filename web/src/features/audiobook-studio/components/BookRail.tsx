@@ -113,48 +113,52 @@ export default function BookRail({ onAdd, onSelect }: Props) {
         {books.map((book) => {
           const isActive = book.id === activeBookId
           return (
+            // Two buttons side by side, never one inside the other: a delete
+            // nested in a row that was itself role="button" fired both handlers
+            // on Enter — the book was removed and then opened.
             <div
               key={book.id}
               className={cn(
-                'group flex items-start gap-2 px-2 py-2 rounded-lg border cursor-pointer',
-                'transition-colors duration-150',
+                'group relative rounded-lg border transition-colors duration-150',
                 isActive
                   ? 'border-accent bg-surface-hover'
                   : 'border-transparent hover:bg-surface-hover',
               )}
-              onClick={() => onSelect(book.id)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => { if (e.key === 'Enter') onSelect(book.id) }}
             >
-              <div className="mt-px">
-                <StatusIcon book={book} job={jobs[book.id]} />
-              </div>
+              <button
+                type="button"
+                onClick={() => onSelect(book.id)}
+                className={cn(
+                  'w-full flex items-start gap-2 py-2 pl-2 pr-7 rounded-lg text-left',
+                  'cursor-pointer font-[inherit]',
+                )}
+              >
+                <span className="mt-px">
+                  <StatusIcon book={book} job={jobs[book.id]} />
+                </span>
 
-              <div className="min-w-0 flex-1">
-                <p
-                  className={cn(
-                    'text-xs truncate',
-                    isActive ? 'text-accent' : 'text-on-surface',
-                  )}
-                  title={book.title}
-                >
-                  {book.title}
-                </p>
-                <p className="text-[0.65rem] text-on-surface-muted truncate">
-                  {statusLine(book, jobs[book.id])}
-                </p>
-              </div>
+                <span className="min-w-0 flex-1">
+                  <span
+                    className={cn(
+                      'block text-xs truncate',
+                      isActive ? 'text-accent' : 'text-on-surface',
+                    )}
+                    title={book.title}
+                  >
+                    {book.title}
+                  </span>
+                  <span className="block text-[0.65rem] text-on-surface-muted truncate">
+                    {statusLine(book, jobs[book.id])}
+                  </span>
+                </span>
+              </button>
 
               <button
                 type="button"
                 title={`Remove ${book.title}`}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  void removeBook(book.id)
-                }}
+                onClick={() => void removeBook(book.id)}
                 className={cn(
-                  'opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0',
+                  'absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus:opacity-100',
                   'text-on-surface-muted hover:text-red-400 transition-colors duration-150',
                 )}
               >

@@ -4,7 +4,7 @@
 // `<blockquote><p>…</p></blockquote>` yields one paragraph rather than the same
 // words twice. A block element holding text directly emits that text itself.
 
-import { SKIPPED_ELEMENTS, getAttr, normalizeText, tokenize } from './markup'
+import { SKIPPED_ELEMENTS, createSkipTracker, getAttr, normalizeText, tokenize } from './markup'
 import type { Block } from './sentences'
 
 const BLOCK_TYPES: Record<string, Block['type']> = {
@@ -109,8 +109,7 @@ export function extractBlocks(
   const blocks: Block[] = []
   const stack: Frame[] = []
 
-  let skipDepth = 0
-  let skipName = ''
+  const skipped = createSkipTracker()
 
   const emit = (frame: Frame) => {
     const text = normalizeText(frame.text)
@@ -124,18 +123,13 @@ export function extractBlocks(
   }
 
   for (const token of tokenize(markup)) {
-    if (skipDepth > 0) {
-      if (token.kind === 'open' && token.name === skipName && !token.selfClosing) skipDepth++
-      else if (token.kind === 'close' && token.name === skipName) skipDepth--
-      continue
-    }
+    if (skipped.skip(token)) continue
 
     if (token.kind === 'open' && isUnspoken(token.name, token.attrs)) {
       // A self-closing marker has no subtree to skip — the common shape for a
       // page break, whose number lives in an attribute.
       if (token.selfClosing) continue
-      skipDepth = 1
-      skipName = token.name
+      skipped.enter(token)
       continue
     }
 
