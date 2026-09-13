@@ -375,6 +375,8 @@ export function dehyphenate(text: string): string {
 export interface PdfOutlineEntry {
   title: string
   pageIndex: number
+  /** Depth in the outline; top-level entries are 0. */
+  depth?: number
   /**
    * Vertical position of the destination, when the PDF gives one. Sections are
    * finer than pages — a five-page brief can hold ten of them — so a page index
@@ -386,6 +388,8 @@ export interface PdfOutlineEntry {
 export interface PdfChapter {
   title: string
   blocks: Block[]
+  /** Outline depth this chapter came from, when the PDF had one. */
+  depth?: number
 }
 
 /** Ordered blocks for one page, honouring any two-column layout. */
@@ -462,7 +466,11 @@ function splitByOutline(
       a.pageIndex - b.pageIndex ||
       (b.y ?? Number.POSITIVE_INFINITY) - (a.y ?? Number.POSITIVE_INFINITY),
   )
-  const chapters: PdfChapter[] = sorted.map((entry) => ({ title: entry.title, blocks: [] }))
+  const chapters: PdfChapter[] = sorted.map((entry) => ({
+    title: entry.title,
+    blocks: [],
+    depth: entry.depth ?? 0,
+  }))
 
   let cursor = 0
   for (let i = 0; i < blocks.length; i++) {

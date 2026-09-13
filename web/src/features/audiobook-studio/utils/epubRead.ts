@@ -5,7 +5,15 @@
 // it needs no narration at all and is registered as ready to read.
 
 import { unzip, strFromU8, type Unzipped } from 'fflate'
-import { findElement, findElements, getAttr, normalizeText, textContent } from './markup'
+import {
+  findChildElements,
+  findElement,
+  findElements,
+  getAttr,
+  normalizeText,
+  textContent,
+} from './markup'
+import type { NavNode } from './navTree'
 import { extractBlocks } from './htmlBlocks'
 import type { Block } from './sentences'
 
@@ -36,6 +44,8 @@ export interface ParsedBook {
    * does not use our naming, so the reader needs the manifest's own paths.
    */
   overlays?: OverlayAssets[]
+  /** The table of contents' own nesting, for navigation. */
+  nav?: NavNode[]
 }
 
 export class DrmProtectedError extends Error {
@@ -166,6 +176,60 @@ function findCover(
   return bytes ? { bytes, mime: item.mediaType || 'image/jpeg' } : undefined
 }
 
+/**
+ * Rebuild the table of contents' nesting as a tree of chapter references.
+ *
+ * Entries are matched to spine documents by path, so an entry pointing at a
+ * document that is not in the spine — or at a fragment of one already claimed —
+ * becomes a branch with no chapter of its own rather than a broken leaf.
+ */
+function buildNavTree(
+  navSource: string,
+  navPath: string,
+  indexByPath: Map<string, number>,
+): NavNode[] {
+  const navs = findElements(navSource, ['nav'])
+  const toc = navs.find((nav) => getAttr(nav.attrs, 'epub:type')?.includes('toc'))
+  const scope = toc?.inner ?? (navs.length === 0 ? navSource : undefined)
+  if (scope === undefined) return []
+
+  const claimed = new Set<number>()
+  let counter = 0
+
+  const readList = (listInner: string): NavNode[] => {
+    const nodes: NavNode[] = []
+
+    for (const item of findChildElements(listInner, ['li'])) {
+      const anchor = findChildElements(item.inner, ['a', 'span'])[0]
+      const title = anchor ? textContent(anchor.inner) : ''
+      const href = anchor ? getAttr(anchor.attrs, 'href') : undefined
+
+      const nestedList = findChildElements(item.inner, ['ol', 'ul'])[0]
+      const children = nestedList ? readList(nestedList.inner) : []
+
+      const path = href ? resolveHref(navPath, href) : undefined
+      const index = path !== undefined ? indexByPath.get(path) : undefined
+      // Several entries can point into one document; only the first owns it.
+      const owns = index !== undefined && !claimed.has(index)
+      if (owns) claimed.add(index)
+
+      if (!title && children.length === 0) continue
+
+      nodes.push({
+        id: `n${counter++}`,
+        title: title || `Section ${nodes.length + 1}`,
+        chapterIndex: owns ? index : undefined,
+        children,
+      })
+    }
+
+    return nodes
+  }
+
+  const rootList = findChildElements(scope, ['ol', 'ul'])[0]
+  return rootList ? readList(rootList.inner) : []
+}
+
 export async function readEpub(bytes: Uint8Array, fallbackTitle: string): Promise<ParsedBook> {
   const files = await unzipAll(bytes)
 
@@ -234,6 +298,12 @@ export async function readEpub(bytes: Uint8Array, fallbackTitle: string): Promis
 
   const meta = (name: string) => normalizeText(findElement(opf, name)?.inner ?? '')
 
+  const navItem = manifest.find((item) => item.properties?.includes('nav'))
+  const navSource = navItem ? readText(files, navItem.path) : null
+  const indexByPath = new Map(chapters.map((chapter, index) => [chapter.href, index]))
+  const nav =
+    navSource && navItem ? buildNavTree(navSource, navItem.path, indexByPath) : []
+
   return {
     title: meta('title') || fallbackTitle,
     author: meta('creator') || 'Unknown',
@@ -242,5 +312,6 @@ export async function readEpub(bytes: Uint8Array, fallbackTitle: string): Promis
     cover: findCover(files, manifest, opf),
     hasMediaOverlays: overlays.length > 0,
     overlays: overlays.length > 0 ? overlays : undefined,
+    nav: nav.length > 0 ? nav : undefined,
   }
 }

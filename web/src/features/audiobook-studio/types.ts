@@ -7,8 +7,9 @@
 
 import type { Block, SentenceSpan } from './utils/sentences'
 import type { TimedSentence } from './utils/timeline'
+import type { NavNode } from './utils/navTree'
 
-export type { Block, SentenceSpan, TimedSentence }
+export type { Block, SentenceSpan, TimedSentence, NavNode }
 
 export type SourceType = 'epub' | 'epub3-narrated' | 'pdf' | 'txt' | 'md' | 'docx'
 
@@ -43,6 +44,12 @@ export interface BookRecord {
    * Absent for books we produced — those use our own chNNN layout.
    */
   overlays?: { text: string; smil: string; audio: string }[]
+  /**
+   * The source's own table of contents, as a tree of chapter references.
+   * Kept on the book because a sealed book has no chapter rows left to derive
+   * it from. Absent for sources that provide no hierarchy.
+   */
+  nav?: NavNode[]
   coverBlob?: Blob
   createdAt: number
   updatedAt: number

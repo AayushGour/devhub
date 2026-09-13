@@ -326,3 +326,18 @@ export async function loadArtifactBlob(bookId: string): Promise<Blob | null> {
   if (!artifact) return null
   return new Blob([artifact.epub as unknown as BlobPart], { type: 'application/epub+zip' })
 }
+
+/**
+ * Every chapter of a view, in document order.
+ *
+ * A branch selection puts a whole section on one page, so its chapters are
+ * loaded together. Chapters that are not readable yet are skipped rather than
+ * leaving holes in the page.
+ */
+export async function loadView(
+  book: BookRecord,
+  leaves: number[],
+): Promise<ReadableChapter[]> {
+  const loaded = await Promise.all(leaves.map((index) => loadChapter(book, index)))
+  return loaded.filter((chapter): chapter is ReadableChapter => chapter !== null)
+}

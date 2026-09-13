@@ -8,6 +8,7 @@
 import * as pdfjs from 'pdfjs-dist'
 import { createLogger } from '@/lib/logger'
 import { buildChapters, type PdfOutlineEntry, type PdfPage, type PdfTextItem } from './pdfStructure'
+import { treeFromDepths } from './navTree'
 import type { ParsedBook, ParsedChapter } from './epubRead'
 
 const log = createLogger('audiobook:pdf')
@@ -77,12 +78,13 @@ async function readOutline(
             title: node.title.trim(),
             pageIndex: await doc.getPageIndex(ref),
             y: top,
+            depth,
           })
         }
       } catch {
         // A broken destination is common in the wild; skip that entry only.
       }
-      // Only top-level entries become chapters — deeper ones are sections.
+      // Two levels is as deep as a brief or a book usually labels itself.
       if (depth === 0 && node.items?.length) await walk(node.items, depth + 1)
     }
   }
@@ -201,7 +203,8 @@ export async function readPdf(
 
   doc.destroy()
 
-  const chapters: ParsedChapter[] = buildChapters(pages, outline).map((chapter, i) => ({
+  const built = buildChapters(pages, outline)
+  const chapters: ParsedChapter[] = built.map((chapter, i) => ({
     title: chapter.title,
     blocks: chapter.blocks,
     href: `pdf-${i}`,
@@ -222,5 +225,7 @@ export async function readPdf(
     chapters,
     hasMediaOverlays: false,
     ocrUsed: ocrPages > 0,
+    // The outline's nesting, recovered from the depth each chapter came from.
+    nav: treeFromDepths(built),
   }
 }

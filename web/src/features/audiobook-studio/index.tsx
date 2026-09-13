@@ -21,12 +21,21 @@ import { usePlaybackEngine, type StoredPosition } from './hooks/usePlaybackEngin
 import { useAudiobookStore, useJob } from './store/audiobookStore'
 import {
   clearBookCache,
-  loadChapter,
   loadChapterAudio,
   loadOutline,
+  loadView,
   type ChapterOutline,
   type ReadableChapter,
 } from './utils/bookSource'
+import ChapterTree from './components/ChapterTree'
+import {
+  flatTree,
+  nextView,
+  viewContaining,
+  viewForNode,
+  viewsAtDepth,
+  type NavView,
+} from './utils/navTree'
 import { importFile, resumeInterrupted } from './utils/conversionEngine'
 import * as db from './utils/db'
 import type { BookMode, BookRecord } from './types'
@@ -77,16 +86,23 @@ async function openLibrary(): Promise<BootState> {
   ])
   const index = progress?.chapterIndex ?? 0
 
-  const [chapter, audio] = await Promise.all([
-    loadChapter(recent, index),
+  const tree = recent.nav ?? flatTree(outline.map((entry) => entry.title))
+  // Reopen at the page that holds the chapter last read, at the finest level,
+  // so returning to a book lands exactly where it was left.
+  const view =
+    viewContaining(tree, Number.MAX_SAFE_INTEGER, index) ?? viewsAtDepth(tree, 0)[0]
+
+  const [pages, audio] = await Promise.all([
+    view ? loadView(recent, view.leaves) : Promise.resolve([]),
     loadChapterAudio(recent, index),
   ])
 
   return {
     bookId: recent.id,
     outline,
+    view: view ?? null,
     index,
-    chapter,
+    pages,
     audio,
     position: progress
       ? { sentenceId: progress.sentenceId, audioTime: progress.audioTime }
@@ -97,8 +113,9 @@ async function openLibrary(): Promise<BootState> {
 type BootState = {
   bookId: string
   outline: ChapterOutline[]
+  view: NavView | null
   index: number
-  chapter: ReadableChapter | null
+  pages: ReadableChapter[]
   audio: Blob | null
   position: StoredPosition | null
 } | null
@@ -117,8 +134,11 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
 
   const [showUpload, setShowUpload] = useState(books.length === 0)
   const [outline, setOutline] = useState<ChapterOutline[]>(initial?.outline ?? [])
+  /** The page on screen: one chapter, or a whole section's worth. */
+  const [view, setView] = useState<NavView | null>(initial?.view ?? null)
+  const [pages, setPages] = useState<ReadableChapter[]>(initial?.pages ?? [])
+  /** Which chapter within the page is being spoken. */
   const [chapterIndex, setChapterIndex] = useState(initial?.index ?? 0)
-  const [chapter, setChapter] = useState<ReadableChapter | null>(initial?.chapter ?? null)
   const [audio, setAudio] = useState<Blob | null>(initial?.audio ?? null)
   /**
    * The book whose chapter is actually loaded.
@@ -140,15 +160,33 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
   const lastSavedRef = useRef(0)
 
 
+  const tree = useMemo(
+    () => book?.nav ?? flatTree(outline.map((entry) => entry.title)),
+    [book, outline],
+  )
+
+  const activeChapter = useMemo(
+    () => pages.find((page) => page.index === chapterIndex) ?? null,
+    [pages, chapterIndex],
+  )
+
+  /**
+   * Where playback goes after the chapter that just ended.
+   *
+   * Within a page it is simply the next chapter on it. At the end of a page it
+   * is the next page at the SAME depth — sibling sections included — which is
+   * what carries the reader from the last chapter of one section into the first
+   * of the next without skipping anything between them.
+   */
+  const advanceRef = useRef<() => void>(() => {})
+
   const playback = usePlaybackEngine({
     mode: book?.mode ?? 'narrated',
-    chapter,
+    chapter: activeChapter,
     audio,
     rate,
     initialPosition: initial?.position,
-    onChapterEnd: () => {
-      if (chapterIndex < outline.length - 1) goToChapter(chapterIndex + 1)
-    },
+    onChapterEnd: () => advanceRef.current(),
   })
 
   const { state, toggle, seekTo, seekToSentence, restore } = playback
@@ -160,29 +198,36 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
     toggle()
   }, [autoCollapseRail, state.playing, toggle])
 
-  // Chapter content is loaded by whatever changes the chapter, not by an effect
-  // watching the index. That keeps the load and the navigation in one place and
-  // avoids a render pass showing the previous chapter's text.
-  const openChapter = useCallback(
+  /**
+   * Open a page.
+   *
+   * Content is loaded by whatever changes the page, not by an effect watching
+   * state, so the load and the navigation stay in one place and no render shows
+   * the previous book's text under this book's title.
+   */
+  const openView = useCallback(
     async (
       record: BookRecord,
-      index: number,
+      nextView: NavView,
+      startAt?: number,
       resumeAt?: string,
       nextOutline?: ChapterOutline[],
     ) => {
+      const first = startAt ?? nextView.leaves[0]
       const [content, clip] = await Promise.all([
-        loadChapter(record, index),
-        loadChapterAudio(record, index),
+        loadView(record, nextView.leaves),
+        loadChapterAudio(record, first),
       ])
-      // Everything describing the book lands together. Setting the outline
-      // earlier would render one book's chapter tabs above another's text.
+
+      // Everything describing the book lands together.
       if (nextOutline) setOutline(nextOutline)
-      setChapterIndex(index)
-      setChapter(content)
+      setView(nextView)
+      setPages(content)
+      setChapterIndex(first)
       setAudio(clip)
       setOpenedBookId(record.id)
 
-      if (resumeAt && content) {
+      if (resumeAt && content.length > 0) {
         const separator = resumeAt.lastIndexOf(':')
         restore(resumeAt.slice(0, separator), Number(resumeAt.slice(separator + 1)) || 0)
       }
@@ -190,14 +235,50 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
     [restore],
   )
 
-  const goToChapter = useCallback(
-    (index: number) => {
-      if (book) void openChapter(book, index)
+  /** Move to another chapter already on this page — no reload needed. */
+  const goToChapterOnPage = useCallback(
+    async (record: BookRecord, index: number) => {
+      const clip = await loadChapterAudio(record, index)
+      setChapterIndex(index)
+      setAudio(clip)
     },
-    [book, openChapter],
+    [],
   )
 
-  // Book selection: load its outline and jump to wherever reading stopped.
+  const selectNode = useCallback(
+    (nodeId: string) => {
+      if (!book) return
+      const next = viewForNode(tree, nodeId)
+      if (next) void openView(book, next)
+    },
+    [book, openView, tree],
+  )
+
+  const advance = useCallback(() => {
+    if (!book || !view) return
+
+    // Still chapters left on this page: stay put and swap the audio.
+    const position = view.leaves.indexOf(chapterIndex)
+    const onwards = view.leaves[position + 1]
+    if (onwards !== undefined) {
+      void goToChapterOnPage(book, onwards)
+      return
+    }
+
+    // Page finished: the next page at this level. Because those pages tile the
+    // book, this crosses from the last chapter of one section into the first of
+    // the next without stepping over anything in between.
+    const following = nextView(tree, view)
+    if (following) void openView(book, following)
+  }, [book, chapterIndex, goToChapterOnPage, openView, tree, view])
+
+  // Held in a ref so the playback hook keeps one stable callback while the
+  // logic behind it sees current state. Written in an effect, not during render.
+  useEffect(() => {
+    advanceRef.current = advance
+  }, [advance])
+
+  // Book selection: load its contents and reopen where reading stopped.
   const openBook = useCallback(
     async (bookId: string) => {
       const record = await db.getBook(bookId)
@@ -208,15 +289,23 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
         db.getProgress(bookId),
       ])
 
-      await openChapter(
+      const bookTree = record.nav ?? flatTree(chapters.map((c) => c.title))
+      const index = progress?.chapterIndex ?? 0
+      const target =
+        viewContaining(bookTree, Number.MAX_SAFE_INTEGER, index) ??
+        viewsAtDepth(bookTree, 0)[0]
+      if (!target) return
+
+      await openView(
         record,
-        progress?.chapterIndex ?? 0,
+        target,
+        index,
         progress ? `${progress.sentenceId}:${progress.audioTime}` : undefined,
         chapters,
       )
       log.log(`[${bookId}] opened — ${chapters.length} chapters`)
     },
-    [openChapter],
+    [openView],
   )
 
   // Selecting in the rail is a user action; loading follows from it.
@@ -237,25 +326,26 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
   const incomplete =
     showingCurrentBook &&
     book.mode !== 'live' &&
-    (!audio || (chapter?.timeline.length ?? 0) === 0)
+    (!audio || (activeChapter?.timeline.length ?? 0) === 0)
 
   useEffect(() => {
-    if (!book || !incomplete) return
+    if (!book || !incomplete || !view) return
     let cancelled = false
 
     void Promise.all([
-      loadChapter(book, chapterIndex),
+      loadView(book, view.leaves),
       loadChapterAudio(book, chapterIndex),
     ]).then(([content, clip]) => {
       if (cancelled) return
-      // Only replace the chapter once it actually gained timings — swapping in
-      // another timing-less copy would just restart this cycle.
-      if (content && content.timeline.length > 0) setChapter(content)
+      // Only replace the page once the chapter being read actually gained its
+      // timings — swapping in another timing-less copy restarts this cycle.
+      const refreshed = content.find((c) => c.index === chapterIndex)
+      if (refreshed && refreshed.timeline.length > 0) setPages(content)
       if (clip) setAudio(clip)
     })
 
     return () => { cancelled = true }
-  }, [book, book?.status, book?.updatedAt, chapterIndex, incomplete])
+  }, [book, book?.status, book?.updatedAt, chapterIndex, incomplete, view])
 
   // Persist the reading position, debounced while playing and once on the way
   // out so closing the tab mid-sentence still resumes correctly.
@@ -302,7 +392,31 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
     [saveSettings],
   )
 
-  const chapterReady = Boolean(chapter) && (book?.mode === 'live' || Boolean(audio))
+  const chapterReady = Boolean(activeChapter) && (book?.mode === 'live' || Boolean(audio))
+
+  /** Chapters with no audio yet, so the tree can show what is not ready. */
+  const pendingChapters = useMemo(
+    () => new Set(outline.filter((entry) => !entry.narrated).map((entry) => entry.index)),
+    [outline],
+  )
+
+  // Stepping with the transport moves one page at a time, matching the level
+  // the reader chose in the tree.
+  const viewsAtThisLevel = useMemo(
+    () => (view ? viewsAtDepth(tree, view.depth) : []),
+    [tree, view],
+  )
+  const viewPosition = view
+    ? viewsAtThisLevel.findIndex((candidate) => candidate.id === view.id)
+    : -1
+
+  const stepView = useCallback(
+    (delta: number) => {
+      const target = viewsAtThisLevel[viewPosition + delta]
+      if (book && target) void openView(book, target)
+    },
+    [book, openView, viewPosition, viewsAtThisLevel],
+  )
 
   return (
     <div className="studio-root">
@@ -316,7 +430,25 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
           labelExpand="Show library"
           labelCollapse="Hide library"
         >
-          <BookRail onAdd={() => setShowUpload(true)} onSelect={selectBook} />
+          <div className="flex flex-col h-full min-h-0">
+            <div className="shrink-0 max-h-[45%] overflow-y-auto border-b border-border">
+              <BookRail onAdd={() => setShowUpload(true)} onSelect={selectBook} />
+            </div>
+            {book && tree.length > 0 && (
+              <div className="flex-1 min-h-0 overflow-y-auto p-2">
+                <p className="px-1 pb-1 text-[0.65rem] uppercase tracking-wide text-on-surface-muted/70">
+                  Contents
+                </p>
+                <ChapterTree
+                  tree={tree}
+                  selectedId={view?.id ?? null}
+                  playingChapter={chapterIndex}
+                  pendingChapters={pendingChapters}
+                  onSelect={selectNode}
+                />
+              </div>
+            )}
+          </div>
         </CollapsiblePanel>
 
         <div className="flex-1 min-w-0 flex flex-col">
@@ -336,31 +468,11 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
                 voiceId={settings.voiceId}
               />
 
-              {outline.length > 1 && (
-                <div className="shrink-0 flex items-center gap-2 px-6 py-2 border-b border-border overflow-x-auto">
-                  {outline.map((entry) => (
-                    <button
-                      key={entry.index}
-                      type="button"
-                      onClick={() => goToChapter(entry.index)}
-                      title={entry.narrated ? entry.title : `${entry.title} — not narrated yet`}
-                      className={
-                        entry.index === chapterIndex
-                          ? 'px-2.5 py-1 text-xs rounded-lg border border-accent text-accent whitespace-nowrap'
-                          : entry.narrated
-                            ? 'px-2.5 py-1 text-xs rounded-lg border border-border text-on-surface-muted hover:bg-surface-hover whitespace-nowrap transition-colors duration-150'
-                            : 'px-2.5 py-1 text-xs rounded-lg border border-dashed border-border text-on-surface-muted/60 whitespace-nowrap'
-                      }
-                    >
-                      {entry.index + 1}. {entry.title}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {chapter ? (
+              {pages.length > 0 ? (
                 <Reader
-                  chapter={chapter}
+                  key={view?.id}
+                  chapters={pages}
+                  activeChapterIndex={chapterIndex}
                   activeSentenceId={state.activeSentenceId}
                   wordRange={state.wordRange}
                   autoFollow={settings.autoFollow}
@@ -379,14 +491,14 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
               <TransportBar
                 state={state}
                 rate={rate}
-                chapterTitle={chapter?.title ?? ''}
-                chapterIndex={chapterIndex}
-                chapterCount={Math.max(outline.length, 1)}
+                chapterTitle={view?.title ?? ''}
+                chapterIndex={Math.max(viewPosition, 0)}
+                chapterCount={Math.max(viewsAtThisLevel.length, 1)}
                 ready={chapterReady}
                 onToggle={handleToggle}
                 onSeek={seekTo}
                 onRate={handleRate}
-                onChapter={goToChapter}
+                onChapter={(index) => stepView(index - viewPosition)}
               />
             </>
           )}

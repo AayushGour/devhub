@@ -15,6 +15,7 @@ import { isWebGpuAvailable } from '@/lib/webgpu'
 import * as db from './db'
 import { clearBookCache, loadOutline } from './bookSource'
 import { buildSentences } from './sentences'
+import { flatTree, reconcile } from './navTree'
 import { chapterId } from './epubWrite'
 import type { ChapterInput } from './epubWrite'
 import { useAudiobookStore } from '../store/audiobookStore'
@@ -335,6 +336,17 @@ async function storeParsedBook(
     })
   }
 
+  // The source's own nesting, checked against the chapters that actually
+  // exist: a contents page can name documents the spine does not carry, and can
+  // omit ones it does. Anything missing is appended in reading order so no
+  // chapter is unreachable from the tree.
+  const titles = parsed.chapters.map((chapter) => chapter.title)
+  const nav = reconcile(
+    parsed.nav ?? flatTree(titles),
+    parsed.chapters.length,
+    (index) => titles[index] ?? `Chapter ${index + 1}`,
+  )
+
   // A live book is readable the moment it is parsed — there is no audio to make.
   const status = options.mode === 'live' ? 'ready' : 'ready-to-narrate'
 
@@ -344,6 +356,7 @@ async function storeParsedBook(
     language: parsed.language,
     sourceType,
     ocrUsed,
+    nav,
     chapterCount: parsed.chapters.length,
     status,
     coverBlob: parsed.cover
@@ -378,6 +391,7 @@ async function adoptNarratedEpub(
     language: parsed.language,
     sourceType: 'epub3-narrated',
     mode: 'narrated',
+    nav: parsed.nav,
     chapterCount: Math.min(parsed.chapters.length, overlays.length || parsed.chapters.length),
     overlays,
     status: 'ready',

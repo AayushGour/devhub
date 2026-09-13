@@ -185,6 +185,48 @@ export function findElements(source: string, names: string[]): ElementMatch[] {
   return out
 }
 
+/**
+ * Only the outermost occurrences of the named elements.
+ *
+ * Reading a nested table of contents needs the direct children of a list, not
+ * every descendant — `findElements` returns both, which flattens the very
+ * structure being recovered.
+ */
+export function findChildElements(source: string, names: string[]): ElementMatch[] {
+  const wanted = new Set(names.map((n) => n.toLowerCase()))
+  const out: ElementMatch[] = []
+
+  let open: { name: string; attrs: string; contentStart: number } | null = null
+  let depth = 0
+
+  for (const token of tokenize(source)) {
+    if (token.kind === 'open' && wanted.has(token.name)) {
+      if (token.selfClosing) {
+        if (!open) out.push({ name: token.name, attrs: token.attrs, inner: '' })
+        continue
+      }
+      if (open) depth++
+      else open = { name: token.name, attrs: token.attrs, contentStart: token.contentStart }
+      continue
+    }
+
+    if (token.kind === 'close' && wanted.has(token.name) && open) {
+      if (depth > 0) {
+        depth--
+        continue
+      }
+      out.push({
+        name: open.name,
+        attrs: open.attrs,
+        inner: source.slice(open.contentStart, token.tagStart),
+      })
+      open = null
+    }
+  }
+
+  return out
+}
+
 /** First matching element, or undefined. */
 export function findElement(source: string, name: string): ElementMatch | undefined {
   return findElements(source, [name])[0]

@@ -5,7 +5,10 @@ import type { Block, SentenceSpan } from '../types'
 import type { WordSpan } from '../utils/timeline'
 
 interface Props {
-  chapter: ReadableChapter
+  /** Every chapter on this page, in document order. */
+  chapters: ReadableChapter[]
+  /** Index of the chapter currently being spoken. */
+  activeChapterIndex: number | null
   activeSentenceId: string | null
   wordRange: WordSpan | null
   autoFollow: boolean
@@ -28,7 +31,8 @@ const BLOCK_CLASS: Record<Block['type'], string> = {
 }
 
 export default function Reader({
-  chapter,
+  chapters,
+  activeChapterIndex,
   activeSentenceId,
   wordRange,
   autoFollow,
@@ -38,19 +42,74 @@ export default function Reader({
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const activeRef = useRef<HTMLSpanElement | null>(null)
 
-  const sentencesByBlock = useMemo(() => {
-    const map = new Map<number, SentenceSpan[]>()
-    for (const sentence of chapter.sentences) {
-      const list = map.get(sentence.blockIdx)
-      if (list) list.push(sentence)
-      else map.set(sentence.blockIdx, [sentence])
-    }
-    return map
-  }, [chapter])
+  // Sentence ids restart at s1 in every chapter, so a page holding several of
+  // them needs the chapter to disambiguate before anything can be highlighted.
+  const byChapter = useMemo(
+    () =>
+      chapters.map((chapter) => {
+        const map = new Map<number, SentenceSpan[]>()
+        for (const sentence of chapter.sentences) {
+          const list = map.get(sentence.blockIdx)
+          if (list) list.push(sentence)
+          else map.set(sentence.blockIdx, [sentence])
+        }
+        return map
+      }),
+    [chapters],
+  )
 
-  // List items must sit inside a list element. Runs of them are gathered here
-  // rather than each being emitted as a stray <li>, which is invalid markup and
-  // renders without its marker.
+  // Keep the spoken line in view. Centring rather than 'nearest' so the reader
+  // is not left reading at the very bottom edge of the pane.
+  useEffect(() => {
+    if (!autoFollow || !activeSentenceId) return
+    activeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [activeSentenceId, autoFollow])
+
+  return (
+    <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-6 py-8">
+      <article
+        className="max-w-[42rem] mx-auto text-on-surface leading-[1.75]"
+        // Reader-controlled type size — a runtime value, not a fixed utility.
+        style={{ fontSize: `${fontSizeRem}rem` }}
+      >
+        {chapters.map((chapter, chapterPos) => (
+          <ChapterBody
+            key={chapter.index}
+            chapter={chapter}
+            sentencesByBlock={byChapter[chapterPos]}
+            isActive={chapter.index === activeChapterIndex}
+            activeSentenceId={activeSentenceId}
+            wordRange={wordRange}
+            activeRef={activeRef}
+            onSeekToSentence={onSeekToSentence}
+          />
+        ))}
+      </article>
+    </div>
+  )
+}
+
+interface ChapterBodyProps {
+  chapter: ReadableChapter
+  sentencesByBlock: Map<number, SentenceSpan[]>
+  isActive: boolean
+  activeSentenceId: string | null
+  wordRange: WordSpan | null
+  activeRef: React.RefObject<HTMLSpanElement | null>
+  onSeekToSentence: (sentenceId: string) => void
+}
+
+function ChapterBody({
+  chapter,
+  sentencesByBlock,
+  isActive,
+  activeSentenceId,
+  wordRange,
+  activeRef,
+  onSeekToSentence,
+}: ChapterBodyProps) {
+  // List items must sit inside a list element. Runs of them are gathered rather
+  // than emitted as stray <li>, which is invalid markup and loses the marker.
   const groups = useMemo(() => {
     const out: { list: boolean; blocks: { block: Block; blockIdx: number }[] }[] = []
     chapter.blocks.forEach((block, blockIdx) => {
@@ -69,50 +128,39 @@ export default function Reader({
       <Sentence
         key={span.id}
         span={span}
-        active={span.id === activeSentenceId}
-        wordRange={span.id === activeSentenceId ? wordRange : null}
-        activeRef={span.id === activeSentenceId ? activeRef : undefined}
+        // Only the chapter being spoken may highlight: sentence ids restart at
+        // s1 in each one, so every chapter on the page holds an "s1".
+        active={isActive && span.id === activeSentenceId}
+        wordRange={isActive && span.id === activeSentenceId ? wordRange : null}
+        activeRef={isActive && span.id === activeSentenceId ? activeRef : undefined}
         onSeek={onSeekToSentence}
       />
     ))
   }
 
-  // Keep the spoken line in view. `nearest` rather than `center` so short jumps
-  // within a visible paragraph do not yank the page around.
-  useEffect(() => {
-    if (!autoFollow || !activeSentenceId) return
-    activeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [activeSentenceId, autoFollow])
-
   return (
-    <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-6 py-8">
-      <article
-        className="max-w-[42rem] mx-auto text-on-surface leading-[1.75]"
-        // Reader-controlled type size — a runtime value, not a fixed utility.
-        style={{ fontSize: `${fontSizeRem}rem` }}
-      >
-        {groups.map((group, groupIdx) =>
-          group.list ? (
-            <ul key={groupIdx} className="mb-5 list-disc pl-6">
-              {group.blocks.map(({ block, blockIdx }) => (
-                <li key={blockIdx} className={BLOCK_CLASS[block.type]}>
-                  {renderBlock(block, blockIdx)}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            group.blocks.map(({ block, blockIdx }) => {
-              const Tag = BLOCK_TAG[block.type]
-              return (
-                <Tag key={blockIdx} className={BLOCK_CLASS[block.type]}>
-                  {renderBlock(block, blockIdx)}
-                </Tag>
-              )
-            })
-          ),
-        )}
-      </article>
-    </div>
+    <section className="mb-12 last:mb-0">
+      {groups.map((group, groupIdx) =>
+        group.list ? (
+          <ul key={groupIdx} className="mb-5 list-disc pl-6">
+            {group.blocks.map(({ block, blockIdx }) => (
+              <li key={blockIdx} className={BLOCK_CLASS[block.type]}>
+                {renderBlock(block, blockIdx)}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          group.blocks.map(({ block, blockIdx }) => {
+            const Tag = BLOCK_TAG[block.type]
+            return (
+              <Tag key={blockIdx} className={BLOCK_CLASS[block.type]}>
+                {renderBlock(block, blockIdx)}
+              </Tag>
+            )
+          })
+        ),
+      )}
+    </section>
   )
 }
 

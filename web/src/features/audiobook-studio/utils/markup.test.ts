@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { decodeEntities, findElement, findElements, getAttr, textContent } from './markup'
+import {
+  decodeEntities,
+  findChildElements,
+  findElement,
+  findElements,
+  getAttr,
+  textContent,
+} from './markup'
 import { titleFromHref } from './epubRead'
 import { extractBlocks } from './htmlBlocks'
 
@@ -165,5 +172,31 @@ describe('titleFromHref', () => {
 
   it('gives nothing back when the name carries no words', () => {
     expect(titleFromHref('text/0001.xhtml')).toBe('')
+  })
+})
+
+describe('findChildElements', () => {
+  const list = `<ol>
+    <li><a href="a.xhtml">Section 1</a>
+      <ol><li><a href="b.xhtml">Chapter 1</a></li>
+          <li><a href="c.xhtml">Chapter 2</a></li></ol>
+    </li>
+    <li><a href="d.xhtml">Section 2</a></li>
+  </ol>`
+
+  it('returns only the outermost matches, not every descendant', () => {
+    const outer = findElement(list, 'ol')!
+    const items = findChildElements(outer.inner, ['li'])
+    // Two sections, not two sections plus two nested chapters.
+    expect(items).toHaveLength(2)
+    expect(items.map((i) => textContent(findElement(i.inner, 'a')!.inner)))
+      .toEqual(['Section 1', 'Section 2'])
+  })
+
+  it('keeps the nested list available inside its parent', () => {
+    const outer = findElement(list, 'ol')!
+    const first = findChildElements(outer.inner, ['li'])[0]
+    const nested = findElement(first.inner, 'ol')!
+    expect(findChildElements(nested.inner, ['li'])).toHaveLength(2)
   })
 })
