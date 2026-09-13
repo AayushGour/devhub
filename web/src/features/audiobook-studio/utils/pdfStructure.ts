@@ -28,6 +28,9 @@ export interface PdfTextItem {
   width: number
   height: number
   fontName?: string
+  /** Read from the font name — see pdfRead.styleOf. */
+  bold?: boolean
+  italic?: boolean
 }
 
 export interface PdfPage {
@@ -43,6 +46,8 @@ export interface Line {
   x1: number
   height: number
   text: string
+  /** True when every run on the line is bold. */
+  bold: boolean
 }
 
 export interface Paragraph {
@@ -52,6 +57,7 @@ export interface Paragraph {
   x0: number
   /** Baseline of the first line. Larger is higher on the page. */
   y: number
+  bold: boolean
   pageIndex: number
   /** True when the paragraph ran to the bottom of its column. */
   continues: boolean
@@ -127,9 +133,17 @@ export function stripRunningHeads(pages: PdfPage[], threshold = 0.6): PdfPage[] 
   }))
 }
 
+/**
+ * Whether an item sits where furniture lives.
+ *
+ * A tenth of the page misses running heads set a little further in; much more
+ * than an eighth starts to cover the first line of body text on a page with
+ * narrow margins, and recurrence alone will not save a line that genuinely
+ * repeats. A twelfth is the honest compromise.
+ */
 function inMargin(item: PdfTextItem, page: PdfPage): boolean {
-  const top = page.height * 0.9
-  const bottom = page.height * 0.1
+  const top = page.height * 0.88
+  const bottom = page.height * 0.12
   return item.y >= top || item.y <= bottom
 }
 
@@ -149,11 +163,22 @@ export function findColumnGutter(page: PdfPage, minGapRatio = 0.06): number | nu
   const BINS = 60
   const covered = new Array<number>(BINS).fill(0)
 
+  // A heading, rule or figure spanning the page crosses the gutter. Counting
+  // those closes the only gap there is, and the columns then interleave
+  // line-by-line into nonsense. They are excluded from the profile, not from
+  // the page — the gutter describes where the BODY text is not.
+  const spanning = page.width * 0.6
   for (const item of page.items) {
+    if (item.width >= spanning) continue
     const from = Math.max(0, Math.floor((item.x / page.width) * BINS))
     const to = Math.min(BINS - 1, Math.floor(((item.x + item.width) / page.width) * BINS))
     for (let i = from; i <= to; i++) covered[i] += 1
   }
+
+  // A gutter is where text is scarce, not necessarily absent: a stray footnote
+  // marker or a hyphen should not disqualify it.
+  const busiest = Math.max(...covered)
+  const isGap = (count: number) => count <= Math.max(0, busiest * 0.02)
 
   // Only consider gutters near the middle — a wide outer margin is not a column.
   const from = Math.floor(BINS * 0.3)
@@ -164,7 +189,7 @@ export function findColumnGutter(page: PdfPage, minGapRatio = 0.06): number | nu
   let runStart = -1
 
   for (let i = from; i <= to; i++) {
-    if (covered[i] === 0) {
+    if (isGap(covered[i])) {
       if (runStart === -1) runStart = i
       const length = i - runStart + 1
       if (length > bestLength) {
@@ -227,6 +252,8 @@ export function assembleLines(items: PdfTextItem[]): Line[] {
       x1: previousEnd ?? ordered[0].x,
       height: Math.max(...ordered.map((i) => i.height)),
       text: text.replace(/\s+/g, ' ').trim(),
+      // Partly-bold text is emphasis inside a sentence, not a heading.
+      bold: ordered.every((i) => i.bold === true),
     })
     bucket = []
   }
@@ -263,6 +290,7 @@ export function groupParagraphs(lines: Line[], pageIndex: number): Paragraph[] {
       height: Math.max(...current.map((line) => line.height)),
       x0: current[0].x0,
       y: current[0].y,
+      bold: current.every((line) => line.bold),
       pageIndex,
       continues,
     })
@@ -337,23 +365,41 @@ export function classifyParagraphs(paragraphs: Paragraph[]): Block[] {
   if (paragraphs.length === 0) return []
 
   const bodyHeight = bodyTextHeight(paragraphs)
+  const short = (p: Paragraph) => p.text.length <= SHORT_ENOUGH_FOR_A_HEADING
 
   // Distinct heading sizes, largest first — rank becomes heading level.
   const headingSizes = [
     ...new Set(
       paragraphs
-        .filter((p) => p.height > bodyHeight * 1.2 && p.text.length <= SHORT_ENOUGH_FOR_A_HEADING)
+        .filter((p) => p.height > bodyHeight * 1.2 && short(p))
         .map((p) => Math.round(p.height * 2) / 2),
     ),
   ].sort((a, b) => b - a)
+
+  // Weight is the signal size misses: plenty of documents mark a heading by
+  // setting it bold at the very same size as the body, which no size cluster
+  // can see. It only counts when bold is scarce — where most of the text is
+  // bold it says nothing, and a whole document would become headings.
+  const boldChars = paragraphs
+    .filter((p) => p.bold)
+    .reduce((n, p) => n + p.text.length, 0)
+  const totalChars = paragraphs.reduce((n, p) => n + p.text.length, 0)
+  const boldMeansHeading = totalChars > 0 && boldChars / totalChars < 0.25
 
   return paragraphs.map((paragraph) => {
     const size = Math.round(paragraph.height * 2) / 2
     const rank = headingSizes.indexOf(size)
 
-    if (rank !== -1 && paragraph.text.length <= SHORT_ENOUGH_FOR_A_HEADING) {
+    if (rank !== -1 && short(paragraph)) {
       return { type: (['h1', 'h2', 'h3'] as const)[Math.min(rank, 2)], text: paragraph.text }
     }
+
+    // A bold line at body size sits below every size-distinguished heading.
+    if (boldMeansHeading && paragraph.bold && short(paragraph)) {
+      const level = Math.min(headingSizes.length, 2)
+      return { type: (['h1', 'h2', 'h3'] as const)[level], text: paragraph.text }
+    }
+
     return { type: 'p' as const, text: paragraph.text }
   })
 }
@@ -427,9 +473,22 @@ export function buildChapters(
   const merged: Paragraph[] = []
   for (const paragraph of paragraphs) {
     const previous = merged[merged.length - 1]
-    // A heading never runs onto the next page, whatever its punctuation.
-    const previousIsHeading = previous && previous.height > bodyHeight * 1.2
-    if (previous?.continues && !previousIsHeading && previous.pageIndex !== paragraph.pageIndex) {
+    // A heading never runs onto the next page, whatever its punctuation — and
+    // nothing runs INTO a heading either. A printed contents page ends without
+    // a full stop, so it looks unfinished and would otherwise absorb the
+    // following chapter's title, losing the chapter break entirely.
+    const isHeading = (p: Paragraph) => p.height > bodyHeight * 1.2
+    const sameSize =
+      previous !== undefined &&
+      Math.abs(previous.height - paragraph.height) <= Math.max(0.5, previous.height * 0.15)
+
+    if (
+      previous?.continues &&
+      sameSize &&
+      !isHeading(previous) &&
+      !isHeading(paragraph) &&
+      previous.pageIndex !== paragraph.pageIndex
+    ) {
       previous.text = dehyphenate(`${previous.text} ${paragraph.text}`)
       previous.continues = paragraph.continues
       continue

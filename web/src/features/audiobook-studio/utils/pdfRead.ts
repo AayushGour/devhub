@@ -20,6 +20,12 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pd
 /** Below this, a page is assumed to be a scan rather than real text. */
 const MIN_CHARS_FOR_TEXT_LAYER = 20
 
+/**
+ * How deep the outline is followed. Three levels covers Part > Chapter >
+ * Section; beyond that the entries are usually finer than a listener navigates.
+ */
+const MAX_OUTLINE_DEPTH = 3
+
 /** OCR renders at this scale — below ~2x, recognition quality falls off badly. */
 const OCR_SCALE = 2
 
@@ -35,18 +41,64 @@ interface RawTextItem {
   fontName?: string
 }
 
-function toItems(content: { items: unknown[] }): PdfTextItem[] {
+/**
+ * Weight and slope, read from the font's name.
+ *
+ * pdf.js exposes `bold` and `italic` on the font object, but only for fonts it
+ * had to substitute — an embedded Arial-BoldMT reports neither. The name is
+ * what actually carries the information.
+ */
+function styleOf(name: string | undefined): { bold: boolean; italic: boolean } {
+  const clean = (name ?? '').replace(/^[A-Z]{6}\+/, '')
+  return {
+    bold: /bold|black|heavy|semibold|demibold|[-_]bd\b/i.test(clean),
+    italic: /italic|oblique|[-_]it\b/i.test(clean),
+  }
+}
+
+/**
+ * Real font names, keyed by the id `getTextContent` reports.
+ *
+ * Text content only carries an internal id such as `g_d0_f1`; the descriptor
+ * lives in `commonObjs`, and that is not populated until the page's operator
+ * list has been built. Without this step every run looks like the same font.
+ */
+async function fontNames(page: pdfjs.PDFPageProxy, ids: Iterable<string>): Promise<Map<string, string>> {
+  const names = new Map<string, string>()
+  try {
+    await page.getOperatorList()
+  } catch {
+    return names
+  }
+  for (const id of ids) {
+    try {
+      const font = page.commonObjs.get(id) as { name?: string } | undefined
+      if (font?.name) names.set(id, font.name)
+    } catch {
+      // A font the page never actually drew; nothing to record.
+    }
+  }
+  return names
+}
+
+function toItems(content: { items: unknown[] }, names: Map<string, string>): PdfTextItem[] {
   return (content.items as RawTextItem[])
     .filter((item) => typeof item.str === 'string' && item.str.trim().length > 0)
-    .map((item) => ({
-      str: item.str,
-      x: item.transform[4],
-      y: item.transform[5],
-      width: item.width,
-      // A zero-height run would break every size comparison downstream.
-      height: item.height || Math.abs(item.transform[3]) || 10,
-      fontName: item.fontName,
-    }))
+    .map((item) => {
+      const fontName = names.get(item.fontName ?? '') ?? item.fontName
+      const { bold, italic } = styleOf(fontName)
+      return {
+        str: item.str,
+        x: item.transform[4],
+        y: item.transform[5],
+        width: item.width,
+        // A zero-height run would break every size comparison downstream.
+        height: item.height || Math.abs(item.transform[3]) || 10,
+        fontName,
+        bold,
+        italic,
+      }
+    })
 }
 
 /** Flatten the PDF outline into chapter starts, resolving destinations to pages. */
@@ -84,8 +136,12 @@ async function readOutline(
       } catch {
         // A broken destination is common in the wild; skip that entry only.
       }
-      // Two levels is as deep as a brief or a book usually labels itself.
-      if (depth === 0 && node.items?.length) await walk(node.items, depth + 1)
+      // Recurse to the outline's own depth. Stopping at the first level threw
+      // away every grandchild entry, so a book labelled Part > Chapter >
+      // Section lost its sections outright.
+      if (depth < MAX_OUTLINE_DEPTH && node.items?.length) {
+        await walk(node.items, depth + 1)
+      }
     }
   }
 
@@ -176,7 +232,10 @@ export async function readPdf(
     const viewport = page.getViewport({ scale: 1 })
     const content = await page.getTextContent()
 
-    let items = toItems(content)
+    const ids = new Set(
+      (content.items as RawTextItem[]).map((item) => item.fontName).filter(Boolean) as string[],
+    )
+    let items = toItems(content, await fontNames(page, ids))
     const charCount = items.reduce((sum, item) => sum + item.str.length, 0)
 
     if (charCount < MIN_CHARS_FOR_TEXT_LAYER) {

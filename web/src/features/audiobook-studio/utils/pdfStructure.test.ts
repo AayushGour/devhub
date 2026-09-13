@@ -140,10 +140,10 @@ describe('groupParagraphs', () => {
 describe('classifyParagraphs', () => {
   it('ranks distinct large sizes into heading levels', () => {
     const blocks = classifyParagraphs([
-      { text: 'Chapter One', height: 24, x0: 72, y: 700, pageIndex: 0, continues: false },
-      { text: 'A Section', height: 16, x0: 72, y: 700, pageIndex: 0, continues: false },
-      { text: 'Ordinary body prose that runs on for a while.', height: 10, x0: 72, y: 700, pageIndex: 0, continues: false },
-      { text: 'More ordinary body prose.', height: 10, x0: 72, y: 700, pageIndex: 0, continues: false },
+      { text: 'Chapter One', height: 24, x0: 72, y: 700, bold: false, pageIndex: 0, continues: false },
+      { text: 'A Section', height: 16, x0: 72, y: 700, bold: false, pageIndex: 0, continues: false },
+      { text: 'Ordinary body prose that runs on for a while.', height: 10, x0: 72, y: 700, bold: false, pageIndex: 0, continues: false },
+      { text: 'More ordinary body prose.', height: 10, x0: 72, y: 700, bold: false, pageIndex: 0, continues: false },
     ])
     expect(blocks.map((b) => b.type)).toEqual(['h1', 'h2', 'p', 'p'])
   })
@@ -151,9 +151,9 @@ describe('classifyParagraphs', () => {
   it('does not promote a long line just because it is set larger', () => {
     const long = 'x'.repeat(200)
     const blocks = classifyParagraphs([
-      { text: long, height: 24, x0: 72, y: 700, pageIndex: 0, continues: false },
-      { text: 'body', height: 10, x0: 72, y: 700, pageIndex: 0, continues: false },
-      { text: 'body two', height: 10, x0: 72, y: 700, pageIndex: 0, continues: false },
+      { text: long, height: 24, x0: 72, y: 700, bold: false, pageIndex: 0, continues: false },
+      { text: 'body', height: 10, x0: 72, y: 700, bold: false, pageIndex: 0, continues: false },
+      { text: 'body two', height: 10, x0: 72, y: 700, bold: false, pageIndex: 0, continues: false },
     ])
     expect(blocks[0].type).toBe('p')
   })
@@ -273,5 +273,74 @@ describe('multi-line headings', () => {
     const blocks = buildChapters(pages, [])[0].blocks
     const heading = blocks.find((b) => b.type.startsWith('h'))
     expect(heading?.text).toBe('2. Current state (what already exists do not rebuild these)')
+  })
+})
+
+describe('defects found against real documents', () => {
+  it('finds the gutter on a two-column page carrying a full-width heading', () => {
+    // The heading crosses the gutter, closing the only gap on the page. Counted
+    // as body text it hides the columns entirely and the two interleave.
+    const items: PdfTextItem[] = [
+      { str: 'A Heading Across The Whole Page', x: 40, y: 760, width: 520, height: 18 },
+    ]
+    for (let i = 0; i < 15; i++) {
+      items.push({ str: 'left column text', x: 40, y: 700 - i * 14, width: 220, height: 10 })
+      items.push({ str: 'right column text', x: 330, y: 700 - i * 14, width: 220, height: 10 })
+    }
+    const gutter = findColumnGutter(page(0, items))
+    expect(gutter).not.toBeNull()
+    expect(gutter!).toBeGreaterThan(260)
+    expect(gutter!).toBeLessThan(330)
+  })
+
+  it('strips a running head set further in than a tenth of the page', () => {
+    // 11.7% down — outside the old band, still plainly furniture.
+    const y = Math.round(PAGE_H * (1 - 0.117))
+    const pages = [1, 2, 3, 4, 5].map((n) =>
+      page(n - 1, [
+        item('A History of Salt', 200, y),
+        bodyLine(`Body text of page ${n}.`, 400),
+      ]),
+    )
+    for (const p of stripRunningHeads(pages)) {
+      expect(p.items.map((i) => i.str)).toEqual([expect.stringContaining('Body text')])
+    }
+  })
+
+  it('does not let an unfinished page absorb the next page heading', () => {
+    // A printed contents page ends without a full stop, so it looks like it
+    // continues — and would swallow the chapter title that follows it.
+    const pages = [
+      page(0, [bodyLine('Contents', 700), bodyLine('1. The Salt Roads', 680)]),
+      page(1, [
+        { str: 'Chapter One', x: 72, y: 700, width: 120, height: 20 },
+        bodyLine('The caravans moved at night.', 660),
+      ]),
+    ]
+    const blocks = buildChapters(pages, []).flatMap((c) => c.blocks)
+    const heading = blocks.find((b) => b.type.startsWith('h'))
+    expect(heading?.text).toBe('Chapter One')
+    expect(blocks.some((b) => b.text.includes('Salt Roads') && b.text.includes('Chapter One')))
+      .toBe(false)
+  })
+
+  it('treats a bold line at body size as a heading', () => {
+    // Size alone cannot see this: the heading is set at the body's own size and
+    // marked only by weight.
+    const paragraphs = [
+      { text: 'Why Reparenting Works', height: 11, x0: 72, y: 700, bold: true, pageIndex: 0, continues: false },
+      { text: 'We have spent the last six chapters learning the truth about what wounds us.', height: 11, x0: 72, y: 680, bold: false, pageIndex: 0, continues: false },
+      { text: 'Just like in any relationship, you would not offer advice without knowing the person.', height: 11, x0: 72, y: 660, bold: false, pageIndex: 0, continues: false },
+    ]
+    expect(classifyParagraphs(paragraphs).map((b) => b.type)).toEqual(['h1', 'p', 'p'])
+  })
+
+  it('ignores weight in a document that is mostly bold', () => {
+    // Where bold is the norm it distinguishes nothing.
+    const paragraphs = Array.from({ length: 4 }, (_, i) => ({
+      text: `A bold paragraph of ordinary prose number ${i}.`,
+      height: 11, x0: 72, y: 700 - i * 20, bold: true, pageIndex: 0, continues: false,
+    }))
+    expect(classifyParagraphs(paragraphs).every((b) => b.type === 'p')).toBe(true)
   })
 })
