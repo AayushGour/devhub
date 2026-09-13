@@ -34,3 +34,6 @@ extension/dist
 *.sw?
 
 .playwright-mcp/
+# Vendored at build time by web/scripts/vendor-ocr-assets.mjs
+web/public/tesseract/
+web/public/ort/

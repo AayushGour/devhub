@@ -56,7 +56,7 @@ vi.mock('./db', () => ({
 vi.mock('./bookSource', () => ({ clearBookCache: () => {}, loadOutline: async () => [] }))
 
 let webgpuOk = false
-const isWebGpuAvailable = vi.fn(async () => webgpuOk)
+const isWebGpuAvailable = vi.fn<(limits?: unknown) => Promise<boolean>>(async () => webgpuOk)
 vi.mock('@/lib/webgpu', () => ({
   isWebGpuAvailable: (limits?: unknown) => isWebGpuAvailable(limits),
 }))

@@ -3,12 +3,27 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
+import { createRequire } from 'node:module'
+import { dirname, sep } from 'node:path'
+
+// kokoro-js imports `@huggingface/transformers` as a bare specifier, which
+// resolves to its OWN nested copy — a different version from the one hoisted for
+// rag-studio. Setting `env.backends.onnx.wasm.wasmPaths` only works on that
+// exact module instance, so the narration worker needs a way to import it
+// without forcing every other studio onto kokoro's version.
+const require = createRequire(import.meta.url)
+const kokoroDir = dirname(dirname(require.resolve('kokoro-js')))
+let transformersRoot = dirname(require.resolve('@huggingface/transformers', { paths: [kokoroDir] }))
+while (transformersRoot.split(sep).pop() !== 'transformers') {
+  transformersRoot = dirname(transformersRoot)
+}
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      'kokoro-transformers': transformersRoot,
     },
   },
   base: process.env.VITE_BASE_PATH ?? '/devhub/',

@@ -6,6 +6,12 @@
 // it is attempted only for the pages that need it.
 
 import * as pdfjs from 'pdfjs-dist'
+// `?url` hands back the asset URL without letting Vite transform the module —
+// which is what broke pdf.js's own worker bundle when this was an ordinary
+// import. The worker ships in dist, so a PDF no longer depends on a CDN being
+// reachable, or on it having published the exact pdfjs-dist version we build
+// against.
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { createLogger } from '@/lib/logger'
 import { buildChapters, type PdfOutlineEntry, type PdfPage, type PdfTextItem } from './pdfStructure'
 import { treeFromDepths } from './navTree'
@@ -13,9 +19,7 @@ import type { ParsedBook, ParsedChapter } from './epubRead'
 
 const log = createLogger('audiobook:pdf')
 
-// Matches rag-studio's approach: a CDN worker URL, because Vite's `?import`
-// transformation breaks pdf.js's own worker bundle.
-pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 
 /** Below this, a page is assumed to be a scan rather than real text. */
 const MIN_CHARS_FOR_TEXT_LAYER = 20
@@ -164,7 +168,16 @@ type OcrWorker = Awaited<ReturnType<typeof import('tesseract.js').createWorker>>
  */
 async function ocrWorkerFor(): Promise<OcrWorker> {
   const { createWorker } = await import('tesseract.js')
-  return createWorker('eng')
+
+  // Vendored into public/ by scripts/vendor-ocr-assets.mjs. BASE_URL carries the
+  // deployment prefix (the app is served from a subpath on GitHub Pages), and
+  // always ends in a slash. Without these three, tesseract.js reaches for a CDN.
+  const base = `${import.meta.env.BASE_URL}tesseract/`
+  return createWorker('eng', 1, {
+    workerPath: `${base}worker.min.js`,
+    corePath: `${base}tesseract-core-simd.wasm.js`,
+    langPath: `${base}lang`,
+  })
 }
 
 async function ocrPage(

@@ -9,6 +9,7 @@
 // carry true clipBegin/clipEnd values without a forced-alignment pass.
 
 import { KokoroTTS } from 'kokoro-js'
+import { env } from 'kokoro-transformers'
 import type { SentenceSpan } from '../utils/sentences'
 import type { TimedSentence } from '../utils/timeline'
 
@@ -128,6 +129,15 @@ let inFlightLoad: { key: string; promise: Promise<KokoroTTS> } | null = null
  * the worker cannot be interrupted until the whole chapter is spoken — which
  * for a real chapter is minutes of nothing happening after Stop is pressed.
  */
+// ONNX Runtime loads its own wasm at first inference. Left alone,
+// transformers.js pulls it from jsDelivr, so narration — the core of this
+// feature — silently depends on a third-party CDN being reachable. These are
+// vendored into public/ort by scripts/vendor-ocr-assets.mjs. BASE_URL carries
+// the deployment prefix and always ends in a slash.
+if (env.backends.onnx.wasm) {
+  env.backends.onnx.wasm.wasmPaths = `${import.meta.env.BASE_URL}ort/`
+}
+
 let stopRequested = false
 
 function hasWebGpu(): boolean {

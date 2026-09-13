@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/vendor-ocr-assets.mjs && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "vendor:ocr": "node scripts/vendor-ocr-assets.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
