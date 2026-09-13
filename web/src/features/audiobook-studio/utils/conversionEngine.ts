@@ -488,9 +488,23 @@ async function narrateBook(bookId: string, voiceId: string, speed: number): Prom
   const book = await db.getBook(bookId)
   if (!book) return
 
+  // A sealed book is finished: sealing clears the chapter rows, so narrating it
+  // again would find nothing and mark a complete book as failed. This is
+  // reachable whenever a job row outlives the conversion that wrote it — a
+  // resume racing a seal, or the same book queued twice.
+  if (await db.getArtifact(bookId)) {
+    await db.deleteJob(bookId)
+    store().clearJob(bookId)
+    if (book.status !== 'ready') await publishBook(bookId, { status: 'ready', error: undefined })
+    return
+  }
+
   const chapters = await db.listChapters(bookId)
   if (chapters.length === 0) {
-    await publishBook(bookId, { status: 'error', error: 'No chapters to narrate.' })
+    await publishBook(bookId, {
+      status: 'error',
+      error: 'The text for this book is no longer stored. Add the file again to narrate it.',
+    })
     return
   }
 
@@ -718,6 +732,17 @@ export async function resumeInterrupted(): Promise<void> {
   for (const job of jobs) {
     const book = await db.getBook(job.bookId)
     if (!book || book.status === 'ready') continue
+
+    // The artifact is the real completion signal. A job row can outlive the
+    // conversion that finished it — the seal deletes the row, but a reload
+    // between the two reads it and would restart a book that is already done.
+    if (await db.getArtifact(job.bookId)) {
+      await db.deleteJob(job.bookId)
+      store().clearJob(job.bookId)
+      await publishBook(job.bookId, { status: 'ready', error: undefined })
+      continue
+    }
+
     log.log(`[${job.bookId}] resuming at chapter ${job.chapterCursor}`)
     void startNarration(job.bookId, job.voiceId, job.speed)
   }
