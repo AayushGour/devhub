@@ -87,6 +87,12 @@ export function usePlaybackEngine({
   const onEndRef = useRef(onChapterEnd)
   // The stored position is consumed once; later chapters start at zero.
   const pendingRestore = useRef(initialPosition ?? null)
+  /**
+   * Set when a chapter ended while playing. The next chapter's audio does not
+   * exist yet at that moment, so the intent is held here and acted on once the
+   * element for it has been built.
+   */
+  const continuePlaying = useRef(false)
 
   // Written in an effect rather than during render — a ref is not readable or
   // writable while rendering.
@@ -123,6 +129,9 @@ export function usePlaybackEngine({
   }, [chapter])
 
   const stopTracking = useCallback(() => cancelAnimationFrame(frameRef.current), [])
+
+  // speakFrom is declared further down; the chapter effect needs it earlier.
+  const speakFromRef = useRef<((index: number) => void) | null>(null)
 
   /**
    * Resolve a playback time to a highlight position.
@@ -197,9 +206,23 @@ export function usePlaybackEngine({
     const onEnded = () => {
       cancelAnimationFrame(frameRef.current)
       setState((prev) => ({ ...prev, playing: false }))
+      // Ask the next chapter to start itself, if there is one.
+      continuePlaying.current = true
       onEndRef.current?.()
     }
     element.addEventListener('ended', onEnded)
+
+    // Carrying on into the next chapter, rather than stopping at every break.
+    if (continuePlaying.current) {
+      continuePlaying.current = false
+      const resume = () => {
+        void element.play()
+        setState((prev) => ({ ...prev, playing: true }))
+        track()
+      }
+      if (element.readyState >= 2) resume()
+      else element.addEventListener('canplay', resume, { once: true })
+    }
 
     return () => {
       element.removeEventListener('loadedmetadata', onMetadata)
@@ -226,11 +249,19 @@ export function usePlaybackEngine({
   // restore position is consumed by the audio element and cleared there.
   useEffect(() => {
     liveIndexRef.current = 0
+
+    // Deferred by a microtask so the speech engine is started from outside the
+    // effect body — it is an external system, and speaking sets state.
+    if (live && chapter && continuePlaying.current) {
+      continuePlaying.current = false
+      queueMicrotask(() => speakFromRef.current?.(0))
+    }
+
     return () => {
       if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
       cancelAnimationFrame(frameRef.current)
     }
-  }, [chapter])
+  }, [chapter, live])
 
   const speakFrom = useCallback(
     (startIndex: number) => {
@@ -243,6 +274,7 @@ export function usePlaybackEngine({
         const sentence = chapter.sentences[index]
         if (!sentence) {
           setState((prev) => ({ ...prev, playing: false, activeSentenceId: null }))
+          continuePlaying.current = true
           onEndRef.current?.()
           return
         }
@@ -281,6 +313,13 @@ export function usePlaybackEngine({
     [chapter, rate, wordsBySentence],
   )
 
+  // Written in an effect, not during render. The chapter effect defers its use
+  // to a microtask, which runs after every effect has flushed, so the current
+  // function is always in place by the time it is called.
+  useEffect(() => {
+    speakFromRef.current = speakFrom
+  }, [speakFrom])
+
   const play = useCallback(() => {
     if (live) {
       speakFrom(liveIndexRef.current)
@@ -294,6 +333,8 @@ export function usePlaybackEngine({
   }, [live, speakFrom, track])
 
   const pause = useCallback(() => {
+    // An explicit pause means stop, including at a chapter boundary.
+    continuePlaying.current = false
     if (live) {
       if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
       setState((prev) => ({ ...prev, playing: false }))
