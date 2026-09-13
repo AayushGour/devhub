@@ -6,6 +6,7 @@ import {
   dehyphenate,
   findColumnGutter,
   groupParagraphs,
+  pageToParagraphs,
   stripRunningHeads,
   type PdfPage,
   type PdfTextItem,
@@ -342,5 +343,40 @@ describe('defects found against real documents', () => {
       height: 11, x0: 72, y: 700 - i * 20, bold: true, pageIndex: 0, continues: false,
     }))
     expect(classifyParagraphs(paragraphs).every((b) => b.type === 'p')).toBe(true)
+  })
+})
+
+describe('drop caps', () => {
+  // Geometry taken from a real trade paperback: the initial's baseline sits a
+  // line or two BELOW the text it starts, and the lines beside it are indented
+  // to clear it.
+  const dropCapPage = () =>
+    page(0, [
+      { str: 'M', x: 54, y: 490, width: 34, height: 43.7 },
+      { str: 'en and women are different. Not better or', x: 93, y: 511, width: 250, height: 13.4 },
+      { str: 'worse - different. Just about the only thing they', x: 93, y: 496, width: 250, height: 13.4 },
+      { str: 'have in common is that they belong to the same', x: 93, y: 481, width: 250, height: 13.4 },
+      { str: 'species. They live in different worlds, with different', x: 54, y: 466, width: 290, height: 13.4 },
+      { str: 'values and according to quite different sets of rules.', x: 54, y: 451, width: 290, height: 13.4 },
+    ])
+
+  it('puts the initial back on the word it starts', () => {
+    const lines = assembleLines(dropCapPage().items)
+    expect(lines[0].text).toBe('Men and women are different. Not better or')
+  })
+
+  it('does not let the initial make its line look like a heading', () => {
+    // Grouped naively, the line carrying the "M" is 43.7 tall and every such
+    // line in the book becomes a heading.
+    const blocks = classifyParagraphs(pageToParagraphs(dropCapPage()))
+    expect(blocks.every((b) => b.type === 'p')).toBe(true)
+  })
+
+  it('keeps the paragraph whole despite the indent around the letter', () => {
+    // The three lines beside the cap start further right than the margin.
+    const paragraphs = pageToParagraphs(dropCapPage())
+    expect(paragraphs).toHaveLength(1)
+    expect(paragraphs[0].text).toContain('Men and women are different')
+    expect(paragraphs[0].text).toContain('different sets of rules.')
   })
 })

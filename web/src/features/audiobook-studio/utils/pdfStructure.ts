@@ -48,6 +48,11 @@ export interface Line {
   text: string
   /** True when every run on the line is bold. */
   bold: boolean
+  /**
+   * True for lines set beside a drop cap. They are indented to clear the
+   * letter, which otherwise reads as a new paragraph on every one of them.
+   */
+  besideDropCap?: boolean
 }
 
 export interface Paragraph {
@@ -214,12 +219,29 @@ export function findColumnGutter(page: PdfPage, minGapRatio = 0.06): number | nu
 
 // ── lines ─────────────────────────────────────────────────────────
 
+/**
+ * A large initial letter, set into the first lines of a paragraph.
+ *
+ * It is its own text run, several times the body's height, and its baseline
+ * sits one or two lines DOWN from the text it belongs to — so it groups with
+ * the wrong line, tears the first word apart ("M" + "en and women are
+ * different"), and makes that line look tall enough to be a heading.
+ */
+function isDropCap(item: PdfTextItem, bodyHeight: number): boolean {
+  return item.str.trim().length === 1 && item.height > bodyHeight * 1.8
+}
+
 /** Group items sharing a baseline into lines, ordered top to bottom. */
 export function assembleLines(items: PdfTextItem[]): Line[] {
   if (items.length === 0) return []
 
-  const tolerance = Math.max(1, median(items.map((i) => i.height)) * 0.5)
-  const sorted = [...items].sort((a, b) => b.y - a.y || a.x - b.x)
+  const bodyHeight = median(items.map((i) => i.height))
+  const caps = items.filter((item) => isDropCap(item, bodyHeight))
+  const rest = caps.length > 0 ? items.filter((item) => !isDropCap(item, bodyHeight)) : items
+  if (rest.length === 0) return []
+
+  const tolerance = Math.max(1, median(rest.map((i) => i.height)) * 0.5)
+  const sorted = [...rest].sort((a, b) => b.y - a.y || a.x - b.x)
 
   const lines: Line[] = []
   let bucket: PdfTextItem[] = []
@@ -250,7 +272,9 @@ export function assembleLines(items: PdfTextItem[]): Line[] {
       y: ordered[0].y,
       x0: ordered[0].x,
       x1: previousEnd ?? ordered[0].x,
-      height: Math.max(...ordered.map((i) => i.height)),
+      // The median, not the maximum: one oversized glyph on a line — a symbol,
+      // a stray initial — should not make the whole line read as a heading.
+      height: median(ordered.map((i) => i.height)),
       text: text.replace(/\s+/g, ' ').trim(),
       // Partly-bold text is emphasis inside a sentence, not a heading.
       bold: ordered.every((i) => i.bold === true),
@@ -264,7 +288,35 @@ export function assembleLines(items: PdfTextItem[]): Line[] {
   }
   flush()
 
-  return lines.filter((line) => line.text.length > 0)
+  const assembled = lines.filter((line) => line.text.length > 0)
+
+  // Put each initial back on the line it belongs to: the topmost line the
+  // letter reaches, which is the paragraph's first. Lines it stands beside are
+  // marked so their indent is not read as a paragraph break.
+  for (const cap of caps) {
+    const top = cap.y + cap.height
+    let target: Line | undefined
+    for (const line of assembled) {
+      if (line.y <= top && (target === undefined || line.y > target.y)) target = line
+    }
+    if (!target) continue
+
+    // The run of lines set around the letter is exactly the run that shares the
+    // indent it forces. Reading that off the text is more reliable than
+    // modelling the glyph's box: a three-line initial keeps its indent past its
+    // own baseline, so any purely vertical test loses the last line of the run.
+    const indent = target.x0
+    const from = assembled.indexOf(target)
+    for (let i = from; i < assembled.length; i++) {
+      if (Math.abs(assembled[i].x0 - indent) > cap.height * 0.2) break
+      assembled[i].besideDropCap = true
+    }
+
+    target.text = `${cap.str.trim()}${target.text}`
+    target.x0 = Math.min(target.x0, cap.x)
+  }
+
+  return assembled
 }
 
 // ── paragraphs ────────────────────────────────────────────────────
@@ -279,6 +331,7 @@ export function groupParagraphs(lines: Line[], pageIndex: number): Paragraph[] {
   const typicalGap = median(gaps.filter((g) => g > 0))
   const typicalX = median(lines.map((line) => line.x0))
   const typicalWidth = median(lines.map((line) => line.x1 - line.x0))
+  const typicalRight = median(lines.map((line) => line.x1))
 
   const paragraphs: Paragraph[] = []
   let current: Line[] = []
@@ -307,7 +360,21 @@ export function groupParagraphs(lines: Line[], pageIndex: number): Paragraph[] {
     const previousHeight = i > 0 ? lines[i - 1].height : line.height
     const gapLimit = Math.max(typicalGap * 1.5, previousHeight * 1.8)
     const wideGap = typicalGap > 0 && gap > gapLimit
-    const indented = line.x0 > typicalX + Math.max(4, typicalWidth * 0.02)
+    // A first-line indent only means a new paragraph if the line before it ran
+    // to the right margin. Centred text — a pull quote, a joke box, a verse —
+    // starts every line somewhere different and ends every line short, so
+    // without this test each of its lines becomes a paragraph of its own.
+    const previousLine = lines[i - 1]
+    const previousRanFull =
+      previousLine !== undefined &&
+      previousLine.x1 >= typicalRight - Math.max(4, typicalWidth * 0.05)
+
+    // A line set beside a drop cap is indented to clear the letter, not to
+    // start something new.
+    const indented =
+      !line.besideDropCap &&
+      previousRanFull &&
+      line.x0 > typicalX + Math.max(4, typicalWidth * 0.02)
 
     // A change of type size ends a block regardless of spacing. Headings are
     // often set only a line apart from the prose beneath them, and without this
