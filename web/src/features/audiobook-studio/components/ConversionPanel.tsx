@@ -20,7 +20,13 @@ async function download(book: BookRecord): Promise<void> {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `${book.title.replace(/[^\w\s-]/g, '').trim() || 'book'}.epub`
+  // Collapse the whitespace left behind by stripped punctuation, or a title
+  // like "Salt & Stone" exports as "Salt  Stone.epub".
+  const safeTitle = book.title
+    .replace(/[^\w\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  link.download = `${safeTitle || 'book'}.epub`
   link.click()
   URL.revokeObjectURL(url)
 }

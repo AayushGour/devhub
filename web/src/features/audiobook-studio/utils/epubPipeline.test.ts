@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildSentences, splitSentences, subSplit } from './sentences'
 import { findSentenceAt, wordSpanAt, type TimedSentence } from './timeline'
-import { buildEpubFiles, formatClock, type ChapterInput } from './epubWrite'
+import { buildChapterXhtml, buildEpubFiles, formatClock, type ChapterInput } from './epubWrite'
 import { sealEpubBytes, listEntries, readTextEntry } from './zip'
 
 describe('sentences', () => {
@@ -59,6 +59,37 @@ describe('epub3 output', () => {
     expect(formatClock(0)).toBe('0:00:00.000')
     expect(formatClock(72.48)).toBe('0:01:12.480')
     expect(formatClock(3661.5)).toBe('1:01:01.500')
+  })
+
+  it('wraps consecutive list items in a single list', () => {
+    const blocks = [
+      { type: 'p' as const, text: 'They carried two things.' },
+      { type: 'list' as const, text: 'Salt' },
+      { type: 'list' as const, text: 'Gold' },
+      { type: 'p' as const, text: 'And nothing else.' },
+    ]
+    const sentences = buildSentences(blocks)
+    const xhtml = buildChapterXhtml(
+      {
+        index: 1,
+        title: 'One',
+        blocks,
+        sentences,
+        timeline: [],
+        durationSec: 0,
+      },
+      'en',
+    )
+
+    // One list holding both items — a bare <li> is invalid and loses the list.
+    expect((xhtml.match(/<ul>/g) ?? [])).toHaveLength(1)
+    expect((xhtml.match(/<li>/g) ?? [])).toHaveLength(2)
+    const list = /<ul>([\s\S]*?)<\/ul>/.exec(xhtml)?.[1] ?? ''
+    expect(list).toContain('Salt')
+    expect(list).toContain('Gold')
+    // The paragraphs stay outside it.
+    expect(list).not.toContain('And nothing else')
+    expect(list).not.toContain('They carried two things')
   })
 
   it('seals a structurally valid publication', async () => {

@@ -112,7 +112,7 @@ const BLOCK_TAG: Record<Block['type'], string> = {
   h3: 'h3',
   p: 'p',
   quote: 'blockquote',
-  list: 'p',
+  list: 'li',
 }
 
 /**
@@ -128,22 +128,40 @@ export function buildChapterXhtml(chapter: ChapterInput, language: string): stri
     else byBlock.set(sentence.blockIdx, [sentence])
   }
 
-  const body = chapter.blocks
-    .map((block, idx) => {
-      const tag = BLOCK_TAG[block.type]
-      const sentences = byBlock.get(idx) ?? []
+  const renderBlock = (block: Block, idx: number): string => {
+    const tag = BLOCK_TAG[block.type]
+    const sentences = byBlock.get(idx) ?? []
 
-      // A block with no sentences (e.g. whitespace-only) still renders, so
-      // block indices stay aligned with what the parser produced.
-      const inner = sentences.length
-        ? sentences
-            .map((s) => `<span class="s" id="${s.id}">${escapeXml(s.text)}</span>`)
-            .join(' ')
-        : escapeXml(block.text)
+    // A block with no sentences (e.g. whitespace-only) still renders, so
+    // block indices stay aligned with what the parser produced.
+    const inner = sentences.length
+      ? sentences
+          .map((s) => `<span class="s" id="${s.id}">${escapeXml(s.text)}</span>`)
+          .join(' ')
+      : escapeXml(block.text)
 
-      return `    <${tag}>${inner}</${tag}>`
-    })
-    .join('\n')
+    return `<${tag}>${inner}</${tag}>`
+  }
+
+  // Consecutive list items are wrapped in a single <ul>. A bare <li> is invalid
+  // XHTML and would strip the list back to plain paragraphs on the way out —
+  // losing the structure the source had.
+  const lines: string[] = []
+  for (let idx = 0; idx < chapter.blocks.length; idx++) {
+    if (chapter.blocks[idx].type !== 'list') {
+      lines.push(`    ${renderBlock(chapter.blocks[idx], idx)}`)
+      continue
+    }
+    const items: string[] = []
+    while (idx < chapter.blocks.length && chapter.blocks[idx].type === 'list') {
+      items.push(`      ${renderBlock(chapter.blocks[idx], idx)}`)
+      idx++
+    }
+    idx--
+    lines.push(`    <ul>\n${items.join('\n')}\n    </ul>`)
+  }
+
+  const body = lines.join('\n')
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
