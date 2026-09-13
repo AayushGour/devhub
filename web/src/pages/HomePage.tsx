@@ -1,6 +1,6 @@
 import {
   FileText, GitGraph, Braces, Globe, Database,
-  KeyRound, Wrench, FolderOpen, Sparkles, BrainCircuit, Cpu, Spline, ImageDown, Network, Plug,
+  KeyRound, Wrench, FolderOpen, Sparkles, BrainCircuit, Cpu, Spline, ImageDown, Network, Plug, BookAudio,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -106,6 +106,15 @@ const studios: Studio[] = [
     status: 'available',
     phase: 'Phase 6',
     href: '/tools/mcp',
+  },
+  {
+    id: 'audiobook',
+    title: 'Audiobook Studio',
+    description: 'Turn a book into a narrated EPUB 3 and read along as it plays, with the text highlighting in time with the voice.',
+    icon: <BookAudio size={20} />,
+    status: 'available',
+    phase: 'Phase 6',
+    href: '/tools/audiobook',
   },
   {
     id: 'api',

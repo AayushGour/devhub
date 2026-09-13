@@ -13,6 +13,7 @@ import ImageStudioPage from '@/features/image-studio'
 import RepoExplorerPage from '@/features/repo-explorer'
 import { AgentWorkspacePage } from '@/features/agent-workspace'
 import McpStudioPage from '@/features/mcp-studio'
+import AudiobookStudioPage from '@/features/audiobook-studio'
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="tools/repo-explorer" element={<RepoExplorerPage />} />
         <Route path="tools/agent-workspace" element={<AgentWorkspacePage />} />
         <Route path="tools/mcp" element={<McpStudioPage />} />
+        <Route path="tools/audiobook" element={<AudiobookStudioPage />} />
       </Route>
     </Routes>
   )

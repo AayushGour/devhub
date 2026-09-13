@@ -1,0 +1,995 @@
+// Conversion orchestrator.
+//
+// A module-level singleton, deliberately NOT a React hook: a conversion runs
+// for minutes to hours, and navigating to another studio must not kill it.
+// React components subscribe to its effects through the zustand store.
+//
+// Durability model: chapters are narrated one at a time and each result is
+// written to `staging` with a job checkpoint. A closed tab loses at most the
+// chapter in flight. Only when the last chapter lands is the package sealed —
+// and the artifact is stored BEFORE staging is cleared, so there is never a
+// moment when the audio exists nowhere.
+
+import { createLogger } from '@/lib/logger'
+import { isWebGpuAvailable } from '@/lib/webgpu'
+import * as db from './db'
+import { clearBookCache, loadOutline } from './bookSource'
+import { buildSentences } from './sentences'
+import { flatTree, reconcile } from './navTree'
+import { chapterId } from './epubWrite'
+import type { ChapterInput } from './epubWrite'
+import { useAudiobookStore } from '../store/audiobookStore'
+import type { BookMode, BookRecord, JobRecord, SourceType } from '../types'
+import type { ParsedBook } from './epubRead'
+import type { ParseRequest, ParseResponse } from '../workers/parse.worker'
+import type {
+  Device,
+  Dtype,
+  NarrateCommand,
+  NarrateRequest,
+  NarrateResponse,
+  NarrateResult,
+} from '../workers/narrate.worker'
+import type { EncodeError, EncodeRequest, EncodeResponse } from '../workers/encode.worker'
+import type { SealRequest, SealResponse } from '../workers/seal.worker'
+
+const log = createLogger('audiobook:engine')
+
+const MP3_KBPS = 48
+
+/** Bytes per second of narration at MP3_KBPS, used to project a book's size. */
+const BYTES_PER_AUDIO_SECOND = (MP3_KBPS * 1000) / 8
+
+/** Characters of prose a narrator gets through in a second, roughly. */
+const CHARS_PER_AUDIO_SECOND = 14
+
+/** Refuse to start if the projection would consume more than this of what is left. */
+const QUOTA_HEADROOM = 0.8
+
+/** Exactly one dtype is correct per device — see the narrate worker's guard. */
+const DTYPE_FOR_DEVICE: Record<Device, Dtype> = { webgpu: 'fp32', wasm: 'q8' }
+
+/**
+ * What a WebGPU device has to be able to give onnxruntime before Kokoro will
+ * run on it.
+ *
+ * The fp32 build — the only one that sounds right on WebGPU — is around 326 MB
+ * of weights, and the runtime binds those as storage buffers. A device created
+ * with no limits asked for gets the spec defaults, 128 MB per storage binding
+ * and 256 MB per buffer, and an adapter that can offer no more still hands one
+ * back happily; the load then dies partway through uploading the weights, after
+ * the whole download has been paid for. Asking up front turns that into a
+ * cheap, early "no" and sends the session to WASM instead.
+ */
+const KOKORO_FP32_BYTES = 326 * 1024 * 1024
+const KOKORO_WEBGPU_LIMITS = {
+  maxStorageBufferBindingSize: 256 * 1024 * 1024,
+  maxBufferSize: KOKORO_FP32_BYTES,
+}
+
+/** How long the per-sentence job checkpoint may go unwritten. Milliseconds. */
+const SENTENCE_CHECKPOINT_MS = 2000
+
+export interface ImportOptions {
+  mode: BookMode
+  voiceId: string
+  speed: number
+}
+
+// ── worker plumbing ───────────────────────────────────────────────
+
+let parseWorker: Worker | null = null
+let narrateWorker: Worker | null = null
+let encodeWorker: Worker | null = null
+let sealWorker: Worker | null = null
+
+/** Resolvers for in-flight requests, keyed by the response `type` awaited. */
+type Waiter<T> = { resolve: (value: T) => void; reject: (reason: Error) => void }
+
+const parseWaiters = new Map<string, Waiter<ParseResponse>>()
+
+/**
+ * Keyed by request id rather than held in a single slot: a voice preview and a
+ * running conversion share this worker, and matching on response type alone
+ * would let one settle the other's promise and strand the book.
+ */
+const narrateWaiters = new Map<number, Waiter<NarrateResult> & { want: NarrateResult['type'] }>()
+let nextRequestId = 1
+let encodeWaiter: Waiter<EncodeResponse> | null = null
+let sealWaiter: Waiter<SealResponse> | null = null
+
+/**
+ * Wire up the two ways a worker can die without answering.
+ *
+ * Every request here is a promise waiting on a message. If the worker crashes,
+ * or posts something that cannot be structured-cloned, that message never
+ * arrives and the promise never settles — the import or conversion simply hangs
+ * with no error to show. Both paths must reject whatever is outstanding.
+ */
+function onWorkerFailure(worker: Worker, label: string, fail: (reason: Error) => void): void {
+  worker.onerror = (event) => {
+    const reason = new Error(event.message || `the ${label} worker stopped unexpectedly`)
+    log.error(`${label} worker crashed:`, reason.message)
+    fail(reason)
+  }
+  worker.onmessageerror = () => {
+    const reason = new Error(`the ${label} worker sent a result that could not be read`)
+    log.error(reason.message)
+    fail(reason)
+  }
+}
+
+/** Reject and drop every waiter in a keyed registry. */
+function failAll<K, W extends { reject: (reason: Error) => void }>(
+  waiters: Map<K, W>,
+  reason: Error,
+): void {
+  for (const waiter of waiters.values()) waiter.reject(reason)
+  waiters.clear()
+}
+
+function getParseWorker(): Worker {
+  if (parseWorker) return parseWorker
+  parseWorker = new Worker(new URL('../workers/parse.worker.ts', import.meta.url), {
+    type: 'module',
+  })
+  parseWorker.onmessage = (event: MessageEvent<ParseResponse>) => {
+    const message = event.data
+    if (message.type === 'status') {
+      log.log(`[${message.bookId}] ${message.label}`)
+      return
+    }
+    const waiter = parseWaiters.get(message.bookId)
+    parseWaiters.delete(message.bookId)
+    if (!waiter) return
+    if (message.type === 'error') waiter.reject(new Error(message.message))
+    else waiter.resolve(message)
+  }
+  onWorkerFailure(parseWorker, 'parsing', (reason) => {
+    failAll(parseWaiters, reason)
+    // Drop the dead instance: reusing it would hang every later request too.
+    parseWorker = null
+  })
+  return parseWorker
+}
+
+function getNarrateWorker(): Worker {
+  if (narrateWorker) return narrateWorker
+  narrateWorker = new Worker(new URL('../workers/narrate.worker.ts', import.meta.url), {
+    type: 'module',
+  })
+  narrateWorker.onmessage = (event: MessageEvent<NarrateResponse>) => {
+    const message = event.data
+
+    if (message.type === 'status') {
+      modelStatusListeners.forEach((listener) => listener(message.label, message.progress))
+      return
+    }
+    if (message.type === 'sentence') {
+      onSentenceProgress?.(message.chapterIndex, message.index, message.total)
+      return
+    }
+    const waiter = narrateWaiters.get(message.requestId)
+    if (!waiter) return
+    narrateWaiters.delete(message.requestId)
+
+    if (message.type === 'error') waiter.reject(new Error(message.message))
+    // Stopping is a legitimate end to any request, not a failure: the reader
+    // asked for it, and the chapters already finished are still good.
+    else if (waiter.want === message.type || message.type === 'cancelled') {
+      waiter.resolve(message)
+    } else waiter.reject(new Error(`expected ${waiter.want}, received ${message.type}`))
+  }
+  // A crash takes down everything in flight, not just the newest request.
+  onWorkerFailure(narrateWorker, 'narration', (reason) => {
+    failAll(narrateWaiters, reason)
+    // The replacement worker starts with no model resident; ensureModel() on
+    // the next request loads one into it.
+    narrateWorker = null
+  })
+  return narrateWorker
+}
+
+function getEncodeWorker(): Worker {
+  if (encodeWorker) return encodeWorker
+  encodeWorker = new Worker(new URL('../workers/encode.worker.ts', import.meta.url), {
+    type: 'module',
+  })
+  encodeWorker.onmessage = (event: MessageEvent<EncodeResponse | EncodeError>) => {
+    const message = event.data
+    if (message.type === 'error') encodeWaiter?.reject(new Error(message.message))
+    else encodeWaiter?.resolve(message)
+    encodeWaiter = null
+  }
+  onWorkerFailure(encodeWorker, 'audio encoding', (reason) => {
+    encodeWaiter?.reject(reason)
+    encodeWaiter = null
+    encodeWorker = null
+  })
+  return encodeWorker
+}
+
+function getSealWorker(): Worker {
+  if (sealWorker) return sealWorker
+  sealWorker = new Worker(new URL('../workers/seal.worker.ts', import.meta.url), {
+    type: 'module',
+  })
+  sealWorker.onmessage = (event: MessageEvent<SealResponse>) => {
+    const message = event.data
+    if (message.type === 'error') sealWaiter?.reject(new Error(message.message))
+    else sealWaiter?.resolve(message)
+    sealWaiter = null
+  }
+  onWorkerFailure(sealWorker, 'packaging', (reason) => {
+    sealWaiter?.reject(reason)
+    sealWaiter = null
+    sealWorker = null
+  })
+  return sealWorker
+}
+
+// ── observers ─────────────────────────────────────────────────────
+
+type ModelStatusListener = (label: string, progress?: number) => void
+const modelStatusListeners = new Set<ModelStatusListener>()
+
+/** Subscribe to model download/load progress. Returns an unsubscribe function. */
+export function onModelStatus(listener: ModelStatusListener): () => void {
+  modelStatusListeners.add(listener)
+  return () => modelStatusListeners.delete(listener)
+}
+
+type ModelErrorListener = (message: string) => void
+const modelErrorListeners = new Set<ModelErrorListener>()
+
+/**
+ * Subscribe to a model load that could not be completed.
+ *
+ * A load reports progress on the status channel but has no way to report that
+ * it stopped. Anything watching that channel is left showing a download that
+ * will never finish — and in the overlay's case, covering the screen. This is
+ * the other half of that channel: the failure that ends the wait.
+ */
+export function onModelError(listener: ModelErrorListener): () => void {
+  modelErrorListeners.add(listener)
+  return () => modelErrorListeners.delete(listener)
+}
+
+function emitModelError(message: string): void {
+  modelErrorListeners.forEach((listener) => listener(message))
+}
+
+let onSentenceProgress: ((chapter: number, done: number, total: number) => void) | null = null
+
+// ── state ─────────────────────────────────────────────────────────
+
+const cancelled = new Set<string>()
+let running: Promise<void> = Promise.resolve()
+
+function store() {
+  return useAudiobookStore.getState()
+}
+
+/** Serialise conversions — one book narrating at a time, one GPU, one model. */
+function enqueue(task: () => Promise<void>): Promise<void> {
+  running = running.then(task, task)
+  return running
+}
+
+async function publishBook(bookId: string, patch: Partial<BookRecord>): Promise<void> {
+  const next = await db.patchBook(bookId, patch)
+  if (next) store().upsertBook(next)
+}
+
+/** When the job row was last actually written, for the throttle below. */
+let lastJobWriteAt = 0
+
+async function publishJob(job: Omit<JobRecord, 'updatedAt'>): Promise<void> {
+  lastJobWriteAt = Date.now()
+  await db.putJob(job)
+  store().setJob({ ...job, updatedAt: Date.now() })
+}
+
+/**
+ * Publish progress within a chapter.
+ *
+ * The store always gets it — that is what the studio renders, and a progress
+ * bar that only moves every other second looks broken. The database write is
+ * throttled: a 750-sentence chapter is otherwise 750 write transactions, a
+ * 300-chapter book a couple of hundred thousand, all contending with the
+ * multi-megabyte staging writes on the same connection. They buy nothing
+ * either — the checkpoint a resume actually starts from is the per-chapter one,
+ * which is written unthrottled after the audio is durable.
+ */
+function publishSentenceProgress(job: Omit<JobRecord, 'updatedAt'>): void {
+  store().setJob({ ...job, updatedAt: Date.now() })
+
+  const now = Date.now()
+  if (now - lastJobWriteAt < SENTENCE_CHECKPOINT_MS) return
+  lastJobWriteAt = now
+  void db.putJob(job)
+}
+
+// ── import ────────────────────────────────────────────────────────
+
+function requestParse(request: ParseRequest): Promise<ParseResponse> {
+  return new Promise((resolve, reject) => {
+    parseWaiters.set(request.bookId, { resolve, reject })
+    getParseWorker().postMessage(request, [request.bytes.buffer])
+  })
+}
+
+/**
+ * Read a file into the library. Narration is queued separately so the book
+ * becomes visible — and its text readable — before any audio exists.
+ */
+/** Audio type suffixes an EPUB 3 overlay may reference. */
+export async function importFile(file: File, options: ImportOptions): Promise<string> {
+  const bookId = crypto.randomUUID()
+  const now = Date.now()
+
+  const book: BookRecord = {
+    id: bookId,
+    title: file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').trim(),
+    author: 'Unknown',
+    language: 'en',
+    sourceName: file.name,
+    sourceType: 'txt',
+    mode: options.mode,
+    voiceId: options.voiceId,
+    status: 'parsing',
+    chapterCount: 0,
+    durationSec: 0,
+    createdAt: now,
+    updatedAt: now,
+  }
+
+  await db.putBook(book)
+  store().upsertBook(book)
+  store().setActiveBook(bookId)
+
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    // Two reasons to keep a copy. A source that already carries overlays
+    // becomes the artifact verbatim, and any book may be extracted again later
+    // — both need the bytes after the parse worker has taken ownership.
+    const original = bytes.slice()
+    await db.putSource(bookId, file.name, original)
+
+    const response = await requestParse({ bookId, fileName: file.name, bytes })
+    if (response.type !== 'parsed') throw new Error('parser returned no book')
+
+    if (response.sourceType === 'epub3-narrated') {
+      await adoptNarratedEpub(bookId, response.book, original)
+      return bookId
+    }
+
+    await storeParsedBook(bookId, response.book, response.sourceType, options, response.ocrUsed)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    log.error(`[${bookId}] parse failed:`, message)
+    await publishBook(bookId, { status: 'error', error: message })
+  }
+
+  return bookId
+}
+
+async function storeParsedBook(
+  bookId: string,
+  parsed: ParsedBook,
+  sourceType: SourceType,
+  options: ImportOptions,
+  ocrUsed = false,
+): Promise<void> {
+  for (let i = 0; i < parsed.chapters.length; i++) {
+    const chapter = parsed.chapters[i]
+    await db.putChapter({
+      key: db.chapterKey(bookId, i),
+      bookId,
+      index: i,
+      title: chapter.title,
+      blocks: chapter.blocks,
+      sentences: buildSentences(chapter.blocks, parsed.language),
+      timeline: [],
+      durationSec: 0,
+    })
+  }
+
+  if (parsed.cover) {
+    await db.putStaging({
+      key: db.stagingKey(bookId, 'cover', 0),
+      bookId,
+      kind: 'cover',
+      index: 0,
+      data: parsed.cover.bytes,
+      mime: parsed.cover.mime,
+    })
+  }
+
+  // The source's own nesting, checked against the chapters that actually
+  // exist: a contents page can name documents the spine does not carry, and can
+  // omit ones it does. Anything missing is appended in reading order so no
+  // chapter is unreachable from the tree.
+  const titles = parsed.chapters.map((chapter) => chapter.title)
+  const nav = reconcile(
+    parsed.nav ?? flatTree(titles),
+    parsed.chapters.length,
+    (index) => titles[index] ?? `Chapter ${index + 1}`,
+  )
+
+  // A live book is readable the moment it is parsed — there is no audio to make.
+  const status = options.mode === 'live' ? 'ready' : 'ready-to-narrate'
+
+  await publishBook(bookId, {
+    title: parsed.title,
+    author: parsed.author,
+    language: parsed.language,
+    sourceType,
+    ocrUsed,
+    nav,
+    chapterCount: parsed.chapters.length,
+    // A re-extracted book has no audio until it is narrated again.
+    durationSec: 0,
+    status,
+    coverBlob: parsed.cover
+      ? new Blob([parsed.cover.bytes as unknown as BlobPart], { type: parsed.cover.mime })
+      : undefined,
+  })
+
+  if (options.mode === 'narrated') {
+    void startNarration(bookId, options.voiceId, options.speed)
+  }
+}
+
+/**
+ * Register a book that arrived already narrated.
+ *
+ * Nothing is generated and nothing is re-sealed — the uploaded file becomes the
+ * artifact as-is, and the manifest's own asset paths are stored so the reader
+ * can find chapters that do not follow our naming. Re-narrating a book that
+ * already has audio would waste hours and lose the original narrator.
+ */
+async function adoptNarratedEpub(
+  bookId: string,
+  parsed: ParsedBook,
+  epub: Uint8Array,
+): Promise<void> {
+  await db.putArtifact(bookId, epub)
+
+  const overlays = parsed.overlays ?? []
+  await publishBook(bookId, {
+    title: parsed.title,
+    author: parsed.author,
+    language: parsed.language,
+    sourceType: 'epub3-narrated',
+    mode: 'narrated',
+    nav: parsed.nav,
+    chapterCount: Math.min(parsed.chapters.length, overlays.length || parsed.chapters.length),
+    overlays,
+    status: 'ready',
+    coverBlob: parsed.cover
+      ? new Blob([parsed.cover.bytes as unknown as BlobPart], { type: parsed.cover.mime })
+      : undefined,
+  })
+
+  // Duration comes from the overlays themselves, read back through the same
+  // path the reader uses — no second parser to keep in step.
+  const record = await db.getBook(bookId)
+  if (!record) return
+
+  const outline = await loadOutline(record)
+  await publishBook(bookId, {
+    chapterCount: outline.length,
+    durationSec: outline.reduce((sum, entry) => sum + entry.durationSec, 0),
+  })
+
+  log.log(`[${bookId}] adopted a narrated EPUB — ${outline.length} chapters`)
+}
+
+/**
+ * Read a book again from its original file.
+ *
+ * Parsing improves; books converted before it did are stuck with whatever the
+ * old code made of them. This re-runs extraction and, for a narrated book, the
+ * narration too.
+ *
+ * The new parse happens before anything is thrown away, so a source that no
+ * longer reads leaves the existing book untouched rather than destroying it.
+ */
+export async function reprocess(
+  bookId: string,
+  replacement?: File,
+): Promise<{ ok: boolean; reason?: string }> {
+  const book = await db.getBook(bookId)
+  if (!book) return { ok: false, reason: 'That book is no longer in the library.' }
+
+  let bytes: Uint8Array
+  let fileName: string
+
+  if (replacement) {
+    bytes = new Uint8Array(await replacement.arrayBuffer())
+    fileName = replacement.name
+  } else {
+    const stored = await db.getSource(bookId)
+    if (!stored) {
+      return {
+        ok: false,
+        reason: 'The original file was not kept for this book. Choose it again to re-extract.',
+      }
+    }
+    bytes = stored.bytes
+    fileName = stored.name
+  }
+
+  cancelNarration(bookId)
+  await publishBook(bookId, { status: 'parsing', error: undefined })
+
+  try {
+    const response = await requestParse({ bookId, fileName, bytes: bytes.slice() })
+    if (response.type !== 'parsed') throw new Error('parser returned no book')
+
+    // Only now is the old version discarded.
+    await db.deleteArtifact(bookId)
+    await db.clearStaging(bookId)
+    await db.deleteJob(bookId)
+    await db.deleteProgress(bookId)
+    store().clearJob(bookId)
+    clearBookCache(bookId)
+
+    if (replacement) await db.putSource(bookId, fileName, bytes.slice())
+
+    await storeParsedBook(
+      bookId,
+      response.book,
+      response.sourceType,
+      { mode: book.mode, voiceId: book.voiceId, speed: 1 },
+      response.ocrUsed,
+    )
+
+    log.log(`[${bookId}] re-extracted from ${fileName}`)
+    return { ok: true }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    log.error(`[${bookId}] re-extract failed:`, message)
+    await publishBook(bookId, { status: 'error', error: message })
+    return { ok: false, reason: message }
+  }
+}
+
+// ── narration ─────────────────────────────────────────────────────
+
+/**
+ * A request is answered by what it asked for, or by `cancelled` — stopping is a
+ * legitimate end to any request, not a failure.
+ */
+function requestNarrate<T extends NarrateResult['type']>(
+  request: NarrateCommand,
+  want: T,
+): Promise<Extract<NarrateResult, { type: T | 'cancelled' }>> {
+  return new Promise((resolve, reject) => {
+    const requestId = nextRequestId++
+    narrateWaiters.set(requestId, {
+      resolve: resolve as (value: NarrateResult) => void,
+      reject,
+      want,
+    })
+    getNarrateWorker().postMessage({ ...request, requestId } as NarrateRequest)
+  })
+}
+
+function requestEncode(request: EncodeRequest): Promise<EncodeResponse> {
+  return new Promise((resolve, reject) => {
+    encodeWaiter = { resolve, reject }
+    getEncodeWorker().postMessage(request, [request.pcm.buffer])
+  })
+}
+
+/**
+ * Set once a WebGPU load has actually failed, so the rest of the session goes
+ * straight to WASM. Retrying WebGPU on every chapter would pay for the same
+ * failed load over and over.
+ */
+let webgpuRejected = false
+
+async function resolveDevice(): Promise<Device> {
+  if (webgpuRejected) return 'wasm'
+  return (await isWebGpuAvailable(KOKORO_WEBGPU_LIMITS)) ? 'webgpu' : 'wasm'
+}
+
+/**
+ * Load the model if it is not already resident. Cheap when it is.
+ *
+ * Every model load in the app goes through here, so this is also where a load
+ * that cannot be completed is reported — the worker's `error` response and a
+ * worker crash both surface as a rejection of the request below, and neither
+ * writes a book status or tells the overlay anything by itself.
+ */
+export async function ensureModel(): Promise<Device> {
+  const device = await resolveDevice()
+
+  try {
+    await requestNarrate({ type: 'load', dtype: DTYPE_FOR_DEVICE[device], device }, 'ready')
+    return device
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+
+    // WebGPU can fail for reasons no capability probe can see: an adapter that
+    // reports the limits but cannot allocate the weights, a device lost to
+    // another tab, a driver that gives up partway through. WASM is roughly ten
+    // times slower, but a slow book beats a permanent error — and the dtype
+    // must change with the device, because Kokoro is corrupted by anything but
+    // fp32 on WebGPU and fp32 is far too heavy for WASM.
+    if (device === 'webgpu') {
+      webgpuRejected = true
+      log.error(`WebGPU narration unavailable (${message}) — falling back to WASM`)
+      try {
+        await requestNarrate({ type: 'load', dtype: DTYPE_FOR_DEVICE.wasm, device: 'wasm' }, 'ready')
+        return 'wasm'
+      } catch (fallbackErr) {
+        const reason = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
+        emitModelError(reason)
+        throw fallbackErr
+      }
+    }
+
+    emitModelError(message)
+    throw err
+  }
+}
+
+/** Synthesise one sample sentence, for the voice picker's preview. */
+export async function previewVoice(
+  voiceId: string,
+  text: string,
+  speed = 1,
+): Promise<{ pcm: Float32Array; sampleRate: number }> {
+  await ensureModel()
+  const response = await requestNarrate({ type: 'sample', voice: voiceId, text, speed }, 'sample')
+  // A preview shares the worker with a conversion, so Stop can land on it too.
+  if (response.type !== 'sample') throw new Error('The preview was stopped.')
+  return { pcm: response.pcm, sampleRate: response.sampleRate }
+}
+
+/**
+ * Turn a live book into a narrated one.
+ *
+ * Live books keep their parsed chapters — nothing is sealed and staging is
+ * never cleared — so this only has to run the narration stage. Re-importing the
+ * file would repeat the parse and lose the reading position.
+ */
+export async function upgradeToNarrated(
+  bookId: string,
+  voiceId: string,
+  speed: number,
+): Promise<void> {
+  const book = await db.getBook(bookId)
+  if (!book || book.mode !== 'live') return
+
+  const chapters = await db.listChapters(bookId)
+  if (chapters.length === 0) {
+    await publishBook(bookId, {
+      status: 'error',
+      error: 'The text for this book is no longer stored. Add the file again to narrate it.',
+    })
+    return
+  }
+
+  await publishBook(bookId, { mode: 'narrated', voiceId, status: 'ready-to-narrate' })
+  await startNarration(bookId, voiceId, speed)
+}
+
+export function cancelNarration(bookId: string): void {
+  cancelled.add(bookId)
+  // The flag alone is only read between chapters, and a chapter is minutes of
+  // generation — so Stop would appear to do nothing. Telling the worker is what
+  // makes it take effect, at the next sentence.
+  narrateWorker?.postMessage({ type: 'cancel', requestId: 0 })
+}
+
+export function startNarration(bookId: string, voiceId: string, speed: number): Promise<void> {
+  return enqueue(() => narrateBook(bookId, voiceId, speed))
+}
+
+async function narrateBook(bookId: string, voiceId: string, speed: number): Promise<void> {
+  cancelled.delete(bookId)
+
+  const book = await db.getBook(bookId)
+  if (!book) return
+
+  // A sealed book is finished: sealing clears the chapter rows, so narrating it
+  // again would find nothing and mark a complete book as failed. This is
+  // reachable whenever a job row outlives the conversion that wrote it — a
+  // resume racing a seal, or the same book queued twice.
+  if (await db.getArtifact(bookId)) {
+    await db.deleteJob(bookId)
+    store().clearJob(bookId)
+    if (book.status !== 'ready') await publishBook(bookId, { status: 'ready', error: undefined })
+    return
+  }
+
+  const chapters = await db.listChapters(bookId)
+  if (chapters.length === 0) {
+    await publishBook(bookId, {
+      status: 'error',
+      error: 'The text for this book is no longer stored. Add the file again to narrate it.',
+    })
+    return
+  }
+
+  // Resume where a previous run stopped.
+  //
+  // The job's own cursor cannot answer this: it is only meaningful while the
+  // stage is 'narrate', so an interruption during any other stage would read as
+  // "start from the beginning" and re-narrate a whole book — hours of work —
+  // over audio that is already sitting in staging. The staging rows are the
+  // durable record of what is actually finished, so the cursor is the first
+  // chapter that has none.
+  const staged = await db.listStaging(bookId)
+  const narrated = new Set(
+    staged.filter((row) => row.kind === 'audio').map((row) => row.index),
+  )
+  let cursor = 0
+  while (cursor < chapters.length && narrated.has(cursor)) cursor++
+
+  /** Point the job at `at` as the next chapter to narrate. */
+  const checkpoint = (at: number) =>
+    publishJob({
+      bookId,
+      stage: 'narrate',
+      chapterCursor: at,
+      chapterCount: chapters.length,
+      sentenceCursor: 0,
+      sentenceCount: chapters[at]?.sentences.length ?? 0,
+      voiceId,
+      speed,
+    })
+
+  await publishBook(bookId, { status: 'narrating', voiceId })
+  await checkpoint(cursor)
+
+  try {
+    await assertRoomFor(chapters)
+    await ensureModel()
+
+    for (; cursor < chapters.length; cursor++) {
+      if (cancelled.has(bookId)) {
+        log.log(`[${bookId}] narration cancelled at chapter ${cursor}`)
+        await publishBook(bookId, { status: 'ready-to-narrate', error: undefined })
+        return
+      }
+
+      const chapter = chapters[cursor]
+
+      // A chapter with nothing to say still has to appear in the package. Every
+      // index downstream — the nav tree, the reader's position, the overlay
+      // list — counts chapters in the order the parser produced them, so
+      // dropping one here shifts all of them and the book silently loses a
+      // section. It gets its prose and a zero-length overlay instead: no audio
+      // bytes, no timings, but a chapter that exists.
+      if (chapter.sentences.length === 0) {
+        await db.putStaging({
+          key: db.stagingKey(bookId, 'audio', cursor),
+          bookId,
+          kind: 'audio',
+          index: cursor,
+          data: new Uint8Array(0),
+          mime: 'audio/mpeg',
+        })
+        await db.putChapter({ ...chapter, timeline: [], durationSec: 0 })
+        await checkpoint(cursor + 1)
+        continue
+      }
+
+      onSentenceProgress = (chapterIndex, done, total) => {
+        publishSentenceProgress({
+          bookId,
+          stage: 'narrate',
+          chapterCursor: chapterIndex,
+          chapterCount: chapters.length,
+          sentenceCursor: done,
+          sentenceCount: total,
+          voiceId,
+          speed,
+        })
+      }
+
+      const narrated = await requestNarrate(
+        {
+          type: 'narrate',
+          chapterIndex: cursor,
+          voice: voiceId,
+          speed,
+          sentences: chapter.sentences,
+        },
+        'chapter',
+      )
+
+      // Stopping mid-chapter keeps every chapter already finished: the job
+      // checkpoint still points here, so resuming picks up exactly here.
+      if (narrated.type === 'cancelled') {
+        log.log(`[${bookId}] stopped during chapter ${cursor}`)
+        // Stopping is not a failure, so any earlier error goes with it.
+        await publishBook(bookId, { status: 'ready-to-narrate', error: undefined })
+        return
+      }
+
+      const encoded = await requestEncode({
+        chapterIndex: cursor,
+        pcm: narrated.pcm,
+        sampleRate: narrated.sampleRate,
+        kbps: MP3_KBPS,
+      })
+
+      await db.putStaging({
+        key: db.stagingKey(bookId, 'audio', cursor),
+        bookId,
+        kind: 'audio',
+        index: cursor,
+        data: encoded.mp3,
+        mime: 'audio/mpeg',
+      })
+
+      await db.putChapter({
+        ...chapter,
+        timeline: narrated.timeline,
+        durationSec: narrated.stats.audioSec,
+      })
+
+      // The reader may be holding this chapter from before it had timings.
+      // Without dropping it, the audio arrives and the highlight never does.
+      clearBookCache(bookId)
+
+      // Checkpoint AFTER the audio is durable, so a crash re-runs at most this
+      // chapter rather than skipping it.
+      await checkpoint(cursor + 1)
+
+      // The chapter is readable now — this is what makes reading possible while
+      // the rest of the book is still converting.
+      const partial = await db.getBook(bookId)
+      if (partial) store().upsertBook(partial)
+    }
+
+    onSentenceProgress = null
+    await sealBook(bookId)
+  } catch (err) {
+    onSentenceProgress = null
+    const message = err instanceof Error ? err.message : String(err)
+    log.error(`[${bookId}] narration failed:`, message)
+    await publishBook(bookId, { status: 'error', error: message })
+    await publishJob({
+      bookId,
+      stage: 'error',
+      chapterCursor: cursor,
+      chapterCount: chapters.length,
+      sentenceCursor: 0,
+      sentenceCount: 0,
+      voiceId,
+      speed,
+      error: message,
+    })
+  }
+}
+
+/**
+ * Refuse a conversion that cannot finish.
+ *
+ * Running out of storage two hours into a book leaves a half-narrated mess and
+ * wastes the whole run, so the size is projected from the prose up front and
+ * checked against what the browser will actually give us. Persistence is
+ * requested at the same time: without it the origin can be evicted wholesale
+ * under disk pressure.
+ */
+async function assertRoomFor(chapters: { sentences: { text: string }[] }[]): Promise<void> {
+  const chars = chapters.reduce(
+    (sum, chapter) => sum + chapter.sentences.reduce((n, s) => n + s.text.length, 0),
+    0,
+  )
+  const projectedBytes = (chars / CHARS_PER_AUDIO_SECOND) * BYTES_PER_AUDIO_SECOND
+
+  // The user has committed to a conversion, so this is the moment to ask for
+  // durable storage — see requestPersistence.
+  await db.requestPersistence()
+
+  const { available, quota } = await db.estimateQuota()
+  // A browser that reports no quota tells us nothing; do not block on silence.
+  if (quota === 0 || available === 0) return
+
+  if (projectedBytes > available * QUOTA_HEADROOM) {
+    const need = Math.ceil(projectedBytes / 1024 ** 2)
+    const have = Math.floor(available / 1024 ** 2)
+    throw new Error(
+      `This book needs roughly ${need} MB of audio but only ${have} MB of browser storage is available. Free some space, or delete a converted book, and try again.`,
+    )
+  }
+}
+
+// ── sealing ───────────────────────────────────────────────────────
+
+function requestSeal(request: SealRequest): Promise<SealResponse> {
+  return new Promise((resolve, reject) => {
+    sealWaiter = { resolve, reject }
+    getSealWorker().postMessage(request)
+  })
+}
+
+async function sealBook(bookId: string): Promise<void> {
+  const book = await db.getBook(bookId)
+  if (!book) return
+
+  await publishBook(bookId, { status: 'sealing' })
+
+  const chapters = await db.listChapters(bookId)
+  const staging = await db.listStaging(bookId)
+  const audioByIndex = new Map(
+    staging.filter((row) => row.kind === 'audio').map((row) => [row.index, row.data]),
+  )
+
+  const inputs: ChapterInput[] = chapters
+    .filter((chapter) => audioByIndex.has(chapter.index))
+    .map((chapter) => ({
+      index: chapter.index + 1, // chNNN is 1-based in the package
+      title: chapter.title,
+      blocks: chapter.blocks,
+      sentences: chapter.sentences,
+      timeline: chapter.timeline,
+      durationSec: chapter.durationSec,
+    }))
+
+  if (inputs.length === 0) throw new Error('nothing to seal — no narrated chapters')
+
+  const audio: [number, Uint8Array][] = inputs.map((input) => [
+    input.index,
+    audioByIndex.get(input.index - 1)!,
+  ])
+
+  const response = await requestSeal({
+    bookId,
+    meta: {
+      identifier: `urn:uuid:${bookId}`,
+      title: book.title,
+      author: book.author,
+      language: book.language,
+    },
+    chapters: inputs,
+    audio,
+    modified: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+  })
+  if (response.type !== 'sealed') throw new Error('sealing produced no archive')
+
+  // Order matters: the artifact must exist before staging is dropped.
+  await db.putArtifact(bookId, response.epub)
+  await db.clearStaging(bookId)
+  // Chapters are served from the zip from here on, not from staging.
+  clearBookCache(bookId)
+  await db.deleteJob(bookId)
+  store().clearJob(bookId)
+
+  const durationSec = inputs.reduce((sum, input) => sum + input.durationSec, 0)
+  await publishBook(bookId, { status: 'ready', durationSec })
+
+  log.log(`[${bookId}] sealed ${chapterId(inputs.length)} chapters, ${response.bytes} bytes`)
+}
+
+// ── recovery ──────────────────────────────────────────────────────
+
+/** Re-queue anything a closed tab or crash left mid-conversion. */
+export async function resumeInterrupted(): Promise<void> {
+  const jobs = await db.listResumableJobs()
+  for (const job of jobs) {
+    const book = await db.getBook(job.bookId)
+    if (!book || book.status === 'ready') continue
+
+    // The artifact is the real completion signal. A job row can outlive the
+    // conversion that finished it — the seal deletes the row, but a reload
+    // between the two reads it and would restart a book that is already done.
+    if (await db.getArtifact(job.bookId)) {
+      await db.deleteJob(job.bookId)
+      store().clearJob(job.bookId)
+      await publishBook(job.bookId, { status: 'ready', error: undefined })
+      continue
+    }
+
+    log.log(`[${job.bookId}] resuming at chapter ${job.chapterCursor}`)
+    void startNarration(job.bookId, job.voiceId, job.speed)
+  }
+}

@@ -23,6 +23,9 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
+      // Mirrors the vite alias: kokoro-js's own nested transformers copy, the
+      // only instance whose `env` controls where ONNX Runtime loads its wasm.
+      "kokoro-transformers": ["../node_modules/kokoro-js/node_modules/@huggingface/transformers"],
       "@/*": ["src/*"]
     },
     "ignoreDeprecations": "6.0"

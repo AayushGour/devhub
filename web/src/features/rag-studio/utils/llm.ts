@@ -1,4 +1,4 @@
-import { isWebGpuAvailable } from './webgpu'
+import { isWebGpuAvailable } from '@/lib/webgpu'
 import { getModelsForEnvironment, DEFAULT_MODEL_ID, DEFAULT_CPU_MODEL_ID } from './models'
 // GPU operations go through the shared engine singleton so that RAG studio,
 // agent workspace, and the settings store all share one WebGPU worker and one

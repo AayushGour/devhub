@@ -1,0 +1,661 @@
+// Recovering document structure from a PDF.
+//
+// A PDF has no paragraphs, no chapters and no reading order — only positioned
+// runs of glyphs. Everything below reconstructs that structure from geometry,
+// and every function here is pure so it can be tested without pdf.js.
+//
+// The pipeline, in order:
+//   strip running heads -> split columns -> assemble lines -> group paragraphs
+//   -> classify headings -> join hyphens -> cut into chapters
+
+import type { Block } from './sentences'
+
+export interface PdfTextItem {
+  str: string
+  /**
+   * True when this item is a whole word rather than a run of glyphs.
+   *
+   * A PDF's text layer routinely splits one word across several runs, so runs
+   * are only separated when the gap is wide enough to be a space. Recognised
+   * text arrives already segmented into words, where that test glues them
+   * together instead — "DevHubArchitecture".
+   */
+  isWord?: boolean
+  /** Left edge, in PDF user space (origin bottom-left). */
+  x: number
+  /** Baseline. Larger values are HIGHER on the page. */
+  y: number
+  width: number
+  height: number
+  fontName?: string
+  /** Read from the font name — see pdfRead.styleOf. */
+  bold?: boolean
+  italic?: boolean
+}
+
+export interface PdfPage {
+  index: number
+  width: number
+  height: number
+  items: PdfTextItem[]
+}
+
+export interface Line {
+  y: number
+  x0: number
+  x1: number
+  height: number
+  text: string
+  /** True when every run on the line is bold. */
+  bold: boolean
+  /**
+   * True for lines set beside a drop cap. They are indented to clear the
+   * letter, which otherwise reads as a new paragraph on every one of them.
+   */
+  besideDropCap?: boolean
+}
+
+export interface Paragraph {
+  text: string
+  /** Largest glyph height in the paragraph — the heading signal. */
+  height: number
+  x0: number
+  /** Baseline of the first line. Larger is higher on the page. */
+  y: number
+  bold: boolean
+  pageIndex: number
+  /** True when the paragraph ran to the bottom of its column. */
+  continues: boolean
+}
+
+/** True when the text ends on a sentence terminator, allowing for quotes. */
+function endsSentence(text: string): boolean {
+  return /[.!?:;\u2026]["'\u201d\u2019)\]]?\s*$/.test(text)
+}
+
+/**
+ * Fraction of the glyph height a horizontal gap must exceed to count as a
+ * space. Comfortably above intra-word kerning, comfortably below a set space.
+ */
+const SPACE_GAP_RATIO = 0.14
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = sorted.length >> 1
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+// ── running heads ─────────────────────────────────────────────────
+
+/** Digits vary page to page; the rest of a running head does not. */
+function headKey(item: PdfTextItem, page: PdfPage): string {
+  const band = Math.round((item.y / Math.max(1, page.height)) * 50)
+  return `${band}|${item.str.replace(/\d+/g, '#').trim().toLowerCase()}`
+}
+
+/**
+ * Drop headers, footers and page numbers.
+ *
+ * Anything in the top or bottom tenth of the page whose text — with digits
+ * normalised — recurs at the same height on most pages is furniture, not prose.
+ * Narrating it means hearing the book's title once per page.
+ */
+export function stripRunningHeads(pages: PdfPage[], threshold = 0.6): PdfPage[] {
+  if (pages.length < 3) return pages
+
+  // Digit normalisation makes "Chapter 1" and "Chapter 2" look like the same
+  // recurring string, so size has to break the tie: a running head is set in
+  // body type, while a chapter opening is set larger. Without this, every
+  // chapter title that sits near the top of its page is deleted as furniture.
+  const bodyHeight = median(pages.flatMap((page) => page.items.map((item) => item.height)))
+  const isBodySized = (item: PdfTextItem) =>
+    bodyHeight === 0 || item.height <= bodyHeight * 1.2
+
+  const counts = new Map<string, number>()
+  for (const page of pages) {
+    const seen = new Set<string>()
+    for (const item of page.items) {
+      if (!inMargin(item, page) || !isBodySized(item)) continue
+      const key = headKey(item, page)
+      if (seen.has(key)) continue
+      seen.add(key)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+  }
+
+  const limit = pages.length * threshold
+  const furniture = new Set(
+    [...counts.entries()].filter(([, count]) => count >= limit).map(([key]) => key),
+  )
+
+  return pages.map((page) => ({
+    ...page,
+    items: page.items.filter(
+      (item) =>
+        !(inMargin(item, page) && isBodySized(item) && furniture.has(headKey(item, page))),
+    ),
+  }))
+}
+
+/**
+ * Whether an item sits where furniture lives.
+ *
+ * A tenth of the page misses running heads set a little further in; much more
+ * than an eighth starts to cover the first line of body text on a page with
+ * narrow margins, and recurrence alone will not save a line that genuinely
+ * repeats. A twelfth is the honest compromise.
+ */
+function inMargin(item: PdfTextItem, page: PdfPage): boolean {
+  const top = page.height * 0.88
+  const bottom = page.height * 0.12
+  return item.y >= top || item.y <= bottom
+}
+
+// ── columns ───────────────────────────────────────────────────────
+
+/**
+ * Find the x of a vertical gutter splitting the page into two columns.
+ *
+ * Looks for a band of x values that almost no text crosses while text exists on
+ * both sides of it. Returns null for single-column pages, which is the common
+ * case; getting this wrong scrambles reading order, so the bar is deliberately
+ * high.
+ */
+export function findColumnGutter(page: PdfPage, minGapRatio = 0.06): number | null {
+  if (page.items.length < 20) return null
+
+  const BINS = 60
+  const covered = new Array<number>(BINS).fill(0)
+
+  // A heading, rule or figure spanning the page crosses the gutter. Counting
+  // those closes the only gap there is, and the columns then interleave
+  // line-by-line into nonsense. They are excluded from the profile, not from
+  // the page — the gutter describes where the BODY text is not.
+  const spanning = page.width * 0.6
+  for (const item of page.items) {
+    if (item.width >= spanning) continue
+    const from = Math.max(0, Math.floor((item.x / page.width) * BINS))
+    const to = Math.min(BINS - 1, Math.floor(((item.x + item.width) / page.width) * BINS))
+    for (let i = from; i <= to; i++) covered[i] += 1
+  }
+
+  // A gutter is where text is scarce, not necessarily absent: a stray footnote
+  // marker or a hyphen should not disqualify it.
+  const busiest = Math.max(...covered)
+  const isGap = (count: number) => count <= Math.max(0, busiest * 0.02)
+
+  // Only consider gutters near the middle — a wide outer margin is not a column.
+  const from = Math.floor(BINS * 0.3)
+  const to = Math.ceil(BINS * 0.7)
+
+  let bestStart = -1
+  let bestLength = 0
+  let runStart = -1
+
+  for (let i = from; i <= to; i++) {
+    if (isGap(covered[i])) {
+      if (runStart === -1) runStart = i
+      const length = i - runStart + 1
+      if (length > bestLength) {
+        bestLength = length
+        bestStart = runStart
+      }
+    } else {
+      runStart = -1
+    }
+  }
+
+  if (bestLength < BINS * minGapRatio) return null
+
+  const gutterX = ((bestStart + bestLength / 2) / BINS) * page.width
+  const left = page.items.filter((item) => item.x + item.width <= gutterX).length
+  const right = page.items.filter((item) => item.x >= gutterX).length
+
+  // Both sides must carry real text, or this is just a wide indent.
+  const minimum = page.items.length * 0.2
+  return left >= minimum && right >= minimum ? gutterX : null
+}
+
+// ── lines ─────────────────────────────────────────────────────────
+
+/**
+ * A large initial letter, set into the first lines of a paragraph.
+ *
+ * It is its own text run, several times the body's height, and its baseline
+ * sits one or two lines DOWN from the text it belongs to — so it groups with
+ * the wrong line, tears the first word apart ("M" + "en and women are
+ * different"), and makes that line look tall enough to be a heading.
+ */
+function isDropCap(item: PdfTextItem, bodyHeight: number): boolean {
+  return item.str.trim().length === 1 && item.height > bodyHeight * 1.8
+}
+
+/** Group items sharing a baseline into lines, ordered top to bottom. */
+export function assembleLines(items: PdfTextItem[]): Line[] {
+  if (items.length === 0) return []
+
+  const bodyHeight = median(items.map((i) => i.height))
+  const caps = items.filter((item) => isDropCap(item, bodyHeight))
+  const rest = caps.length > 0 ? items.filter((item) => !isDropCap(item, bodyHeight)) : items
+  if (rest.length === 0) return []
+
+  const tolerance = Math.max(1, median(rest.map((i) => i.height)) * 0.5)
+  const sorted = [...rest].sort((a, b) => b.y - a.y || a.x - b.x)
+
+  const lines: Line[] = []
+  let bucket: PdfTextItem[] = []
+
+  const flush = () => {
+    if (bucket.length === 0) return
+    const ordered = [...bucket].sort((a, b) => a.x - b.x)
+
+    // Runs are joined with a space only where they are visibly apart, because
+    // PDFs split a single word across several runs.
+    //
+    // The threshold has to sit between two real quantities: kerning inside a
+    // split word, which is a few hundredths of an em, and a rendered space,
+    // which is roughly a quarter of one. Testing at a quarter em lands exactly
+    // on a space and drops it — that is how a title set as three runs becomes
+    // "DevHubArchitecture".
+    let text = ''
+    let previousEnd: number | null = null
+    for (const item of ordered) {
+      const gap = previousEnd === null ? 0 : item.x - previousEnd
+      const separated = item.isWord || gap > item.height * SPACE_GAP_RATIO
+      if (previousEnd !== null && separated) text += ' '
+      text += item.str
+      previousEnd = item.x + item.width
+    }
+
+    lines.push({
+      y: ordered[0].y,
+      x0: ordered[0].x,
+      x1: previousEnd ?? ordered[0].x,
+      // The median, not the maximum: one oversized glyph on a line — a symbol,
+      // a stray initial — should not make the whole line read as a heading.
+      height: median(ordered.map((i) => i.height)),
+      text: text.replace(/\s+/g, ' ').trim(),
+      // Partly-bold text is emphasis inside a sentence, not a heading.
+      bold: ordered.every((i) => i.bold === true),
+    })
+    bucket = []
+  }
+
+  for (const item of sorted) {
+    if (bucket.length > 0 && Math.abs(bucket[0].y - item.y) > tolerance) flush()
+    bucket.push(item)
+  }
+  flush()
+
+  const assembled = lines.filter((line) => line.text.length > 0)
+
+  // Put each initial back on the line it belongs to: the topmost line the
+  // letter reaches, which is the paragraph's first. Lines it stands beside are
+  // marked so their indent is not read as a paragraph break.
+  for (const cap of caps) {
+    const top = cap.y + cap.height
+    let target: Line | undefined
+    for (const line of assembled) {
+      if (line.y <= top && (target === undefined || line.y > target.y)) target = line
+    }
+    if (!target) continue
+
+    // The run of lines set around the letter is exactly the run that shares the
+    // indent it forces. Reading that off the text is more reliable than
+    // modelling the glyph's box: a three-line initial keeps its indent past its
+    // own baseline, so any purely vertical test loses the last line of the run.
+    const indent = target.x0
+    const from = assembled.indexOf(target)
+    for (let i = from; i < assembled.length; i++) {
+      if (Math.abs(assembled[i].x0 - indent) > cap.height * 0.2) break
+      assembled[i].besideDropCap = true
+    }
+
+    target.text = `${cap.str.trim()}${target.text}`
+    target.x0 = Math.min(target.x0, cap.x)
+  }
+
+  return assembled
+}
+
+// ── paragraphs ────────────────────────────────────────────────────
+
+/** Break lines into paragraphs on vertical gaps and first-line indents. */
+export function groupParagraphs(lines: Line[], pageIndex: number): Paragraph[] {
+  if (lines.length === 0) return []
+
+  const gaps: number[] = []
+  for (let i = 1; i < lines.length; i++) gaps.push(lines[i - 1].y - lines[i].y)
+
+  const typicalGap = median(gaps.filter((g) => g > 0))
+  const typicalX = median(lines.map((line) => line.x0))
+  const typicalWidth = median(lines.map((line) => line.x1 - line.x0))
+  const typicalRight = median(lines.map((line) => line.x1))
+
+  const paragraphs: Paragraph[] = []
+  let current: Line[] = []
+
+  const flush = (continues: boolean) => {
+    if (current.length === 0) return
+    paragraphs.push({
+      text: current.map((line) => line.text).join(' '),
+      height: Math.max(...current.map((line) => line.height)),
+      x0: current[0].x0,
+      y: current[0].y,
+      bold: current.every((line) => line.bold),
+      pageIndex,
+      continues,
+    })
+    current = []
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const gap = i === 0 ? 0 : lines[i - 1].y - line.y
+
+    // Larger type is set on looser leading, so a heading's own line spacing
+    // exceeds the page's median gap and would split the heading in two. Scale
+    // the threshold by the line's height as well.
+    const previousHeight = i > 0 ? lines[i - 1].height : line.height
+    const gapLimit = Math.max(typicalGap * 1.5, previousHeight * 1.8)
+    const wideGap = typicalGap > 0 && gap > gapLimit
+    // A first-line indent only means a new paragraph if the line before it ran
+    // to the right margin. Centred text — a pull quote, a joke box, a verse —
+    // starts every line somewhere different and ends every line short, so
+    // without this test each of its lines becomes a paragraph of its own.
+    const previousLine = lines[i - 1]
+    const previousRanFull =
+      previousLine !== undefined &&
+      previousLine.x1 >= typicalRight - Math.max(4, typicalWidth * 0.05)
+
+    // A line set beside a drop cap is indented to clear the letter, not to
+    // start something new.
+    const indented =
+      !line.besideDropCap &&
+      previousRanFull &&
+      line.x0 > typicalX + Math.max(4, typicalWidth * 0.02)
+
+    // A change of type size ends a block regardless of spacing. Headings are
+    // often set only a line apart from the prose beneath them, and without this
+    // they are absorbed into the following paragraph and stop being headings.
+    const previous = lines[i - 1]
+    const resized =
+      i > 0 && Math.abs(line.height - previous.height) > Math.max(0.5, previous.height * 0.15)
+
+    if (i > 0 && (wideGap || indented || resized)) flush(false)
+    current.push(line)
+  }
+
+  // The last paragraph on a page may run onto the next one. Width alone cannot
+  // tell — a single full-width line is both the widest and the median, so every
+  // page would claim to continue and the whole book would merge into one
+  // paragraph. Punctuation is the reliable signal: prose that stops without a
+  // terminator is mid-sentence.
+  const last = lines[lines.length - 1]
+  const reachesMargin = last.x1 - last.x0 >= typicalWidth * 0.85
+  flush(reachesMargin && !endsSentence(last.text))
+
+  return paragraphs
+}
+
+// ── classification ────────────────────────────────────────────────
+
+const SHORT_ENOUGH_FOR_A_HEADING = 80
+
+/**
+ * Assign block types. Headings are set in larger type than the body, short, and
+ * standalone; the size clusters found on the page decide h1 vs h2 vs h3.
+ */
+/**
+ * The type size most of the document's text is set in.
+ *
+ * Weighted by characters rather than by paragraph count: a one-word heading
+ * should not count as much as a four-hundred-character paragraph. A plain
+ * median over paragraphs drifts upward in documents with many short sections,
+ * until headings stop looking larger than "body" and stop being detected.
+ */
+function bodyTextHeight(paragraphs: Paragraph[]): number {
+  const sorted = [...paragraphs].sort((a, b) => a.height - b.height)
+  const totalChars = sorted.reduce((n, p) => n + p.text.length, 0)
+  if (totalChars === 0) return median(sorted.map((p) => p.height))
+
+  let seen = 0
+  for (const paragraph of sorted) {
+    seen += paragraph.text.length
+    if (seen >= totalChars / 2) return paragraph.height
+  }
+  return sorted[sorted.length - 1].height
+}
+
+export function classifyParagraphs(paragraphs: Paragraph[]): Block[] {
+  if (paragraphs.length === 0) return []
+
+  const bodyHeight = bodyTextHeight(paragraphs)
+  const short = (p: Paragraph) => p.text.length <= SHORT_ENOUGH_FOR_A_HEADING
+
+  // Distinct heading sizes, largest first — rank becomes heading level.
+  const headingSizes = [
+    ...new Set(
+      paragraphs
+        .filter((p) => p.height > bodyHeight * 1.2 && short(p))
+        .map((p) => Math.round(p.height * 2) / 2),
+    ),
+  ].sort((a, b) => b - a)
+
+  // Weight is the signal size misses: plenty of documents mark a heading by
+  // setting it bold at the very same size as the body, which no size cluster
+  // can see. It only counts when bold is scarce — where most of the text is
+  // bold it says nothing, and a whole document would become headings.
+  const boldChars = paragraphs
+    .filter((p) => p.bold)
+    .reduce((n, p) => n + p.text.length, 0)
+  const totalChars = paragraphs.reduce((n, p) => n + p.text.length, 0)
+  const boldMeansHeading = totalChars > 0 && boldChars / totalChars < 0.25
+
+  return paragraphs.map((paragraph) => {
+    const size = Math.round(paragraph.height * 2) / 2
+    const rank = headingSizes.indexOf(size)
+
+    if (rank !== -1 && short(paragraph)) {
+      return { type: (['h1', 'h2', 'h3'] as const)[Math.min(rank, 2)], text: paragraph.text }
+    }
+
+    // A bold line at body size sits below every size-distinguished heading.
+    if (boldMeansHeading && paragraph.bold && short(paragraph)) {
+      const level = Math.min(headingSizes.length, 2)
+      return { type: (['h1', 'h2', 'h3'] as const)[level], text: paragraph.text }
+    }
+
+    return { type: 'p' as const, text: paragraph.text }
+  })
+}
+
+// ── hyphenation ───────────────────────────────────────────────────
+
+/**
+ * Rejoin words split across a line break.
+ *
+ * Only a hyphen followed by a lowercase letter is treated as a break; joining
+ * on an uppercase letter would corrupt real compounds like "Anglo-Saxon".
+ */
+export function dehyphenate(text: string): string {
+  return text.replace(/(\p{Ll})[-­]\s+(\p{Ll})/gu, '$1$2')
+}
+
+// ── assembly ──────────────────────────────────────────────────────
+
+export interface PdfOutlineEntry {
+  title: string
+  pageIndex: number
+  /** Depth in the outline; top-level entries are 0. */
+  depth?: number
+  /**
+   * Vertical position of the destination, when the PDF gives one. Sections are
+   * finer than pages — a five-page brief can hold ten of them — so a page index
+   * alone cannot say where one ends and the next begins.
+   */
+  y?: number
+}
+
+export interface PdfChapter {
+  title: string
+  blocks: Block[]
+  /** Outline depth this chapter came from, when the PDF had one. */
+  depth?: number
+}
+
+/** Ordered blocks for one page, honouring any two-column layout. */
+export function pageToParagraphs(page: PdfPage): Paragraph[] {
+  const gutter = findColumnGutter(page)
+  if (gutter === null) return groupParagraphs(assembleLines(page.items), page.index)
+
+  const left = page.items.filter((item) => item.x < gutter)
+  const right = page.items.filter((item) => item.x >= gutter)
+
+  return [
+    ...groupParagraphs(assembleLines(left), page.index),
+    ...groupParagraphs(assembleLines(right), page.index),
+  ]
+}
+
+/**
+ * Cut a document into chapters.
+ *
+ * The PDF's own outline is used when it has one — real ebooks do, and it beats
+ * any heuristic. Otherwise top-level headings become the breaks, and failing
+ * that the book is split into fixed runs of pages so it is still navigable.
+ */
+export function buildChapters(
+  pages: PdfPage[],
+  outline: PdfOutlineEntry[],
+  pagesPerFallbackChapter = 20,
+): PdfChapter[] {
+  const stripped = stripRunningHeads(pages)
+  const paragraphs = stripped.flatMap(pageToParagraphs)
+
+  // Join paragraphs split across a page break before anything is classified.
+  const bodyHeight = paragraphs.length > 0 ? bodyTextHeight(paragraphs) : 0
+
+  const merged: Paragraph[] = []
+  for (const paragraph of paragraphs) {
+    const previous = merged[merged.length - 1]
+    // A heading never runs onto the next page, whatever its punctuation — and
+    // nothing runs INTO a heading either. A printed contents page ends without
+    // a full stop, so it looks unfinished and would otherwise absorb the
+    // following chapter's title, losing the chapter break entirely.
+    const isHeading = (p: Paragraph) => p.height > bodyHeight * 1.2
+    const sameSize =
+      previous !== undefined &&
+      Math.abs(previous.height - paragraph.height) <= Math.max(0.5, previous.height * 0.15)
+
+    if (
+      previous?.continues &&
+      sameSize &&
+      !isHeading(previous) &&
+      !isHeading(paragraph) &&
+      previous.pageIndex !== paragraph.pageIndex
+    ) {
+      previous.text = dehyphenate(`${previous.text} ${paragraph.text}`)
+      previous.continues = paragraph.continues
+      continue
+    }
+    merged.push({ ...paragraph, text: dehyphenate(paragraph.text) })
+  }
+
+  const blocks = classifyParagraphs(merged)
+
+  if (outline.length > 0) {
+    return splitByOutline(merged, blocks, outline)
+  }
+
+  const byHeading = splitByHeadings(blocks)
+  if (byHeading.length > 1) return byHeading
+
+  return splitByPageRuns(merged, blocks, pagesPerFallbackChapter)
+}
+
+/** True when the outline entry starts at or above this paragraph. */
+function startsAtOrAbove(entry: PdfOutlineEntry, paragraph: Paragraph): boolean {
+  if (entry.pageIndex !== paragraph.pageIndex) return entry.pageIndex < paragraph.pageIndex
+  // No coordinate means the destination is the top of its page.
+  return (entry.y ?? Number.POSITIVE_INFINITY) >= paragraph.y
+}
+
+function splitByOutline(
+  paragraphs: Paragraph[],
+  blocks: Block[],
+  outline: PdfOutlineEntry[],
+): PdfChapter[] {
+  const sorted = [...outline].sort(
+    (a, b) =>
+      a.pageIndex - b.pageIndex ||
+      (b.y ?? Number.POSITIVE_INFINITY) - (a.y ?? Number.POSITIVE_INFINITY),
+  )
+  const chapters: PdfChapter[] = sorted.map((entry) => ({
+    title: entry.title,
+    blocks: [],
+    depth: entry.depth ?? 0,
+  }))
+
+  let cursor = 0
+  for (let i = 0; i < blocks.length; i++) {
+    while (cursor + 1 < sorted.length && startsAtOrAbove(sorted[cursor + 1], paragraphs[i])) {
+      cursor++
+    }
+    chapters[cursor].blocks.push(blocks[i])
+  }
+
+  return chapters.filter((chapter) => chapter.blocks.length > 0)
+}
+
+function splitByHeadings(blocks: Block[]): PdfChapter[] {
+  // The largest type in a document is often its title, used exactly once —
+  // splitting on that yields one chapter. Split on the most prominent level
+  // that actually recurs.
+  const levels = ['h1', 'h2', 'h3'] as const
+  const splitLevel =
+    levels.find((level) => blocks.filter((b) => b.type === level).length >= 2) ?? 'h1'
+
+  const chapters: PdfChapter[] = []
+  let current: PdfChapter | null = null
+
+  for (const block of blocks) {
+    if (block.type === splitLevel) {
+      current = { title: block.text, blocks: [block] }
+      chapters.push(current)
+      continue
+    }
+    if (!current) {
+      current = { title: 'Opening', blocks: [] }
+      chapters.push(current)
+    }
+    current.blocks.push(block)
+  }
+
+  // Anything before the first section heading still needs a home. If it opens
+  // with the document's own title, that reads far better than "Opening".
+  const first = chapters[0]
+  if (first && first.title === 'Opening') {
+    const heading = first.blocks.find((block) => block.type.startsWith('h'))
+    if (heading) first.title = heading.text
+  }
+
+  return chapters.filter((chapter) => chapter.blocks.length > 0)
+}
+
+function splitByPageRuns(
+  paragraphs: Paragraph[],
+  blocks: Block[],
+  pagesPerChapter: number,
+): PdfChapter[] {
+  const chapters: PdfChapter[] = []
+
+  for (let i = 0; i < blocks.length; i++) {
+    const part = Math.floor(paragraphs[i].pageIndex / pagesPerChapter)
+    if (!chapters[part]) chapters[part] = { title: `Part ${part + 1}`, blocks: [] }
+    chapters[part].blocks.push(blocks[i])
+  }
+
+  return chapters.filter(Boolean).filter((chapter) => chapter.blocks.length > 0)
+}
