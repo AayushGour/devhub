@@ -12,6 +12,15 @@ import type { Block } from './sentences'
 
 export interface PdfTextItem {
   str: string
+  /**
+   * True when this item is a whole word rather than a run of glyphs.
+   *
+   * A PDF's text layer routinely splits one word across several runs, so runs
+   * are only separated when the gap is wide enough to be a space. Recognised
+   * text arrives already segmented into words, where that test glues them
+   * together instead — "DevHubArchitecture".
+   */
+  isWord?: boolean
   /** Left edge, in PDF user space (origin bottom-left). */
   x: number
   /** Baseline. Larger values are HIGHER on the page. */
@@ -52,6 +61,12 @@ export interface Paragraph {
 function endsSentence(text: string): boolean {
   return /[.!?:;\u2026]["'\u201d\u2019)\]]?\s*$/.test(text)
 }
+
+/**
+ * Fraction of the glyph height a horizontal gap must exceed to count as a
+ * space. Comfortably above intra-word kerning, comfortably below a set space.
+ */
+const SPACE_GAP_RATIO = 0.14
 
 function median(values: number[]): number {
   if (values.length === 0) return 0
@@ -188,13 +203,20 @@ export function assembleLines(items: PdfTextItem[]): Line[] {
     if (bucket.length === 0) return
     const ordered = [...bucket].sort((a, b) => a.x - b.x)
 
-    // Join runs with a space only where the gap is wider than a thin space —
-    // PDFs often split a single word across several items.
+    // Runs are joined with a space only where they are visibly apart, because
+    // PDFs split a single word across several runs.
+    //
+    // The threshold has to sit between two real quantities: kerning inside a
+    // split word, which is a few hundredths of an em, and a rendered space,
+    // which is roughly a quarter of one. Testing at a quarter em lands exactly
+    // on a space and drops it — that is how a title set as three runs becomes
+    // "DevHubArchitecture".
     let text = ''
     let previousEnd: number | null = null
     for (const item of ordered) {
       const gap = previousEnd === null ? 0 : item.x - previousEnd
-      if (previousEnd !== null && gap > item.height * 0.25) text += ' '
+      const separated = item.isWord || gap > item.height * SPACE_GAP_RATIO
+      if (previousEnd !== null && separated) text += ' '
       text += item.str
       previousEnd = item.x + item.width
     }

@@ -86,6 +86,27 @@ describe('assembleLines', () => {
     expect(assembleLines(items).map((l) => l.text)).toEqual(['Hello world', 'Second line'])
   })
 
+  it('always separates recognised words, whose boxes sit tight together', () => {
+    // OCR boxes hug the glyphs, so the gap between two words can be narrower
+    // than the run-splitting threshold. Without the flag this reads
+    // "DevHubArchitecture".
+    const items = [
+      { str: 'DevHub', x: 72, y: 700, width: 40, height: 10, isWord: true },
+      { str: 'Architecture', x: 113, y: 700, width: 70, height: 10, isWord: true },
+    ]
+    expect(assembleLines(items)[0].text).toBe('DevHub Architecture')
+  })
+
+  it('recovers a space that was rendered as positioning rather than a character', () => {
+    // A heading set as several runs, the space between words being a gap of
+    // about a quarter em. Nothing in the text says "space".
+    const items = [
+      { str: 'DevHub', x: 326, y: 297, width: 108, height: 33 },
+      { str: 'Architecture', x: 442, y: 297, width: 190, height: 33 },
+    ]
+    expect(assembleLines(items)[0].text).toBe('DevHub Architecture')
+  })
+
   it('does not insert a space inside a word split across runs', () => {
     const items = [
       { str: 'philo', x: 72, y: 700, width: 25, height: 10 },

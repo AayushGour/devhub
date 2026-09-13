@@ -144,6 +144,8 @@ async function ocrPage(
         y: pageHeight - y1 / OCR_SCALE,
         width: (x1 - x0) / OCR_SCALE,
         height: Math.max(1, (y1 - y0) / OCR_SCALE),
+        // Recognition returns words, not glyph runs.
+        isWord: true,
       }
     })
 }

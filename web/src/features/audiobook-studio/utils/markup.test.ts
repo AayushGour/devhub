@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { decodeEntities, findElement, findElements, getAttr, textContent } from './markup'
+import { titleFromHref } from './epubRead'
 import { extractBlocks } from './htmlBlocks'
 
 describe('getAttr', () => {
@@ -110,5 +111,59 @@ describe('extractBlocks', () => {
     expect(extractBlocks('<p></p><p>   </p><p>real</p>')).toEqual([
       { type: 'p', text: 'real' },
     ])
+  })
+})
+
+describe('nav documents with several navs', () => {
+  // Real EPUBs put the table of contents, the landmarks and a page-list in one
+  // file. Only the first is a list of chapters; the page-list links carry page
+  // numbers and point at the very same documents.
+  const nav = `<html><body>
+    <nav epub:type="toc"><ol>
+      <li><a href="text/06_Foreword.xhtml#for">Foreword</a></li>
+      <li><a href="text/07_Chapter1.xhtml">1. Meeting Your Inner Child</a></li>
+    </ol></nav>
+    <nav epub:type="landmarks" hidden="hidden"><ol>
+      <li><a href="text/00_Cover.xhtml" epub:type="cover">Cover</a></li>
+    </ol></nav>
+    <nav epub:type="page-list" hidden="hidden"><ol>
+      <li><a href="text/06_Foreword.xhtml#p-ii">ii</a></li>
+      <li><a href="text/07_Chapter1.xhtml#p-12">12</a></li>
+    </ol></nav>
+  </body></html>`
+
+  it('finds the toc nav and not the page-list', () => {
+    const navs = findElements(nav, ['nav'])
+    expect(navs).toHaveLength(3)
+
+    const toc = navs.find((n) => getAttr(n.attrs, 'epub:type')?.includes('toc'))
+    expect(toc).toBeDefined()
+
+    const labels = findElements(toc!.inner, ['a']).map((a) => textContent(a.inner))
+    expect(labels).toEqual(['Foreword', '1. Meeting Your Inner Child'])
+    // The page numbers must not be in scope at all.
+    expect(labels).not.toContain('ii')
+    expect(labels).not.toContain('12')
+  })
+
+  it('does not confuse page-list with toc when matching epub:type', () => {
+    const navs = findElements(nav, ['nav'])
+    const types = navs.map((n) => getAttr(n.attrs, 'epub:type'))
+    expect(types).toEqual(['toc', 'landmarks', 'page-list'])
+  })
+})
+
+describe('titleFromHref', () => {
+  // Front and back matter is often absent from the table of contents and has
+  // no heading, so the filename is all there is to go on.
+  it('turns a spine filename into something readable', () => {
+    expect(titleFromHref('text/01_Epigraph.xhtml')).toBe('Epigraph')
+    expect(titleFromHref('text/29_Backmatter01.xhtml')).toBe('Backmatter')
+    expect(titleFromHref('OEBPS/part-one_introduction.html')).toBe('Part One Introduction')
+    expect(titleFromHref('chapterOne.xhtml')).toBe('Chapter One')
+  })
+
+  it('gives nothing back when the name carries no words', () => {
+    expect(titleFromHref('text/0001.xhtml')).toBe('')
   })
 })

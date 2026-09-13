@@ -56,6 +56,23 @@ function readText(files: Unzipped, path: string): string | null {
   return entry ? strFromU8(entry) : null
 }
 
+/**
+ * A readable name for a spine document that the table of contents skips and
+ * that carries no heading of its own — front and back matter, mostly.
+ * `01_Epigraph.xhtml` -> `Epigraph`, `29_Backmatter01.xhtml` -> `Backmatter`.
+ */
+export function titleFromHref(href: string): string {
+  const base = (href.split('/').pop() ?? '')
+    .replace(/\.[^.]+$/, '')
+    .replace(/^[\d._-]+/, '')
+    .replace(/[\d]+$/, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .trim()
+
+  return base ? base.replace(/\b[a-z]/g, (c) => c.toUpperCase()) : ''
+}
+
 /** Resolve an href relative to the document that referenced it. */
 export function resolveHref(fromPath: string, href: string): string {
   const clean = href.split('#')[0]
@@ -80,10 +97,23 @@ function readTocTitles(files: Unzipped, manifest: ManifestItem[]): Map<string, s
   if (navItem) {
     const source = readText(files, navItem.path)
     if (source) {
-      for (const anchor of findElements(source, ['a'])) {
-        const href = getAttr(anchor.attrs, 'href')
-        const label = textContent(anchor.inner)
-        if (href && label) titles.set(resolveHref(navItem.path, href), label)
+      // A nav document holds several navs. Only the one marked `toc` is the
+      // table of contents; the others are landmarks and a page-list whose links
+      // carry page numbers ("ii", "12") and point at the same documents. Read
+      // the whole file and those overwrite every real chapter title.
+      const navs = findElements(source, ['nav'])
+      const toc = navs.find((nav) => getAttr(nav.attrs, 'epub:type')?.includes('toc'))
+      const scope = toc?.inner ?? (navs.length === 0 ? source : undefined)
+
+      if (scope !== undefined) {
+        for (const anchor of findElements(scope, ['a'])) {
+          const href = getAttr(anchor.attrs, 'href')
+          const label = textContent(anchor.inner)
+          // First reference wins: a document's title is its first appearance,
+          // not a later link that happens to point at it again.
+          const path = href ? resolveHref(navItem.path, href) : null
+          if (path && label && !titles.has(path)) titles.set(path, label)
+        }
       }
     }
   }
@@ -193,9 +223,9 @@ export async function readEpub(bytes: Uint8Array, fallbackTitle: string): Promis
       href: item.path,
       blocks,
       title:
-        tocTitles.get(item.path) ??
-        heading?.text ??
-        item.path.split('/').pop() ??
+        tocTitles.get(item.path) ||
+        heading?.text ||
+        titleFromHref(item.path) ||
         `Chapter ${chapters.length + 1}`,
     })
   }
