@@ -50,22 +50,30 @@ export function isCacheable(book: BookRecord, chapter: ReadableChapter): boolean
   return chapter.timeline.length > 0
 }
 /**
- * Object URLs hold their blob in memory for as long as they live. A forty
- * chapter book at ~5 MB a chapter would pin hundreds of megabytes if every
- * chapter stayed resident, so only the neighbourhood of the current chapter is
- * kept — enough for the next-chapter preload and a step backwards.
+ * Chapter audio, as blobs rather than object URLs.
+ *
+ * This cache deliberately does NOT hand out object URLs. A URL has an owner —
+ * the element playing it — and revoking one that is still in use breaks
+ * playback with a bare ERR_FILE_NOT_FOUND. Since the cache cannot know when a
+ * consumer is finished, it does not create URLs at all: callers make their own
+ * and revoke them when their element goes away.
+ *
+ * Dropping a blob from this map is always safe. Any object URL already made
+ * from it keeps the blob alive on its own.
+ *
+ * A forty-chapter book at ~5 MB a chapter would pin hundreds of megabytes if
+ * every chapter stayed resident, so only the neighbourhood of the current
+ * chapter is kept — enough for the next-chapter preload and a step backwards.
  */
 const AUDIO_CACHE_LIMIT = 3
-const audioCache = new Map<string, string>()
+const audioCache = new Map<string, Blob>()
 
-function rememberAudio(key: string, url: string): void {
-  audioCache.set(key, url)
+function rememberAudio(key: string, blob: Blob): void {
+  audioCache.set(key, blob)
   while (audioCache.size > AUDIO_CACHE_LIMIT) {
     // Map preserves insertion order, so the first key is the oldest.
     const oldest = audioCache.keys().next()
     if (oldest.done) break
-    const stale = audioCache.get(oldest.value)
-    if (stale) URL.revokeObjectURL(stale)
     audioCache.delete(oldest.value)
   }
 }
@@ -74,11 +82,11 @@ export function clearBookCache(bookId: string): void {
   for (const key of [...chapterCache.keys()]) {
     if (key.startsWith(`${bookId}:`)) chapterCache.delete(key)
   }
-  for (const [key, url] of [...audioCache.entries()]) {
-    if (key.startsWith(`${bookId}:`)) {
-      URL.revokeObjectURL(url)
-      audioCache.delete(key)
-    }
+  // Only the cached blob is dropped. Whatever is playing holds its own object
+  // URL and keeps its blob alive — this runs after every narrated chapter, so
+  // revoking here would cut off the chapter being read while the rest converts.
+  for (const key of [...audioCache.keys()]) {
+    if (key.startsWith(`${bookId}:`)) audioCache.delete(key)
   }
 }
 
@@ -248,11 +256,11 @@ export async function loadChapter(
   return chapter
 }
 
-/** An object URL for a chapter's audio, or null when it is not narrated yet. */
+/** A chapter's audio, or null when it has not been narrated yet. */
 export async function loadChapterAudio(
   book: BookRecord,
   index: number,
-): Promise<string | null> {
+): Promise<Blob | null> {
   if (book.mode === 'live') return null
 
   const key = `${book.id}:${index}`
@@ -277,11 +285,9 @@ export async function loadChapterAudio(
 
   if (!bytes) return null
 
-  const url = URL.createObjectURL(
-    new Blob([bytes as unknown as BlobPart], { type: 'audio/mpeg' }),
-  )
-  rememberAudio(key, url)
-  return url
+  const blob = new Blob([bytes as unknown as BlobPart], { type: 'audio/mpeg' })
+  rememberAudio(key, blob)
+  return blob
 }
 
 /** Chapter list for the reader's navigation, including not-yet-narrated ones. */

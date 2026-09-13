@@ -30,7 +30,9 @@ async function download(book: BookRecord): Promise<void> {
     .trim()
   link.download = `${safeTitle || 'book'}.epub`
   link.click()
-  URL.revokeObjectURL(url)
+  // Revoking in the same tick can cancel the download before the browser has
+  // read the blob. Let the click settle first.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 export default function ConversionPanel({ book, job, speed, voiceId }: Props) {

@@ -41,7 +41,12 @@ export interface StoredPosition {
 interface Options {
   mode: BookMode
   chapter: ReadableChapter | null
-  audioUrl: string | null
+  /**
+   * The chapter's audio. The hook makes its own object URL from this and
+   * revokes it when the element goes away — the element is the only thing that
+   * knows when the URL is finished with.
+   */
+  audio: Blob | null
   rate: number
   /**
    * Where reading stopped last session. Applied once, to the audio element as
@@ -65,7 +70,7 @@ const IDLE: PlaybackState = {
 export function usePlaybackEngine({
   mode,
   chapter,
-  audioUrl,
+  audio,
   rate,
   initialPosition,
   onChapterEnd,
@@ -162,49 +167,54 @@ export function usePlaybackEngine({
   // Build the element for the current chapter. Recreated per chapter so seeking
   // and duration always refer to the audio actually on screen.
   useEffect(() => {
-    if (live || !audioUrl) return
+    if (live || !audio) return
 
-    const audio = new Audio(audioUrl)
-    audio.preload = 'metadata'
-    audio.playbackRate = rate
-    audioRef.current = audio
+    const url = URL.createObjectURL(audio)
+    const element = new Audio(url)
+    element.preload = 'metadata'
+    element.playbackRate = rate
+    audioRef.current = element
 
     const resume = pendingRestore.current
     pendingRestore.current = null
     if (resume) {
       // currentTime is only settable once metadata has arrived.
-      const seek = () => { audio.currentTime = resume.audioTime }
-      if (audio.readyState >= 1) seek()
-      else audio.addEventListener('loadedmetadata', seek, { once: true })
+      const seek = () => { element.currentTime = resume.audioTime }
+      if (element.readyState >= 1) seek()
+      else element.addEventListener('loadedmetadata', seek, { once: true })
     }
 
     // Duration is otherwise only learned inside the animation loop, which runs
     // only while playing — leaving the scrubber pinned to zero, and clamping
     // every seek, until something has played at least once.
     const onMetadata = () => {
-      if (Number.isFinite(audio.duration)) {
-        setState((prev) => ({ ...prev, duration: audio.duration }))
+      if (Number.isFinite(element.duration)) {
+        setState((prev) => ({ ...prev, duration: element.duration }))
       }
     }
-    audio.addEventListener('loadedmetadata', onMetadata)
+    element.addEventListener('loadedmetadata', onMetadata)
 
     const onEnded = () => {
       cancelAnimationFrame(frameRef.current)
       setState((prev) => ({ ...prev, playing: false }))
       onEndRef.current?.()
     }
-    audio.addEventListener('ended', onEnded)
+    element.addEventListener('ended', onEnded)
 
     return () => {
-      audio.removeEventListener('loadedmetadata', onMetadata)
-      audio.removeEventListener('ended', onEnded)
-      audio.pause()
+      element.removeEventListener('loadedmetadata', onMetadata)
+      element.removeEventListener('ended', onEnded)
+      element.pause()
+      element.removeAttribute('src')
+      // Revoked here and nowhere else: this is the only place that knows the
+      // element is done with it.
+      URL.revokeObjectURL(url)
       cancelAnimationFrame(frameRef.current)
       audioRef.current = null
     }
     // `rate` is applied separately so changing speed does not rebuild the element.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioUrl, live])
+  }, [audio, live])
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.playbackRate = rate

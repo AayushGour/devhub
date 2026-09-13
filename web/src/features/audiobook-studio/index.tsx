@@ -7,7 +7,7 @@
 // column. The rail collapses itself when playback starts so it stops competing
 // with the prose for width, unless the reader has taken manual control of it.
 
-import { Suspense, use, useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookAudio } from 'lucide-react'
 import CollapsiblePanel from '@/components/ui/CollapsiblePanel'
 import { createLogger } from '@/lib/logger'
@@ -18,7 +18,7 @@ import Reader from './components/Reader'
 import TransportBar from './components/TransportBar'
 import UploadDialog from './components/UploadDialog'
 import { usePlaybackEngine, type StoredPosition } from './hooks/usePlaybackEngine'
-import { useAudiobookStore, useActiveBook, useJob } from './store/audiobookStore'
+import { useAudiobookStore, useJob } from './store/audiobookStore'
 import {
   clearBookCache,
   loadChapter,
@@ -77,7 +77,7 @@ async function openLibrary(): Promise<BootState> {
   ])
   const index = progress?.chapterIndex ?? 0
 
-  const [chapter, audioUrl] = await Promise.all([
+  const [chapter, audio] = await Promise.all([
     loadChapter(recent, index),
     loadChapterAudio(recent, index),
   ])
@@ -87,7 +87,7 @@ async function openLibrary(): Promise<BootState> {
     outline,
     index,
     chapter,
-    audioUrl,
+    audio,
     position: progress
       ? { sentenceId: progress.sentenceId, audioTime: progress.audioTime }
       : null,
@@ -99,14 +99,13 @@ type BootState = {
   outline: ChapterOutline[]
   index: number
   chapter: ReadableChapter | null
-  audioUrl: string | null
+  audio: Blob | null
   position: StoredPosition | null
 } | null
 
 function StudioInner({ boot }: { boot: Promise<BootState> }) {
   const initial = use(boot)
 
-  const books = useAudiobookStore((s) => s.books)
   const settings = useAudiobookStore((s) => s.settings)
   const saveSettings = useAudiobookStore((s) => s.saveSettings)
   const railCollapsed = useAudiobookStore((s) => s.railCollapsed)
@@ -114,20 +113,29 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
   const autoCollapseRail = useAudiobookStore((s) => s.autoCollapseRail)
   const setActiveBook = useAudiobookStore((s) => s.setActiveBook)
 
-  const book = useActiveBook()
-  const job = useJob(book?.id)
+  const books = useAudiobookStore((s) => s.books)
 
   const [showUpload, setShowUpload] = useState(books.length === 0)
   const [outline, setOutline] = useState<ChapterOutline[]>(initial?.outline ?? [])
   const [chapterIndex, setChapterIndex] = useState(initial?.index ?? 0)
   const [chapter, setChapter] = useState<ReadableChapter | null>(initial?.chapter ?? null)
-  const [audioUrl, setAudioUrl] = useState<string | null>(initial?.audioUrl ?? null)
-  // Which book the loaded chapter and the current playback position belong to.
-  // `book` flips the instant the rail is clicked, but the chapter loads
-  // asynchronously — writing progress in that gap would file the outgoing
-  // book's position under the incoming book's id.
+  const [audio, setAudio] = useState<Blob | null>(initial?.audio ?? null)
+  /**
+   * The book whose chapter is actually loaded.
+   *
+   * The rail highlights a click immediately, but content loads asynchronously.
+   * Everything in the reading pane is derived from this rather than from the
+   * selection, so a title, its chapter tabs and its prose always describe the
+   * same book — and so a position is never written under the wrong book's id.
+   */
   const [openedBookId, setOpenedBookId] = useState<string | null>(initial?.bookId ?? null)
   const [rate, setRate] = useState(settings.playbackRate)
+
+  const book = useMemo(
+    () => books.find((b) => b.id === openedBookId),
+    [books, openedBookId],
+  )
+  const job = useJob(book?.id)
 
   const lastSavedRef = useRef(0)
 
@@ -135,7 +143,7 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
   const playback = usePlaybackEngine({
     mode: book?.mode ?? 'narrated',
     chapter,
-    audioUrl,
+    audio,
     rate,
     initialPosition: initial?.position,
     onChapterEnd: () => {
@@ -156,14 +164,22 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
   // watching the index. That keeps the load and the navigation in one place and
   // avoids a render pass showing the previous chapter's text.
   const openChapter = useCallback(
-    async (record: BookRecord, index: number, resumeAt?: string) => {
-      const [content, url] = await Promise.all([
+    async (
+      record: BookRecord,
+      index: number,
+      resumeAt?: string,
+      nextOutline?: ChapterOutline[],
+    ) => {
+      const [content, clip] = await Promise.all([
         loadChapter(record, index),
         loadChapterAudio(record, index),
       ])
+      // Everything describing the book lands together. Setting the outline
+      // earlier would render one book's chapter tabs above another's text.
+      if (nextOutline) setOutline(nextOutline)
       setChapterIndex(index)
       setChapter(content)
-      setAudioUrl(url)
+      setAudio(clip)
       setOpenedBookId(record.id)
 
       if (resumeAt && content) {
@@ -192,11 +208,11 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
         db.getProgress(bookId),
       ])
 
-      setOutline(chapters)
       await openChapter(
         record,
         progress?.chapterIndex ?? 0,
         progress ? `${progress.sentenceId}:${progress.audioTime}` : undefined,
+        chapters,
       )
       log.log(`[${bookId}] opened — ${chapters.length} chapters`)
     },
@@ -221,7 +237,7 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
   const incomplete =
     showingCurrentBook &&
     book.mode !== 'live' &&
-    (!audioUrl || (chapter?.timeline.length ?? 0) === 0)
+    (!audio || (chapter?.timeline.length ?? 0) === 0)
 
   useEffect(() => {
     if (!book || !incomplete) return
@@ -230,12 +246,12 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
     void Promise.all([
       loadChapter(book, chapterIndex),
       loadChapterAudio(book, chapterIndex),
-    ]).then(([content, url]) => {
+    ]).then(([content, clip]) => {
       if (cancelled) return
       // Only replace the chapter once it actually gained timings — swapping in
       // another timing-less copy would just restart this cycle.
       if (content && content.timeline.length > 0) setChapter(content)
-      if (url) setAudioUrl(url)
+      if (clip) setAudio(clip)
     })
 
     return () => { cancelled = true }
@@ -286,7 +302,7 @@ function StudioInner({ boot }: { boot: Promise<BootState> }) {
     [saveSettings],
   )
 
-  const chapterReady = Boolean(chapter) && (book?.mode === 'live' || Boolean(audioUrl))
+  const chapterReady = Boolean(chapter) && (book?.mode === 'live' || Boolean(audio))
 
   return (
     <div className="studio-root">

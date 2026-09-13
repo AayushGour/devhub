@@ -95,11 +95,25 @@ async function readOutline(
  * Recognise a rendered page. Returns pseudo text items positioned from the OCR
  * word boxes, so scanned pages re-enter the same geometry pipeline as real text.
  */
+type OcrWorker = Awaited<ReturnType<typeof import('tesseract.js').createWorker>>
+
+/**
+ * One recogniser for the whole document.
+ *
+ * Starting a Tesseract worker costs a wasm instantiation and a language-data
+ * load — seconds each. A scanned book runs to hundreds of pages, so creating
+ * one per page spends longer starting workers than reading text.
+ */
+async function ocrWorkerFor(): Promise<OcrWorker> {
+  const { createWorker } = await import('tesseract.js')
+  return createWorker('eng')
+}
+
 async function ocrPage(
+  worker: OcrWorker,
   page: pdfjs.PDFPageProxy,
   pageHeight: number,
 ): Promise<PdfTextItem[]> {
-  const { createWorker } = await import('tesseract.js')
   const viewport = page.getViewport({ scale: OCR_SCALE })
 
   const canvas = new OffscreenCanvas(viewport.width, viewport.height)
@@ -112,31 +126,26 @@ async function ocrPage(
   }).promise
 
   const blob = await canvas.convertToBlob({ type: 'image/png' })
-  const worker = await createWorker('eng')
 
-  try {
-    const { data } = await worker.recognize(blob, {}, { blocks: true })
-    const words = (data.blocks ?? [])
-      .flatMap((block) => block.paragraphs ?? [])
-      .flatMap((paragraph) => paragraph.lines ?? [])
-      .flatMap((line) => line.words ?? [])
+  const { data } = await worker.recognize(blob, {}, { blocks: true })
+  const words = (data.blocks ?? [])
+    .flatMap((block) => block.paragraphs ?? [])
+    .flatMap((paragraph) => paragraph.lines ?? [])
+    .flatMap((line) => line.words ?? [])
 
-    return words
-      .filter((word) => word.text.trim().length > 0)
-      .map((word) => {
-        const { x0, y0, x1, y1 } = word.bbox
-        return {
-          str: word.text,
-          // Canvas coordinates grow downward; PDF user space grows upward.
-          x: x0 / OCR_SCALE,
-          y: pageHeight - y1 / OCR_SCALE,
-          width: (x1 - x0) / OCR_SCALE,
-          height: Math.max(1, (y1 - y0) / OCR_SCALE),
-        }
-      })
-  } finally {
-    await worker.terminate()
-  }
+  return words
+    .filter((word) => word.text.trim().length > 0)
+    .map((word) => {
+      const { x0, y0, x1, y1 } = word.bbox
+      return {
+        str: word.text,
+        // Canvas coordinates grow downward; PDF user space grows upward.
+        x: x0 / OCR_SCALE,
+        y: pageHeight - y1 / OCR_SCALE,
+        width: (x1 - x0) / OCR_SCALE,
+        height: Math.max(1, (y1 - y0) / OCR_SCALE),
+      }
+    })
 }
 
 export interface PdfReadResult extends ParsedBook {
@@ -153,6 +162,8 @@ export async function readPdf(
 
   const pages: PdfPage[] = []
   let ocrPages = 0
+  // Started on the first page that needs it, kept for the rest of the document.
+  let ocr: OcrWorker | null = null
 
   for (let index = 0; index < doc.numPages; index++) {
     onProgress('extracting', index + 1, doc.numPages)
@@ -167,7 +178,8 @@ export async function readPdf(
     if (charCount < MIN_CHARS_FOR_TEXT_LAYER) {
       onProgress('recognising', index + 1, doc.numPages)
       try {
-        items = await ocrPage(page, viewport.height)
+        ocr ??= await ocrWorkerFor()
+        items = await ocrPage(ocr, page, viewport.height)
         if (items.length > 0) ocrPages++
       } catch (err) {
         log.warn(`page ${index + 1}: OCR failed —`, err)
@@ -177,6 +189,8 @@ export async function readPdf(
     pages.push({ index, width: viewport.width, height: viewport.height, items })
     page.cleanup()
   }
+
+  await ocr?.terminate()
 
   const outline = await readOutline(doc)
 
