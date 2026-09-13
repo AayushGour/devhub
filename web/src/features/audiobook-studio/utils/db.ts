@@ -25,10 +25,26 @@ import {
 const log = createLogger('audiobook:db')
 
 const DB_NAME = 'audiobook-studio'
-const DB_VERSION = 1
+const DB_VERSION = 2
+
+/**
+ * The file a book was made from.
+ *
+ * Kept so a book can be extracted again — a parser improvement is worth
+ * nothing if re-reading the book means finding the original file by hand. It
+ * costs the source's own size on top of the audio, which is why it is a store
+ * of its own and not part of the book record: listing the library must not drag
+ * a hundred megabytes of PDF through memory.
+ */
+export interface SourceRecord {
+  bookId: string
+  name: string
+  bytes: Uint8Array
+}
 
 interface AudiobookDB extends DBSchema {
   books: { key: string; value: BookRecord }
+  sources: { key: string; value: SourceRecord }
   artifacts: { key: string; value: ArtifactRecord }
   chapters: { key: string; value: ChapterRecord; indexes: { by_book: string } }
   staging: { key: string; value: StagingRecord; indexes: { by_book: string } }
@@ -42,8 +58,18 @@ let _db: Promise<IDBPDatabase<AudiobookDB>> | null = null
 function getDB(): Promise<IDBPDatabase<AudiobookDB>> {
   if (_db) return _db
   _db = openDB<AudiobookDB>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
+    upgrade(db, oldVersion) {
+      // Version 2 adds `sources`. Existing books simply have no entry, and the
+      // reader is asked for the file when one of them is extracted again.
+      if (oldVersion >= 1) {
+        if (!db.objectStoreNames.contains('sources')) {
+          db.createObjectStore('sources', { keyPath: 'bookId' })
+        }
+        return
+      }
+
       db.createObjectStore('books', { keyPath: 'id' })
+      db.createObjectStore('sources', { keyPath: 'bookId' })
       db.createObjectStore('artifacts', { keyPath: 'bookId' })
 
       const chapters = db.createObjectStore('chapters', { keyPath: 'key' })
@@ -116,6 +142,7 @@ export async function deleteBook(id: string): Promise<void> {
   await Promise.all([
     db.delete('books', id),
     db.delete('artifacts', id),
+    db.delete('sources', id),
     db.delete('progress', id),
     db.delete('jobs', id),
     clearStaging(id),
@@ -136,6 +163,20 @@ export async function putArtifact(bookId: string, epub: Uint8Array): Promise<voi
 
 export async function getArtifact(bookId: string): Promise<ArtifactRecord | undefined> {
   return (await getDB()).get('artifacts', bookId)
+}
+
+export async function deleteArtifact(bookId: string): Promise<void> {
+  await (await getDB()).delete('artifacts', bookId)
+}
+
+// ── sources ───────────────────────────────────────────────────────
+
+export async function putSource(bookId: string, name: string, bytes: Uint8Array): Promise<void> {
+  await (await getDB()).put('sources', { bookId, name, bytes })
+}
+
+export async function getSource(bookId: string): Promise<SourceRecord | undefined> {
+  return (await getDB()).get('sources', bookId)
 }
 
 // ── chapters ──────────────────────────────────────────────────────
@@ -194,6 +235,10 @@ export async function clearStaging(bookId: string): Promise<void> {
 }
 
 // ── progress ──────────────────────────────────────────────────────
+
+export async function deleteProgress(bookId: string): Promise<void> {
+  await (await getDB()).delete('progress', bookId)
+}
 
 export async function getProgress(bookId: string): Promise<ProgressRecord | undefined> {
   return (await getDB()).get('progress', bookId)

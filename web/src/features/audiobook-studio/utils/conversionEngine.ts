@@ -282,14 +282,16 @@ export async function importFile(file: File, options: ImportOptions): Promise<st
 
   try {
     const bytes = new Uint8Array(await file.arrayBuffer())
-    // Keep a copy: a source that already carries overlays becomes the artifact
-    // verbatim, so it must survive the transfer to the parse worker.
-    const original = file.name.toLowerCase().endsWith('.epub') ? bytes.slice() : null
+    // Two reasons to keep a copy. A source that already carries overlays
+    // becomes the artifact verbatim, and any book may be extracted again later
+    // — both need the bytes after the parse worker has taken ownership.
+    const original = bytes.slice()
+    await db.putSource(bookId, file.name, original)
 
     const response = await requestParse({ bookId, fileName: file.name, bytes })
     if (response.type !== 'parsed') throw new Error('parser returned no book')
 
-    if (response.sourceType === 'epub3-narrated' && original) {
+    if (response.sourceType === 'epub3-narrated') {
       await adoptNarratedEpub(bookId, response.book, original)
       return bookId
     }
@@ -358,6 +360,8 @@ async function storeParsedBook(
     ocrUsed,
     nav,
     chapterCount: parsed.chapters.length,
+    // A re-extracted book has no audio until it is narrated again.
+    durationSec: 0,
     status,
     coverBlob: parsed.cover
       ? new Blob([parsed.cover.bytes as unknown as BlobPart], { type: parsed.cover.mime })
@@ -412,6 +416,76 @@ async function adoptNarratedEpub(
   })
 
   log.log(`[${bookId}] adopted a narrated EPUB — ${outline.length} chapters`)
+}
+
+/**
+ * Read a book again from its original file.
+ *
+ * Parsing improves; books converted before it did are stuck with whatever the
+ * old code made of them. This re-runs extraction and, for a narrated book, the
+ * narration too.
+ *
+ * The new parse happens before anything is thrown away, so a source that no
+ * longer reads leaves the existing book untouched rather than destroying it.
+ */
+export async function reprocess(
+  bookId: string,
+  replacement?: File,
+): Promise<{ ok: boolean; reason?: string }> {
+  const book = await db.getBook(bookId)
+  if (!book) return { ok: false, reason: 'That book is no longer in the library.' }
+
+  let bytes: Uint8Array
+  let fileName: string
+
+  if (replacement) {
+    bytes = new Uint8Array(await replacement.arrayBuffer())
+    fileName = replacement.name
+  } else {
+    const stored = await db.getSource(bookId)
+    if (!stored) {
+      return {
+        ok: false,
+        reason: 'The original file was not kept for this book. Choose it again to re-extract.',
+      }
+    }
+    bytes = stored.bytes
+    fileName = stored.name
+  }
+
+  cancelNarration(bookId)
+  await publishBook(bookId, { status: 'parsing', error: undefined })
+
+  try {
+    const response = await requestParse({ bookId, fileName, bytes: bytes.slice() })
+    if (response.type !== 'parsed') throw new Error('parser returned no book')
+
+    // Only now is the old version discarded.
+    await db.deleteArtifact(bookId)
+    await db.clearStaging(bookId)
+    await db.deleteJob(bookId)
+    await db.deleteProgress(bookId)
+    store().clearJob(bookId)
+    clearBookCache(bookId)
+
+    if (replacement) await db.putSource(bookId, fileName, bytes.slice())
+
+    await storeParsedBook(
+      bookId,
+      response.book,
+      response.sourceType,
+      { mode: book.mode, voiceId: book.voiceId, speed: 1 },
+      response.ocrUsed,
+    )
+
+    log.log(`[${bookId}] re-extracted from ${fileName}`)
+    return { ok: true }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    log.error(`[${bookId}] re-extract failed:`, message)
+    await publishBook(bookId, { status: 'error', error: message })
+    return { ok: false, reason: message }
+  }
 }
 
 // ── narration ─────────────────────────────────────────────────────

@@ -1,6 +1,12 @@
-import { Download, Loader2, Mic, Play, X } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Download, Loader2, Mic, Play, RefreshCw, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { cancelNarration, startNarration, upgradeToNarrated } from '../utils/conversionEngine'
+import {
+  cancelNarration,
+  reprocess,
+  startNarration,
+  upgradeToNarrated,
+} from '../utils/conversionEngine'
 import { loadArtifactBlob } from '../utils/bookSource'
 import type { BookRecord, JobRecord } from '../types'
 
@@ -38,6 +44,34 @@ async function download(book: BookRecord): Promise<void> {
 export default function ConversionPanel({ book, job, speed, voiceId }: Props) {
   const converting = book.status === 'narrating' || book.status === 'sealing'
 
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const filePicker = useRef<HTMLInputElement | null>(null)
+
+  /**
+   * Read the book again and, if it is narrated, narrate it again.
+   *
+   * Books imported before the source was kept have nothing to re-read, so the
+   * reader is asked for the file rather than being told no.
+   */
+  const reExtract = async (replacement?: File) => {
+    setBusy(true)
+    setNotice(null)
+    try {
+      const result = await reprocess(book.id, replacement)
+      if (!result.ok) {
+        setNotice(result.reason ?? 'Could not read that book again.')
+        if (result.reason?.includes('Choose it again')) filePicker.current?.click()
+        return
+      }
+      if (book.mode === 'narrated') {
+        await startNarration(book.id, book.voiceId, speed)
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const progress =
     job && job.chapterCount > 0
       ? (job.chapterCursor + (job.sentenceCount ? job.sentenceCursor / job.sentenceCount : 0)) /
@@ -72,6 +106,36 @@ export default function ConversionPanel({ book, job, speed, voiceId }: Props) {
                 : ''}
           </span>
         </div>
+      )}
+
+      {notice && (
+        <p className="text-[0.65rem] text-amber-400 max-w-[18rem] leading-snug shrink-0">
+          {notice}
+        </p>
+      )}
+
+      <input
+        ref={filePicker}
+        type="file"
+        accept=".epub,.pdf,.txt,.md,.markdown,.docx"
+        className="hidden"
+        onChange={(e) => {
+          const picked = e.target.files?.[0]
+          if (picked) void reExtract(picked)
+        }}
+      />
+
+      {!converting && book.status !== 'parsing' && (
+        <button
+          type="button"
+          disabled={busy}
+          title="Read the book again from its original file, and narrate it again"
+          onClick={() => void reExtract()}
+          className={cn(BUTTON, 'border-border text-on-surface hover:bg-surface-hover')}
+        >
+          <RefreshCw size={12} className={busy ? 'animate-spin' : undefined} />
+          Re-extract
+        </button>
       )}
 
       {converting && (
