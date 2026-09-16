@@ -43,6 +43,7 @@ export function initMermaid(appTheme: string) {
     theme,
     themeVariables,
     securityLevel: 'antiscript',
+    suppressErrorRendering: true,
     // Extra node padding so text doesn't hit clip boundary.
     // System fonts (SF Pro, system-ui) render slightly wider than mermaid measures.
     flowchart: { padding: 16 },
