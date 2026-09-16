@@ -25,6 +25,8 @@
     "svg",
     "tokens",
     "toml",
+    "csv",
+    "tsv",
     "preview"
   ],
   "icon": "icon.png",
@@ -81,14 +83,14 @@
         "command": "devhub.openPreviewToSide",
         "key": "ctrl+shift+v",
         "mac": "cmd+shift+v",
-        "when": "editorTextFocus && (editorLangId == markdown || editorLangId == html || editorLangId == mermaid || editorLangId == json || editorLangId == jsonc || editorLangId == svg || resourceExtname == .svg || resourceExtname == .mdc || resourceExtname == .htm || editorLangId == jsonl || resourceExtname == .jsonl || resourceExtname == .ndjson || editorLangId == yaml || resourceExtname == .yaml || resourceExtname == .yml || editorLangId == xml || resourceExtname == .xml || editorLangId == toml || resourceExtname == .toml)"
+        "when": "editorTextFocus && (editorLangId == markdown || editorLangId == html || editorLangId == mermaid || editorLangId == json || editorLangId == jsonc || editorLangId == svg || resourceExtname == .svg || resourceExtname == .mdc || resourceExtname == .htm || editorLangId == jsonl || resourceExtname == .jsonl || resourceExtname == .ndjson || editorLangId == yaml || resourceExtname == .yaml || resourceExtname == .yml || editorLangId == xml || resourceExtname == .xml || editorLangId == toml || resourceExtname == .toml || resourceExtname == .csv || resourceExtname == .tsv)"
       }
     ],
     "menus": {
       "editor/title": [
         {
           "command": "devhub.openPreviewToSide",
-          "when": "editorLangId == markdown || editorLangId == html || editorLangId == mermaid || editorLangId == json || editorLangId == jsonc || editorLangId == svg || resourceExtname == .svg || resourceExtname == .mdc || resourceExtname == .htm || editorLangId == jsonl || resourceExtname == .jsonl || resourceExtname == .ndjson || editorLangId == yaml || resourceExtname == .yaml || resourceExtname == .yml || editorLangId == xml || resourceExtname == .xml || editorLangId == toml || resourceExtname == .toml",
+          "when": "editorLangId == markdown || editorLangId == html || editorLangId == mermaid || editorLangId == json || editorLangId == jsonc || editorLangId == svg || resourceExtname == .svg || resourceExtname == .mdc || resourceExtname == .htm || editorLangId == jsonl || resourceExtname == .jsonl || resourceExtname == .ndjson || editorLangId == yaml || resourceExtname == .yaml || resourceExtname == .yml || editorLangId == xml || resourceExtname == .xml || editorLangId == toml || resourceExtname == .toml || resourceExtname == .csv || resourceExtname == .tsv",
           "group": "navigation"
         }
       ],

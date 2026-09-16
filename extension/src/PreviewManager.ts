@@ -5,7 +5,7 @@ import * as path from 'node:path'
 import { getWebviewHtml, colorThemeName } from './html'
 import { inlineAssets, injectNavInterceptor } from './htmlPreprocess'
 
-type Tool = 'markdown' | 'html' | 'diagram' | 'json' | 'svg' | 'token' | 'yaml' | 'xml' | 'toml'
+type Tool = 'markdown' | 'html' | 'diagram' | 'json' | 'svg' | 'token' | 'yaml' | 'xml' | 'toml' | 'csv'
 
 interface HistoryEntry {
   uri: vscode.Uri
@@ -43,6 +43,7 @@ function toolForDocument(doc: vscode.TextDocument): Tool | undefined {
   if (lang === 'yaml' || name.endsWith('.yaml') || name.endsWith('.yml')) return 'yaml'
   if (lang === 'xml' || name.endsWith('.xml')) return 'xml'
   if (lang === 'toml' || name.endsWith('.toml')) return 'toml'
+  if (lang === 'csv' || lang === 'tsv' || name.endsWith('.csv') || name.endsWith('.tsv')) return 'csv'
   return undefined
 }
 
@@ -58,6 +59,7 @@ function toolForPath(fsPath: string): Tool | undefined {
   if (name.endsWith('.yaml') || name.endsWith('.yml')) return 'yaml'
   if (name.endsWith('.xml')) return 'xml'
   if (name.endsWith('.toml')) return 'toml'
+  if (name.endsWith('.csv') || name.endsWith('.tsv')) return 'csv'
   return undefined
 }
 
