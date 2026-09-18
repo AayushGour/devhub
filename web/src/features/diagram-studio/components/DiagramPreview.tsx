@@ -13,6 +13,44 @@ interface DiagramPreviewProps {
 
 let renderId = 0
 
+const VIEWBOX_PAD = 8
+
+// mermaid measures node/label widths against 'trebuchet ms' internally — a
+// different fontFamily (e.g. system-ui) renders wider than mermaid measured,
+// so text overflows its box and gets clipped at the edges. Match the font it
+// calibrates against, then clean up any residual overflow defensively: widen
+// foreignObject labels and their enclosing rects, drop clip-path (mermaid
+// clips label groups tightly to the box it computed), and pad the viewBox so
+// nothing sits flush against the export/print edge.
+function fixupSvgOverflow(svg: SVGSVGElement) {
+  const vbAttr = svg.getAttribute('viewBox')
+  if (vbAttr) {
+    const parts = vbAttr.trim().split(/[\s,]+/).map(Number)
+    if (parts.length === 4 && parts.every((n) => !Number.isNaN(n))) {
+      const [x, y, w, h] = parts
+      svg.setAttribute(
+        'viewBox',
+        `${x - VIEWBOX_PAD} ${y - VIEWBOX_PAD} ${w + VIEWBOX_PAD * 2} ${h + VIEWBOX_PAD * 2}`,
+      )
+    }
+  }
+  svg.querySelectorAll('[clip-path]').forEach((node) => node.removeAttribute('clip-path'))
+  svg.querySelectorAll<SVGForeignObjectElement>('foreignObject').forEach((fo) => {
+    const w = parseFloat(fo.getAttribute('width') ?? '0')
+    if (w > 0) fo.setAttribute('width', String(w + 20))
+    fo.style.overflow = 'visible'
+  })
+  svg.querySelectorAll<SVGGElement>('g.label').forEach((g) => {
+    const fo = g.querySelector('foreignObject')
+    const rect = g.querySelector('rect')
+    if (fo && rect) {
+      const fw = parseFloat(fo.getAttribute('width') ?? '0')
+      const rw = parseFloat(rect.getAttribute('width') ?? '0')
+      if (fw > rw) rect.setAttribute('width', String(fw))
+    }
+  })
+}
+
 const ZOOM_STEP = 1.25
 const ZOOM_MIN = 0.01
 const ZOOM_MAX = 8
@@ -116,7 +154,9 @@ export default function DiagramPreview({ code, mermaidTheme, svgRef }: DiagramPr
       startOnLoad: false,
       theme: mermaidTheme,
       securityLevel: 'antiscript',
-      fontFamily: 'system-ui, sans-serif',
+      fontFamily: "'trebuchet ms', verdana, arial, sans-serif",
+      flowchart: { padding: 16 },
+      sequence: { boxMargin: 16 },
     })
 
     const id = `devhub-dgm-${++renderId}`
@@ -132,6 +172,7 @@ export default function DiagramPreview({ code, mermaidTheme, svgRef }: DiagramPr
       el.removeAttribute('width')
       el.removeAttribute('height')
       el.style.display = 'block'
+      fixupSvgOverflow(el)
 
       const vb = el.viewBox.baseVal
       const natW = vb.width || el.getBBox().width || 600
