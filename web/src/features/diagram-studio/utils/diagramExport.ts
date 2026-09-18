@@ -6,10 +6,19 @@ export function exportSVG(svgEl: SVGSVGElement, title: string) {
 }
 
 export async function exportPNG(svgEl: SVGSVGElement, title: string) {
-  const rect = svgEl.getBoundingClientRect()
-  const w = rect.width || 800
-  const h = rect.height || 600
-  const scale = 2
+  // Use the SVG's own intrinsic size, not getBoundingClientRect() — the preview
+  // shrinks big diagrams to fit the screen via a CSS transform: scale(zoom), so
+  // the bounding rect is the on-screen (post-zoom) size, not the diagram's real
+  // resolution. Exporting from that under-sized base is what made big diagrams
+  // blurry: a diagram fit-to-screen at 20% zoom rendered at 20% of its true
+  // pixel size, however much `scale` below multiplied on top of it.
+  const vb = svgEl.viewBox.baseVal
+  const w = svgEl.width.baseVal.value || vb.width || svgEl.getBoundingClientRect().width || 800
+  const h = svgEl.height.baseVal.value || vb.height || svgEl.getBoundingClientRect().height || 600
+  // Exporting at native size (now correct) can push very large diagrams past
+  // browser canvas dimension limits — cap the longer side instead of failing.
+  const MAX_DIM = 8000
+  const scale = Math.min(2, MAX_DIM / Math.max(w, h))
 
   const clone = svgEl.cloneNode(true) as SVGSVGElement
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
