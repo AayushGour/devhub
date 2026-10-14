@@ -13,3 +13,5 @@ One document per studio. Each covers: what it is, file tree, architecture, every
 | Image Studio | [image-studio.md](image-studio.md) | Batch image converter (7 formats, custom BMP/ICO encoders, ZIP download) |
 | SVG Studio | [svg-studio.md](svg-studio.md) | Raster → SVG via 4 engines (Potrace mono/colour, ImageTracer, embed) |
 | Repo Explorer | [repo-explorer.md](repo-explorer.md) | GitHub repo fetch → dependency graph → per-file AI wiki → RAG chat |
+
+> **VS Code extension previews** (not a web studio): the extension also previews Graphviz DOT and draw.io files. See [../extension-previews.md](../extension-previews.md).

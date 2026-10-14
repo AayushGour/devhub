@@ -5,7 +5,7 @@
 
 Live, theme-aware previews for the files you already edit — plus standalone developer tools. Edit in VS Code's native editor; DevHub renders the preview to the side. Powered by [DevHub](https://github.com/AayushGour/devhub).
 
-Everything runs locally. No account, no telemetry; the token and crypto tools work fully offline.
+Everything runs locally and offline, including the draw.io viewer, which ships inside the extension. No account, no telemetry.
 
 ## Install
 
@@ -27,6 +27,8 @@ Press **`Cmd/Ctrl+Shift+V`** (or run **DevHub: Open Preview to Side** from the C
 | `.toml` | Tree / Graph / Schema views (parsed via smol-toml) |
 | `.xml` | Tree / Graph / Schema views (parsed via browser DOMParser) |
 | `.svg` | Rendered SVG with zoom & pan |
+| `.dot`, `.gv` | Graphviz graph rendered locally (WASM) with a layout-engine picker; export SVG/PDF |
+| `.drawio`, `.dio`, `.drawio.xml` | draw.io diagram in the official viewer (multi-page, zoom, layers), bundled and offline |
 | `.html`, `.htm` | The page rendered in a sandboxed iframe with back/forward history navigation |
 
 The preview tracks edits live (debounced) and is locked to its source document.
@@ -60,11 +62,13 @@ Open in their own panel (no file needed):
 | `DevHub: Crypto Studio` | — | Open the crypto tools panel |
 | `DevHub: Image Studio` | — | Open the image tools panel |
 
-`Cmd/Ctrl+Shift+V` is active for: `.md`, `.mdc`, `.mmd`, `.mermaid`, `.json`, `.jsonc`, `.jsonl`, `.ndjson`, `.yaml`, `.yml`, `.xml`, `.toml`, `.svg`, `.html`, `.htm`. It overrides VS Code's built-in Markdown preview for those file types.
+`Cmd/Ctrl+Shift+V` is active for: `.md`, `.mdc`, `.mmd`, `.mermaid`, `.json`, `.jsonc`, `.jsonl`, `.ndjson`, `.yaml`, `.yml`, `.xml`, `.toml`, `.svg`, `.html`, `.htm`, `.dot`, `.gv`, `.drawio`, `.dio` (and `.drawio.xml`, via the `.xml` rule). It overrides VS Code's built-in Markdown preview for those file types.
 
 ## Notes
 
 - **HTML preview** renders markup, CSS, assets and scripts inside a sandboxed iframe isolated from the extension host. Back/forward navigation is available via the context menu.
+- **Graphviz (DOT)** renders in-webview with `@viz-js/viz` (WASM), no network. Pick the layout engine (`dot`, `neato`, `fdp`, ...) from the toolbar. The graph is drawn on a white background even in dark themes. A `layout=` graph attribute in the source overrides the picker. A syntax error shows the message above the last good render.
+- **draw.io** uses the official draw.io viewer (Apache-2.0, v32.4.1 resources), bundled in the extension under `media/vendor/drawio`, so it works offline and nothing is fetched from diagrams.net. The webview CSP for this preview allows no remote scripts, styles, fonts or network calls; only `https:` images embedded in a diagram can load. If the viewer fails to load, the preview falls back to a syntax-highlighted XML view. Compressed and uncompressed `.drawio` files both work. `.drawio.svg` opens in the SVG preview; `.drawio.png` is not supported. If the official Draw.io Integration extension is installed, `.drawio` opens in its custom editor and the DevHub keybinding won't fire until you use "Reopen Editor With... > Text Editor".
 - **YAML frontmatter** (the leading `--- … ---` block in `.md`/`.mdc`) is rendered as a property/value table above the document body.
 - **JSONL / NDJSON** files are wrapped into a JSON array before rendering so all three views work correctly; unparseable lines are preserved as `{ _unparsed: "…" }`.
 - **XML attributes** are represented as `@attr` keys in the tree/graph/schema views; text content nodes appear as `#text`.
