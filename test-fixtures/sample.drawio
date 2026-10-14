@@ -1,0 +1,44 @@
+<mxfile host="app.diagrams.net" version="24.0.0">
+  <diagram id="page-arch" name="Architecture">
+    <mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="web" value="Web App" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="120" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="api" value="API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="240" y="80" width="120" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="db" value="Database" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="440" y="65" width="80" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" value="REST" style="endArrow=classic;html=1;" edge="1" parent="1" source="web" target="api"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" value="SQL" style="endArrow=classic;html=1;" edge="1" parent="1" source="api" target="db"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="page-flow" name="Deploy flow">
+    <mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="commit" value="Commit" style="ellipse;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="100" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="build" value="Build &amp; test" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="200" y="65" width="120" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="gate" value="Pass?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="380" y="50" width="100" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="ship" value="Deploy" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="540" y="65" width="120" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="f1" value="" style="endArrow=classic;html=1;" edge="1" parent="1" source="commit" target="build"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="f2" value="" style="endArrow=classic;html=1;" edge="1" parent="1" source="build" target="gate"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="f3" value="yes" style="endArrow=classic;html=1;" edge="1" parent="1" source="gate" target="ship"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

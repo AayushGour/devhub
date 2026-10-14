@@ -9,6 +9,15 @@ export interface WebviewBootstrap {
   colorTheme: 'light' | 'dark'
 }
 
+export type CspProfile = 'html' | 'drawio' | 'strict'
+
+/** CSP profile a tool's webview document is served with. */
+export function cspProfile(tool: string): CspProfile {
+  if (tool === 'html') return 'html'
+  if (tool === 'drawio') return 'drawio'
+  return 'strict'
+}
+
 export function colorThemeName(): 'light' | 'dark' {
   const kind = vscode.window.activeColorTheme.kind
   return kind === vscode.ColorThemeKind.Light || kind === vscode.ColorThemeKind.HighContrastLight
@@ -49,8 +58,9 @@ export function getWebviewHtml(
   // The HTML preview renders the user's own file in a sandboxed iframe and must be
   // able to run that page's CSS/JS/assets, so it gets a permissive policy. All other
   // previews keep a strict, nonce-based policy.
+  const profile = cspProfile(boot.tool)
   const csp = (
-    boot.tool === 'html'
+    profile === 'html'
       ? [
           `default-src 'none'`,
           `img-src ${cs} * data: blob:`,
@@ -61,15 +71,28 @@ export function getWebviewHtml(
           `connect-src ${cs} * data: blob:`,
           `frame-src ${cs} * blob: data:`,
         ]
-      : [
-          `default-src 'none'`,
-          `img-src ${cs} data: blob: https:`,
-          `font-src ${cs} data: https:`,
-          `style-src ${cs} 'unsafe-inline' https:`,
-          `script-src ${cs} 'wasm-unsafe-eval' 'nonce-${n}'`,
-          `worker-src ${cs} blob:`,
-          `connect-src ${cs} blob: data: https:`,
-        ]
+      : profile === 'drawio'
+        ? // The draw.io viewer is bundled under media/vendor/drawio, so no remote
+          // scripts, styles, fonts or network calls. https: images stay allowed
+          // because diagrams can embed remote image URLs.
+          [
+            `default-src 'none'`,
+            `img-src ${cs} data: blob: https:`,
+            `font-src ${cs} data:`,
+            `style-src ${cs} 'unsafe-inline'`,
+            `script-src ${cs} 'wasm-unsafe-eval' 'nonce-${n}'`,
+            `worker-src ${cs} blob:`,
+            `connect-src ${cs} blob: data:`,
+          ]
+        : [
+            `default-src 'none'`,
+            `img-src ${cs} data: blob: https:`,
+            `font-src ${cs} data: https:`,
+            `style-src ${cs} 'unsafe-inline' https:`,
+            `script-src ${cs} 'wasm-unsafe-eval' 'nonce-${n}'`,
+            `worker-src ${cs} blob:`,
+            `connect-src ${cs} blob: data: https:`,
+          ]
   ).join('; ')
 
   const injected = [

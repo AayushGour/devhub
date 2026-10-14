@@ -1,0 +1,14 @@
+graph Network {
+  overlap=false;
+  node [shape=circle, style=filled, fillcolor="#eef3ff"];
+
+  a -- b -- c -- d -- a;
+  a -- c;
+  b -- d;
+  d -- e;
+  e -- f;
+  e -- g;
+  f -- g;
+  g -- h [label="uplink"];
+  h -- a [style=dashed];
+}

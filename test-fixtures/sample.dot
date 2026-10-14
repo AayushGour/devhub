@@ -1,0 +1,39 @@
+digraph Pipeline {
+  rankdir=LR;
+  node [shape=box, style="rounded,filled", fillcolor="#eef3ff", fontname="Helvetica"];
+  edge [fontname="Helvetica", fontsize=10];
+
+  client [label="Client", shape=ellipse, fillcolor="#ffe9c7"];
+
+  subgraph cluster_edge {
+    label="Edge";
+    style=dashed;
+    cdn [label="CDN"];
+    gateway [label="API Gateway"];
+  }
+
+  subgraph cluster_services {
+    label="Services";
+    style=filled;
+    color="#e6f4ea";
+    auth [label="Auth"];
+    orders [label="Orders"];
+    billing [label="Billing"];
+  }
+
+  subgraph cluster_data {
+    label="Data";
+    color="#999999";
+    db [label="Postgres", shape=cylinder];
+    cache [label="Redis", shape=cylinder];
+  }
+
+  client -> cdn [label="static"];
+  client -> gateway [label="HTTPS"];
+  gateway -> auth [label="verify"];
+  gateway -> orders;
+  orders -> billing [label="charge"];
+  orders -> db;
+  auth -> cache [label="sessions"];
+  billing -> db [style=dashed];
+}

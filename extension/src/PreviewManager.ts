@@ -2,10 +2,10 @@ import * as vscode from 'vscode'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { getWebviewHtml, colorThemeName } from './html'
+import { getWebviewHtml, colorThemeName, cspProfile } from './html'
 import { inlineAssets, injectNavInterceptor } from './htmlPreprocess'
 
-type Tool = 'markdown' | 'html' | 'diagram' | 'json' | 'svg' | 'token' | 'yaml' | 'xml' | 'toml' | 'csv'
+type Tool = 'markdown' | 'html' | 'diagram' | 'json' | 'svg' | 'token' | 'yaml' | 'xml' | 'toml' | 'csv' | 'dot' | 'drawio'
 
 interface HistoryEntry {
   uri: vscode.Uri
@@ -41,9 +41,12 @@ function toolForDocument(doc: vscode.TextDocument): Tool | undefined {
   if (lang === 'svg') return 'svg'
   if (lang === 'xml' && name.endsWith('.svg')) return 'svg'
   if (lang === 'yaml' || name.endsWith('.yaml') || name.endsWith('.yml')) return 'yaml'
+  // draw.io must be matched before the generic XML check (.drawio.xml ends in .xml).
+  if (name.endsWith('.drawio') || name.endsWith('.dio') || name.endsWith('.drawio.xml')) return 'drawio'
   if (lang === 'xml' || name.endsWith('.xml')) return 'xml'
   if (lang === 'toml' || name.endsWith('.toml')) return 'toml'
   if (lang === 'csv' || lang === 'tsv' || name.endsWith('.csv') || name.endsWith('.tsv')) return 'csv'
+  if (lang === 'dot' || name.endsWith('.dot') || name.endsWith('.gv')) return 'dot'
   return undefined
 }
 
@@ -57,9 +60,11 @@ function toolForPath(fsPath: string): Tool | undefined {
   if (name.endsWith('.json') || name.endsWith('.jsonc')) return 'json'
   if (name.endsWith('.svg')) return 'svg'
   if (name.endsWith('.yaml') || name.endsWith('.yml')) return 'yaml'
+  if (name.endsWith('.drawio') || name.endsWith('.dio') || name.endsWith('.drawio.xml')) return 'drawio'
   if (name.endsWith('.xml')) return 'xml'
   if (name.endsWith('.toml')) return 'toml'
   if (name.endsWith('.csv') || name.endsWith('.tsv')) return 'csv'
+  if (name.endsWith('.dot') || name.endsWith('.gv')) return 'dot'
   return undefined
 }
 
@@ -99,12 +104,24 @@ export class PreviewManager {
    */
   private commitNavigation(preview: Preview, post: () => void): void {
     const { uri, tool } = this.current(preview)
+    const oldTool = preview.key.slice(0, preview.key.indexOf(':'))
     this.previews.delete(preview.key)
     const newKey = `${tool}:${uri.toString()}`
     preview.key = newKey
     this.previews.set(newKey, preview)
     preview.panel.title = `${toolLabel(tool)}: ${path.basename(uri.fsPath)}`
-    post()
+    if (cspProfile(oldTool) !== cspProfile(tool)) {
+      // CSP is fixed per webview document, so a profile change needs a fresh
+      // document. The reload's 'ready' message triggers post() exactly once;
+      // calling post() here too would race a page that is about to be replaced.
+      preview.panel.webview.html = getWebviewHtml(preview.panel.webview, this.context.extensionUri, {
+        view: 'preview',
+        tool,
+        colorTheme: colorThemeName(),
+      })
+    } else {
+      post()
+    }
   }
 
   /** Opens (or reveals) a preview for the active editor. `force` ignores language detection. */
@@ -118,7 +135,7 @@ export class PreviewManager {
     const tool = force ?? toolForDocument(doc)
     if (!tool) {
       vscode.window.showInformationMessage(
-        'DevHub: no preview for this file type (supported: Markdown, Mermaid, JSON, SVG).',
+        'DevHub: no preview for this file type (supported: Markdown, HTML, Mermaid, Graphviz DOT, draw.io, JSON/JSONL, SVG, YAML, XML, TOML).',
       )
       return
     }
@@ -347,6 +364,8 @@ function findDoc(uri: vscode.Uri): vscode.TextDocument | undefined {
 function toolLabel(tool: Tool): string {
   if (tool === 'token') return 'Tokens'
   if (tool === 'html') return 'HTML'
+  if (tool === 'dot') return 'Graphviz'
+  if (tool === 'drawio') return 'draw.io'
   return tool[0].toUpperCase() + tool.slice(1)
 }
 

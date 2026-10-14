@@ -10,6 +10,8 @@ import YamlView from './views/YamlView'
 import XmlView from './views/XmlView'
 import TomlView from './views/TomlView'
 import CsvView from './views/CsvView'
+import DotView from './views/DotView'
+import DrawioView from './views/DrawioView'
 
 export interface HistoryEntry {
   fileName: string
@@ -108,6 +110,10 @@ function renderTool(
       return <TomlView text={text} />
     case 'csv':
       return <CsvView text={text} />
+    case 'dot':
+      return <DotView text={text} />
+    case 'drawio':
+      return <DrawioView text={text} colorTheme={colorTheme} />
     default:
       return <div className="p-4 text-sm text-on-surface-muted">Unsupported preview: {tool}</div>
   }
